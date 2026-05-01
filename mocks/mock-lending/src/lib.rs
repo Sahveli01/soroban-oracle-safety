@@ -106,10 +106,8 @@ mod test {
         let (admin, oracle, registry) = init(&env, &client);
 
         env.as_contract(&contract_id, || {
-            let stored_admin: Address =
-                env.storage().instance().get(&DataKey::Admin).unwrap();
-            let stored_oracle: Address =
-                env.storage().instance().get(&DataKey::Oracle).unwrap();
+            let stored_admin: Address = env.storage().instance().get(&DataKey::Admin).unwrap();
+            let stored_oracle: Address = env.storage().instance().get(&DataKey::Oracle).unwrap();
             let stored_registry: Address =
                 env.storage().instance().get(&DataKey::Registry).unwrap();
             let _stored_config: SafeOracleConfig =
