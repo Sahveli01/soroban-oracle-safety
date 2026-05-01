@@ -1,0 +1,27 @@
+# Rust build artifacts
+target/
+**/*.rs.bk
+**/*.rs.swp
+
+# IDE / editor
+.idea/
+.vscode/
+*.iml
+.DS_Store
+
+# Environment files (never commit)
+.env
+.env.*
+!.env.example
+
+# Stellar deployment artifacts (Phase 8'de kullanılacak)
+deployment/secrets/
+*.key
+
+# Logs
+*.log
+logs/
+
+# OS
+Thumbs.db
+desktop.ini

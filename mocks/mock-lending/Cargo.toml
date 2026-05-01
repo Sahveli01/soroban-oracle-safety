@@ -1,0 +1,18 @@
+[package]
+name = "mock-lending"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+soroban-sdk = { workspace = true }
+safe-oracle = { path = "../../crates/safe-oracle" }
+
+[dev-dependencies]
+soroban-sdk = { workspace = true, features = ["testutils"] }

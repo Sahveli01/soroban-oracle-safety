@@ -1,0 +1,14 @@
+[package]
+name = "test-utils"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+soroban-sdk = { workspace = true, features = ["testutils"] }
+safe-oracle = { path = "../safe-oracle" }
+mock-reflector = { path = "../../mocks/mock-reflector" }
+mock-lending = { path = "../../mocks/mock-lending" }
