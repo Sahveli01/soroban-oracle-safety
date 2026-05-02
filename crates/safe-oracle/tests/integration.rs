@@ -81,7 +81,11 @@ fn test_deviation_passes_with_small_change() {
         &config,
     );
 
-    assert!(result.is_ok(), "expected Ok for 5% change, got {:?}", result);
+    assert!(
+        result.is_ok(),
+        "expected Ok for 5% change, got {:?}",
+        result
+    );
 }
 
 /// %25 değişim strict_config (max=2000 BPS) eşiğini aşıyor → ExcessiveDeviation.
