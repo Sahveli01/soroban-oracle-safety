@@ -19,16 +19,20 @@ This project closes that gap.
 
 ## Status
 
-Work in progress. Phase 1 (foundation) complete:
+Work in progress. Phase 2 (safe_oracle Layer 1 guardrails) complete:
 
-- Workspace scaffolding (6 crates)
-- CI pipeline (GitHub Actions)
-- Mock Reflector + mock Lending contracts
-- Core type definitions (OracleSafetyViolation, SafeOracleConfig, Asset)
-- Test infrastructure (test-utils crate)
-- 13 unit tests, 0 warnings
+- Workspace scaffolding (6 crates) — Phase 1
+- CI pipeline (GitHub Actions) — Phase 1
+- Mock Reflector + mock Lending contracts (mock-lending integrated with real `safe_oracle::lastprice`)
+- Core type definitions (`OracleSafetyViolation`, `SafeOracleConfig`, `Asset`, `PriceData`)
+- Test infrastructure (`test-utils` crate, primary + secondary mock Reflectors)
+- **Layer 1 guardrails** (real implementations):
+  - `check_deviation` — BPS-based, blocks YieldBlox-class SDEX manipulation
+  - `check_staleness` — Unix timestamp comparison via `env.ledger().timestamp()`
+  - `check_cross_source` — opt-in secondary oracle cross-check
+- 43 tests passing, 0 warnings
 
-Phase 2 (safe_oracle Layer 1 guardrails) starting next.
+Phase 3 starting next.
 
 ## Building
 
