@@ -324,3 +324,170 @@ fn test_staleness_passes_at_exact_threshold() {
         result
     );
 }
+
+/// secondary_oracle = None → cross-source check skip → Ok.
+/// (Single-source operation must remain valid by default.)
+#[test]
+fn test_cross_source_skipped_when_secondary_is_none() {
+    let test_env = TestEnv::new();
+    let asset = Asset::Other(Symbol::new(&test_env.env, "USDC"));
+
+    test_env.set_oracle_price(&asset, ONE_DOLLAR, 99_900);
+    test_env.set_oracle_price(&asset, ONE_DOLLAR, 99_950);
+
+    let mut config = TestEnv::relaxed_config();
+    config.secondary_oracle = None;
+
+    let result = lastprice(
+        &test_env.env,
+        &asset,
+        &test_env.reflector_address,
+        &test_env.lending_address,
+        &config,
+    );
+
+    assert!(
+        result.is_ok(),
+        "expected Ok when secondary is None, got {:?}",
+        result
+    );
+}
+
+/// İki kaynak aynı fiyatı veriyor → 0 BPS sapma → Ok.
+#[test]
+fn test_cross_source_passes_with_matching_prices() {
+    let test_env = TestEnv::new();
+    let asset = Asset::Other(Symbol::new(&test_env.env, "USDC"));
+
+    test_env.set_oracle_price(&asset, ONE_DOLLAR, 99_900);
+    test_env.set_oracle_price(&asset, ONE_DOLLAR, 99_950);
+    test_env.set_secondary_oracle_price(&asset, ONE_DOLLAR, 99_950);
+
+    let mut config = TestEnv::relaxed_config();
+    config.secondary_oracle = Some(test_env.secondary_reflector_address.clone());
+
+    let result = lastprice(
+        &test_env.env,
+        &asset,
+        &test_env.reflector_address,
+        &test_env.lending_address,
+        &config,
+    );
+
+    assert!(
+        result.is_ok(),
+        "expected Ok for matching prices, got {:?}",
+        result
+    );
+}
+
+/// Primary $1.00 vs secondary $1.03 = 300 BPS, relaxed max=2000 → Ok.
+#[test]
+fn test_cross_source_passes_with_small_difference() {
+    let test_env = TestEnv::new();
+    let asset = Asset::Other(Symbol::new(&test_env.env, "ETH"));
+
+    test_env.set_oracle_price(&asset, ONE_DOLLAR, 99_900);
+    test_env.set_oracle_price(&asset, ONE_DOLLAR, 99_950); // primary $1.00
+    test_env.set_secondary_oracle_price(&asset, ONE_DOLLAR * 103 / 100, 99_950); // secondary $1.03
+
+    let mut config = TestEnv::relaxed_config(); // max_cross_source_bps = 2000
+    config.secondary_oracle = Some(test_env.secondary_reflector_address.clone());
+
+    let result = lastprice(
+        &test_env.env,
+        &asset,
+        &test_env.reflector_address,
+        &test_env.lending_address,
+        &config,
+    );
+
+    assert!(
+        result.is_ok(),
+        "expected Ok for 300 BPS deviation, got {:?}",
+        result
+    );
+}
+
+/// Primary $1.00 vs secondary $1.07 = 700 BPS, strict max=500 → CrossSourceMismatch.
+#[test]
+fn test_cross_source_fails_with_excessive_difference() {
+    let test_env = TestEnv::new();
+    let asset = Asset::Other(Symbol::new(&test_env.env, "BTC"));
+
+    // strict_config max_staleness_seconds=300; align ledger time to the price
+    // timestamps so this test exercises *cross-source*, not staleness.
+    test_env.env.ledger().with_mut(|li| {
+        li.timestamp = 100_000;
+    });
+
+    test_env.set_oracle_price(&asset, ONE_DOLLAR, 99_900);
+    test_env.set_oracle_price(&asset, ONE_DOLLAR, 99_950);
+    test_env.set_secondary_oracle_price(&asset, ONE_DOLLAR * 107 / 100, 99_950); // secondary $1.07
+
+    let mut config = TestEnv::strict_config(); // max_cross_source_bps = 500
+    config.secondary_oracle = Some(test_env.secondary_reflector_address.clone());
+
+    let result = lastprice(
+        &test_env.env,
+        &asset,
+        &test_env.reflector_address,
+        &test_env.lending_address,
+        &config,
+    );
+
+    assert_eq!(result, Err(OracleSafetyViolation::CrossSourceMismatch));
+}
+
+/// Secondary'de hiç fiyat yok → "no evidence" semantiği → Ok (skip, fail değil).
+#[test]
+fn test_cross_source_skipped_when_secondary_returns_none() {
+    let test_env = TestEnv::new();
+    let asset = Asset::Other(Symbol::new(&test_env.env, "RARE"));
+
+    test_env.set_oracle_price(&asset, ONE_DOLLAR, 99_900);
+    test_env.set_oracle_price(&asset, ONE_DOLLAR, 99_950);
+    // secondary intentionally has no price for this asset
+
+    let mut config = TestEnv::relaxed_config();
+    config.secondary_oracle = Some(test_env.secondary_reflector_address.clone());
+
+    let result = lastprice(
+        &test_env.env,
+        &asset,
+        &test_env.reflector_address,
+        &test_env.lending_address,
+        &config,
+    );
+
+    assert!(
+        result.is_ok(),
+        "expected Ok when secondary has no data, got {:?}",
+        result
+    );
+}
+
+/// Secondary fiyatı 0 → "live feed reporting zero" manipulation sinyali →
+/// CrossSourceMismatch. (None ile 0 arasındaki ayrım: None=veri yok, 0=manipule fiyat.)
+#[test]
+fn test_cross_source_fails_when_secondary_price_is_zero() {
+    let test_env = TestEnv::new();
+    let asset = Asset::Other(Symbol::new(&test_env.env, "WEIRD"));
+
+    test_env.set_oracle_price(&asset, ONE_DOLLAR, 99_900);
+    test_env.set_oracle_price(&asset, ONE_DOLLAR, 99_950);
+    test_env.set_secondary_oracle_price(&asset, 0, 99_950); // zero = manipulation, not gap
+
+    let mut config = TestEnv::relaxed_config();
+    config.secondary_oracle = Some(test_env.secondary_reflector_address.clone());
+
+    let result = lastprice(
+        &test_env.env,
+        &asset,
+        &test_env.reflector_address,
+        &test_env.lending_address,
+        &config,
+    );
+
+    assert_eq!(result, Err(OracleSafetyViolation::CrossSourceMismatch));
+}

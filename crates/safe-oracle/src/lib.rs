@@ -227,19 +227,63 @@ fn check_staleness(
     Ok(())
 }
 
-/// Phase 2.4'te implement edilecek (Layer 1, Guardrail 4 — Multi-Source Cross-Check).
+/// Layer 1, Guardrail 4 — Multi-Source Cross-Check.
 ///
-/// Mantık (Phase 2.4):
-/// - `config.secondary_oracle` `None` ise skip
-/// - `Some(addr)` ise ikincil oracle'dan fiyat çek
-/// - İki fiyat arasındaki BPS sapma `config.max_cross_source_bps` üstündeyse
-///   `Err(CrossSourceMismatch)`
+/// When `config.secondary_oracle` is `Some(addr)`, fetches the secondary
+/// oracle's price for the same asset and rejects the trade if the two sources
+/// disagree by more than `config.max_cross_source_bps`. Reflector CEX feeds
+/// can be cross-checked against DEX feeds (or DIA) so that an attack that
+/// shifts only one feed is caught by the other. Opt-in: `None` skips entirely.
+///
+/// # Skip vs. fail semantics
+/// - `secondary_oracle = None` → `Ok(())`. Single-source operation is allowed.
+/// - Secondary returns `None` (no recorded price) → `Ok(())`. "No evidence" is
+///   not the same as "evidence of mismatch"; we don't penalize an asset just
+///   because the secondary feed has not seen it yet.
+/// - Secondary returns a non-positive price → `CrossSourceMismatch`. A live
+///   feed reporting zero/negative is a manipulation signal, not a data gap.
+/// - BPS deviation beyond threshold → `CrossSourceMismatch`.
+///
+/// Primary is the BPS reference (`|primary - secondary| * 10_000 / primary`)
+/// because primary is the value the lending contract actually consumes.
+/// Secondary staleness is intentionally not checked here — Phase 6 audit will
+/// revisit whether stale secondaries should silently disable cross-check or
+/// hard-fail.
 fn check_cross_source(
-    _env: &Env,
-    _asset: &Asset,
-    _current: &PriceData,
-    _config: &SafeOracleConfig,
+    env: &Env,
+    asset: &Asset,
+    current: &PriceData,
+    config: &SafeOracleConfig,
 ) -> Result<(), OracleSafetyViolation> {
+    let secondary = match &config.secondary_oracle {
+        Some(addr) => addr,
+        None => return Ok(()),
+    };
+
+    if current.price <= 0 {
+        return Err(OracleSafetyViolation::CrossSourceMismatch);
+    }
+
+    let client = ReflectorClient::new(env, secondary);
+    let secondary_price = match client.lastprice(asset) {
+        Some(p) => p,
+        None => return Ok(()),
+    };
+
+    if secondary_price.price <= 0 {
+        return Err(OracleSafetyViolation::CrossSourceMismatch);
+    }
+
+    let abs_diff = (current.price - secondary_price.price).abs();
+    let scaled = abs_diff
+        .checked_mul(10_000)
+        .ok_or(OracleSafetyViolation::CrossSourceMismatch)?;
+    let deviation_bps = scaled / current.price;
+
+    if deviation_bps > config.max_cross_source_bps as i128 {
+        return Err(OracleSafetyViolation::CrossSourceMismatch);
+    }
+
     Ok(())
 }
 

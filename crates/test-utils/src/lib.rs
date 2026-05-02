@@ -22,6 +22,12 @@ pub struct TestEnv<'a> {
     pub env: Env,
     pub reflector_address: Address,
     pub reflector_client: MockReflectorClient<'a>,
+    /// Secondary Reflector instance for cross-source guardrail tests
+    /// (Phase 2.5). A separate `MockReflector` registration with its own
+    /// storage; clients opt in by setting `config.secondary_oracle =
+    /// Some(secondary_reflector_address)`.
+    pub secondary_reflector_address: Address,
+    pub secondary_reflector_client: MockReflectorClient<'a>,
     pub lending_address: Address,
     pub lending_client: MockLendingClient<'a>,
     // NOTE: liquidity_registry will be added in Phase 3 when the contract is implemented.
@@ -44,12 +50,29 @@ impl<'a> TestEnv<'a> {
             li.timestamp = 100_000;
         });
 
-        // Register mock Reflector + initialize with default config
+        // Primary mock Reflector + initialize with default config.
         let reflector_address = env.register(MockReflector, ());
         let reflector_client = MockReflectorClient::new(&env, &reflector_address);
         let admin = Address::generate(&env);
         let base_asset = Asset::Other(Symbol::new(&env, "USD"));
         let cfg = ConfigData {
+            admin: admin.clone(),
+            history_retention_period: 0,
+            assets: vec![&env],
+            base_asset: base_asset.clone(),
+            decimals: 14,
+            resolution: 300,
+            cache_size: 10,
+            fee_config: FeeConfig::None,
+        };
+        reflector_client.config(&cfg);
+
+        // Secondary mock Reflector — separate registration, identical config.
+        // Used opt-in by tests that exercise the cross-source guardrail.
+        let secondary_reflector_address = env.register(MockReflector, ());
+        let secondary_reflector_client =
+            MockReflectorClient::new(&env, &secondary_reflector_address);
+        let secondary_cfg = ConfigData {
             admin,
             history_retention_period: 0,
             assets: vec![&env],
@@ -59,7 +82,7 @@ impl<'a> TestEnv<'a> {
             cache_size: 10,
             fee_config: FeeConfig::None,
         };
-        reflector_client.config(&cfg);
+        secondary_reflector_client.config(&secondary_cfg);
 
         // Register mock Lending (not initialized — caller's responsibility)
         let lending_address = env.register(MockLending, ());
@@ -69,14 +92,22 @@ impl<'a> TestEnv<'a> {
             env,
             reflector_address,
             reflector_client,
+            secondary_reflector_address,
+            secondary_reflector_client,
             lending_address,
             lending_client,
         }
     }
 
-    /// Sets a price in the mock Reflector for a given asset.
+    /// Sets a price in the primary mock Reflector for a given asset.
     pub fn set_oracle_price(&self, asset: &Asset, price: i128, timestamp: u64) {
         self.reflector_client.set_price(asset, &price, &timestamp);
+    }
+
+    /// Sets a price in the secondary mock Reflector for cross-source tests.
+    pub fn set_secondary_oracle_price(&self, asset: &Asset, price: i128, timestamp: u64) {
+        self.secondary_reflector_client
+            .set_price(asset, &price, &timestamp);
     }
 
     /// Returns a test-friendly config with relaxed thresholds.
@@ -116,6 +147,7 @@ mod test {
     fn test_new_creates_env_with_registered_contracts() {
         let test_env = TestEnv::new();
         let _ = test_env.reflector_address;
+        let _ = test_env.secondary_reflector_address;
         let _ = test_env.lending_address;
     }
 
@@ -130,6 +162,35 @@ mod test {
         let price_data = result.unwrap();
         assert_eq!(price_data.price, 1_000_000);
         assert_eq!(price_data.timestamp, 12345);
+    }
+
+    /// Primary and secondary Reflectors must be distinct on-chain instances —
+    /// they share the contract type but have independent storage.
+    #[test]
+    fn test_new_creates_env_with_secondary_reflector() {
+        let test_env = TestEnv::new();
+        assert_ne!(
+            test_env.reflector_address,
+            test_env.secondary_reflector_address
+        );
+    }
+
+    /// `set_secondary_oracle_price` must write to the secondary instance only,
+    /// leaving the primary untouched.
+    #[test]
+    fn test_set_secondary_oracle_price_updates_secondary_reflector() {
+        let test_env = TestEnv::new();
+        let asset = Asset::Other(Symbol::new(&test_env.env, "USDC"));
+
+        test_env.set_secondary_oracle_price(&asset, 100_000_000_000_000, 1000);
+
+        let secondary_result = test_env.secondary_reflector_client.lastprice(&asset);
+        assert!(secondary_result.is_some());
+        assert_eq!(secondary_result.unwrap().price, 100_000_000_000_000);
+
+        // Primary intentionally left empty — confirms storage isolation.
+        let primary_result = test_env.reflector_client.lastprice(&asset);
+        assert!(primary_result.is_none());
     }
 
     #[test]
