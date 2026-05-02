@@ -6,10 +6,11 @@ use soroban_sdk::{
 
 /// Errors returned by `LiquidityRegistry`.
 ///
-/// Discriminants 1–7 cover the Phase 3 surface; Phase 3.1 exercises
-/// `AlreadyInitialized`, Phase 3.2 adds whitelist management which exercises
-/// `NotInitialized`, `AttesterNotWhitelisted`, and `AttesterAlreadyWhitelisted`.
-/// Remaining variants are reserved for Phase 3.4–3.5 (snapshot writes / reads).
+/// Discriminants 1–8 cover the Phase 3 write surface. Phase 3.3 exercises
+/// `NotInitialized`, `AttesterNotWhitelisted`, `InvalidSnapshot`, and
+/// `StaleSnapshot` via `write_snapshot`. `SnapshotNotFound` is reserved for
+/// the Phase 3.5 read path. The enum is extended in place rather than split
+/// into a new error type to keep one audit-visible error surface.
 #[contracterror]
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub enum LiquidityRegistryError {
@@ -20,6 +21,7 @@ pub enum LiquidityRegistryError {
     AttesterNotWhitelisted = 5,
     InvalidSnapshot = 6,
     AttesterAlreadyWhitelisted = 7,
+    StaleSnapshot = 8,
 }
 
 /// On-chain SDEX trade attestation snapshot for a single asset.
@@ -64,6 +66,23 @@ pub struct AttesterAdded {
 pub struct AttesterRemoved {
     #[topic]
     pub attester: Address,
+}
+
+/// Emitted when a whitelisted attester writes a snapshot.
+///
+/// `asset` and `attester` are topics so off-chain consumers can subscribe to a
+/// single asset's attestation stream or audit a specific attester's writes
+/// without scanning the full event log.
+#[contractevent]
+#[derive(Clone, Debug)]
+pub struct SnapshotWritten {
+    #[topic]
+    pub asset: Address,
+    #[topic]
+    pub attester: Address,
+    pub volume_30m_usd: i128,
+    pub unique_trades_1h: u32,
+    pub timestamp: u64,
 }
 
 #[contract]
@@ -150,6 +169,73 @@ impl LiquidityRegistry {
             .instance()
             .get::<DataKey, bool>(&DataKey::Whitelist(attester))
             .unwrap_or(false)
+    }
+
+    /// Write a liquidity snapshot for an asset. Only whitelisted attesters can call.
+    ///
+    /// Validation order is deliberate:
+    /// 1. `NotInitialized` — admin storage missing means no whitelist exists,
+    ///    so no caller can possibly be authorized; fail before touching auth.
+    /// 2. `attester.require_auth()` — Soroban-level signature check.
+    /// 3. Whitelist membership — `AttesterNotWhitelisted` if the signer isn't
+    ///    authorized to attest.
+    /// 4. Payload integrity — `volume_30m_usd > 0` (defensive: a malicious or
+    ///    buggy attester cannot land a negative/zero volume that would later
+    ///    underflow `check_liquidity`'s comparisons), and the `attester` field
+    ///    on the snapshot must equal the calling attester (prevents one
+    ///    whitelisted attester from forging another's signed attestation).
+    /// 5. Replay protection — strict greater-than on the previous timestamp
+    ///    rejects both stale resubmissions and equal-timestamp double-writes.
+    ///
+    /// Snapshots are stored in `persistent` storage keyed by asset; production
+    /// deployments must call `extend_ttl` here (Phase 8 deployment work).
+    pub fn write_snapshot(
+        env: Env,
+        attester: Address,
+        snapshot: LiquiditySnapshot,
+    ) -> Result<(), LiquidityRegistryError> {
+        if !env.storage().instance().has(&DataKey::Admin) {
+            return Err(LiquidityRegistryError::NotInitialized);
+        }
+
+        attester.require_auth();
+
+        let whitelist_key = DataKey::Whitelist(attester.clone());
+        if !env.storage().instance().has(&whitelist_key) {
+            return Err(LiquidityRegistryError::AttesterNotWhitelisted);
+        }
+
+        if snapshot.volume_30m_usd <= 0 {
+            return Err(LiquidityRegistryError::InvalidSnapshot);
+        }
+        if snapshot.attester != attester {
+            return Err(LiquidityRegistryError::InvalidSnapshot);
+        }
+
+        let snapshot_key = DataKey::Snapshot(snapshot.asset.clone());
+        if let Some(existing) = env
+            .storage()
+            .persistent()
+            .get::<DataKey, LiquiditySnapshot>(&snapshot_key)
+        {
+            if snapshot.timestamp <= existing.timestamp {
+                return Err(LiquidityRegistryError::StaleSnapshot);
+            }
+        }
+
+        env.storage().persistent().set(&snapshot_key, &snapshot);
+        // TODO: extend_ttl in production (Phase 8 deployment).
+
+        SnapshotWritten {
+            asset: snapshot.asset,
+            attester,
+            volume_30m_usd: snapshot.volume_30m_usd,
+            unique_trades_1h: snapshot.unique_trades_1h,
+            timestamp: snapshot.timestamp,
+        }
+        .publish(&env);
+
+        Ok(())
     }
 }
 
@@ -287,5 +373,191 @@ mod test {
 
         let result = client.try_add_attester(&attester);
         assert_eq!(result, Err(Ok(LiquidityRegistryError::NotInitialized)));
+    }
+
+    #[test]
+    fn test_write_snapshot_success_first_write() {
+        let (env, client, _admin) = setup();
+        let attester = Address::generate(&env);
+        client.add_attester(&attester);
+
+        let asset = Address::generate(&env);
+        let snapshot = LiquiditySnapshot {
+            asset: asset.clone(),
+            volume_30m_usd: 1_000_000_000,
+            unique_trades_1h: 42,
+            timestamp: 1_000_000,
+            attester: attester.clone(),
+        };
+
+        client.write_snapshot(&attester, &snapshot);
+    }
+
+    #[test]
+    fn test_write_snapshot_success_replaces_older() {
+        let (env, client, _admin) = setup();
+        let attester = Address::generate(&env);
+        client.add_attester(&attester);
+
+        let asset = Address::generate(&env);
+
+        let old_snapshot = LiquiditySnapshot {
+            asset: asset.clone(),
+            volume_30m_usd: 1_000_000_000,
+            unique_trades_1h: 42,
+            timestamp: 1_000_000,
+            attester: attester.clone(),
+        };
+        client.write_snapshot(&attester, &old_snapshot);
+
+        let new_snapshot = LiquiditySnapshot {
+            asset: asset.clone(),
+            volume_30m_usd: 2_000_000_000,
+            unique_trades_1h: 50,
+            timestamp: 2_000_000,
+            attester: attester.clone(),
+        };
+        client.write_snapshot(&attester, &new_snapshot);
+    }
+
+    #[test]
+    fn test_write_snapshot_fails_when_attester_not_whitelisted() {
+        let (env, client, _admin) = setup();
+        let attester = Address::generate(&env);
+
+        let asset = Address::generate(&env);
+        let snapshot = LiquiditySnapshot {
+            asset,
+            volume_30m_usd: 1_000_000_000,
+            unique_trades_1h: 42,
+            timestamp: 1_000_000,
+            attester: attester.clone(),
+        };
+
+        let result = client.try_write_snapshot(&attester, &snapshot);
+        assert_eq!(
+            result,
+            Err(Ok(LiquidityRegistryError::AttesterNotWhitelisted))
+        );
+    }
+
+    #[test]
+    fn test_write_snapshot_fails_with_negative_volume() {
+        let (env, client, _admin) = setup();
+        let attester = Address::generate(&env);
+        client.add_attester(&attester);
+
+        let asset = Address::generate(&env);
+        let snapshot = LiquiditySnapshot {
+            asset,
+            volume_30m_usd: -1,
+            unique_trades_1h: 42,
+            timestamp: 1_000_000,
+            attester: attester.clone(),
+        };
+
+        let result = client.try_write_snapshot(&attester, &snapshot);
+        assert_eq!(result, Err(Ok(LiquidityRegistryError::InvalidSnapshot)));
+    }
+
+    #[test]
+    fn test_write_snapshot_fails_with_zero_volume() {
+        let (env, client, _admin) = setup();
+        let attester = Address::generate(&env);
+        client.add_attester(&attester);
+
+        let asset = Address::generate(&env);
+        let snapshot = LiquiditySnapshot {
+            asset,
+            volume_30m_usd: 0,
+            unique_trades_1h: 42,
+            timestamp: 1_000_000,
+            attester: attester.clone(),
+        };
+
+        let result = client.try_write_snapshot(&attester, &snapshot);
+        assert_eq!(result, Err(Ok(LiquidityRegistryError::InvalidSnapshot)));
+    }
+
+    #[test]
+    fn test_write_snapshot_fails_with_mismatched_attester_field() {
+        let (env, client, _admin) = setup();
+        let attester = Address::generate(&env);
+        let other = Address::generate(&env);
+        client.add_attester(&attester);
+
+        let asset = Address::generate(&env);
+        let snapshot = LiquiditySnapshot {
+            asset,
+            volume_30m_usd: 1_000_000_000,
+            unique_trades_1h: 42,
+            timestamp: 1_000_000,
+            attester: other,
+        };
+
+        let result = client.try_write_snapshot(&attester, &snapshot);
+        assert_eq!(result, Err(Ok(LiquidityRegistryError::InvalidSnapshot)));
+    }
+
+    #[test]
+    fn test_write_snapshot_fails_with_stale_timestamp() {
+        let (env, client, _admin) = setup();
+        let attester = Address::generate(&env);
+        client.add_attester(&attester);
+
+        let asset = Address::generate(&env);
+
+        let snapshot1 = LiquiditySnapshot {
+            asset: asset.clone(),
+            volume_30m_usd: 1_000_000_000,
+            unique_trades_1h: 42,
+            timestamp: 2_000_000,
+            attester: attester.clone(),
+        };
+        client.write_snapshot(&attester, &snapshot1);
+
+        let snapshot2 = LiquiditySnapshot {
+            asset: asset.clone(),
+            volume_30m_usd: 2_000_000_000,
+            unique_trades_1h: 50,
+            timestamp: 1_000_000,
+            attester: attester.clone(),
+        };
+
+        let result = client.try_write_snapshot(&attester, &snapshot2);
+        assert_eq!(result, Err(Ok(LiquidityRegistryError::StaleSnapshot)));
+    }
+
+    #[test]
+    fn test_write_snapshot_fails_with_equal_timestamp() {
+        let (env, client, _admin) = setup();
+        let attester = Address::generate(&env);
+        client.add_attester(&attester);
+
+        let asset = Address::generate(&env);
+
+        let snapshot1 = LiquiditySnapshot {
+            asset: asset.clone(),
+            volume_30m_usd: 1_000_000_000,
+            unique_trades_1h: 42,
+            timestamp: 1_000_000,
+            attester: attester.clone(),
+        };
+        client.write_snapshot(&attester, &snapshot1);
+
+        let snapshot2 = LiquiditySnapshot {
+            asset: asset.clone(),
+            volume_30m_usd: 5_000_000_000,
+            unique_trades_1h: 99,
+            timestamp: 1_000_000,
+            attester: attester.clone(),
+        };
+
+        let result = client.try_write_snapshot(&attester, &snapshot2);
+        assert_eq!(
+            result,
+            Err(Ok(LiquidityRegistryError::StaleSnapshot)),
+            "equal timestamp must be rejected for replay protection"
+        );
     }
 }
