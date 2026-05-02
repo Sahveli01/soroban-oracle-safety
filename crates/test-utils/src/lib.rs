@@ -12,7 +12,10 @@
 use mock_lending::{MockLending, MockLendingClient};
 use mock_reflector::{ConfigData, FeeConfig, MockReflector, MockReflectorClient};
 use safe_oracle::{Asset, SafeOracleConfig};
-use soroban_sdk::{testutils::Address as _, vec, Address, Env, Symbol};
+use soroban_sdk::{
+    testutils::{Address as _, Ledger as _},
+    vec, Address, Env, Symbol,
+};
 
 /// Test environment that bundles Env + registered mock contracts + helpers.
 pub struct TestEnv<'a> {
@@ -32,6 +35,14 @@ impl<'a> TestEnv<'a> {
     pub fn new() -> Self {
         let env = Env::default();
         env.mock_all_auths();
+
+        // Baseline ledger timestamp so staleness checks have a defined "now"
+        // (Soroban's default is 0, which would flag every Phase 2 fixture as
+        // a future-dated price). Individual tests can override per-call via
+        // env.ledger().with_mut().
+        env.ledger().with_mut(|li| {
+            li.timestamp = 100_000;
+        });
 
         // Register mock Reflector + initialize with default config
         let reflector_address = env.register(MockReflector, ());
@@ -75,7 +86,7 @@ impl<'a> TestEnv<'a> {
     pub fn relaxed_config() -> SafeOracleConfig {
         SafeOracleConfig {
             max_deviation_bps: 5000,
-            max_staleness_seconds: 5000,
+            max_staleness_seconds: 100_000,
             max_cross_source_bps: 2000,
             min_liquidity_usd: 1,
             min_trade_count_1h: 1,

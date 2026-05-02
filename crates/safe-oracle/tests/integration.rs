@@ -9,7 +9,7 @@
 //! which matches `test-utils`' view — types unify, and the cycle disappears.
 
 use safe_oracle::{lastprice, Asset, OracleSafetyViolation};
-use soroban_sdk::Symbol;
+use soroban_sdk::{testutils::Ledger as _, Symbol};
 use test_utils::TestEnv;
 
 /// Happy path: mock-reflector'a iki fiyat enjekte ettikten sonra gerçek
@@ -117,6 +117,12 @@ fn test_deviation_passes_at_exact_threshold() {
     let test_env = TestEnv::new();
     let asset = Asset::Other(Symbol::new(&test_env.env, "BTC"));
 
+    // strict_config max_staleness_seconds=300; align ledger time to the price
+    // timestamps so this test exercises *deviation* not staleness.
+    test_env.env.ledger().with_mut(|li| {
+        li.timestamp = 1500;
+    });
+
     // $100 → $120 (exactly 2000 BPS)
     test_env.set_oracle_price(&asset, 100 * ONE_DOLLAR, 1000);
     test_env.set_oracle_price(&asset, 120 * ONE_DOLLAR, 1300);
@@ -207,4 +213,114 @@ fn test_deviation_fails_when_previous_price_is_zero() {
     );
 
     assert_eq!(result, Err(OracleSafetyViolation::ExcessiveDeviation));
+}
+
+/// Fiyat 100 saniye eski, relaxed_config 100_000 saniye toleranslı → Ok.
+#[test]
+fn test_staleness_passes_when_data_is_fresh() {
+    let test_env = TestEnv::new();
+    let asset = Asset::Other(Symbol::new(&test_env.env, "USDC"));
+
+    test_env.env.ledger().with_mut(|li| {
+        li.timestamp = 5000;
+    });
+
+    test_env.set_oracle_price(&asset, ONE_DOLLAR, 4800); // 200s eski
+    test_env.set_oracle_price(&asset, ONE_DOLLAR, 4900); // 100s eski (current)
+
+    let config = TestEnv::relaxed_config();
+    let result = lastprice(
+        &test_env.env,
+        &asset,
+        &test_env.reflector_address,
+        &test_env.lending_address,
+        &config,
+    );
+
+    assert!(
+        result.is_ok(),
+        "expected Ok for 100s stale data, got {:?}",
+        result
+    );
+}
+
+/// 4000 saniye eski fiyat strict_config (300s tolerance) altında StaleData döner.
+#[test]
+fn test_staleness_fails_when_data_too_old() {
+    let test_env = TestEnv::new();
+    let asset = Asset::Other(Symbol::new(&test_env.env, "ETH"));
+
+    test_env.env.ledger().with_mut(|li| {
+        li.timestamp = 5000;
+    });
+
+    test_env.set_oracle_price(&asset, ONE_DOLLAR * 100, 800); // 4200s eski
+    test_env.set_oracle_price(&asset, ONE_DOLLAR * 100, 1000); // 4000s eski (current)
+
+    let config = TestEnv::strict_config(); // max_staleness_seconds = 300
+    let result = lastprice(
+        &test_env.env,
+        &asset,
+        &test_env.reflector_address,
+        &test_env.lending_address,
+        &config,
+    );
+
+    assert_eq!(result, Err(OracleSafetyViolation::StaleData));
+}
+
+/// Future timestamp (current.timestamp > now) clock skew veya feed manipulation
+/// sinyalidir; defensive future-check StaleData döner.
+#[test]
+fn test_staleness_fails_with_future_timestamp() {
+    let test_env = TestEnv::new();
+    let asset = Asset::Other(Symbol::new(&test_env.env, "BTC"));
+
+    test_env.env.ledger().with_mut(|li| {
+        li.timestamp = 5000;
+    });
+
+    test_env.set_oracle_price(&asset, ONE_DOLLAR, 5500); // 1 önceki (de future)
+    test_env.set_oracle_price(&asset, ONE_DOLLAR, 6000); // future (current)
+
+    let config = TestEnv::relaxed_config();
+    let result = lastprice(
+        &test_env.env,
+        &asset,
+        &test_env.reflector_address,
+        &test_env.lending_address,
+        &config,
+    );
+
+    assert_eq!(result, Err(OracleSafetyViolation::StaleData));
+}
+
+/// Tam strict eşiği (300s) üzerinde — `>` kullandığımız için Ok döner
+/// (eşit pass; sadece *aşan* yaş reddedilir). check_deviation ile tutarlı.
+#[test]
+fn test_staleness_passes_at_exact_threshold() {
+    let test_env = TestEnv::new();
+    let asset = Asset::Other(Symbol::new(&test_env.env, "USDC"));
+
+    test_env.env.ledger().with_mut(|li| {
+        li.timestamp = 5000;
+    });
+
+    test_env.set_oracle_price(&asset, ONE_DOLLAR, 4500); // 500s eski
+    test_env.set_oracle_price(&asset, ONE_DOLLAR, 4700); // exactly 300s eski
+
+    let config = TestEnv::strict_config(); // max_staleness_seconds = 300
+    let result = lastprice(
+        &test_env.env,
+        &asset,
+        &test_env.reflector_address,
+        &test_env.lending_address,
+        &config,
+    );
+
+    assert!(
+        result.is_ok(),
+        "expected Ok at exact threshold (300s == max), got {:?}",
+        result
+    );
 }

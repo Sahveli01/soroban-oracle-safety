@@ -192,17 +192,38 @@ fn check_deviation(
     Ok(())
 }
 
-/// Phase 2.4'te implement edilecek (Layer 1, Guardrail 3 — Staleness Check).
+/// Layer 1, Guardrail 3 — Staleness Check.
 ///
-/// Mantık (Phase 2.4):
-/// - `env.ledger().timestamp()` ile mevcut Unix saniyesini al
-/// - `current.timestamp` ile farkı hesapla (her ikisi de Unix saniye)
-/// - Fark `config.max_staleness_seconds`'i aşıyorsa `Err(StaleData)`
+/// Compares the Reflector price's `timestamp` against the current ledger time
+/// (`env.ledger().timestamp()` — both Unix seconds, no conversion). Rejects
+/// prices older than `config.max_staleness_seconds`. This blocks the
+/// stale-feed attack class: an oracle that has not refreshed (because the
+/// off-chain feed is down or paused) cannot be used to value collateral.
+///
+/// # Defensive logic
+/// - `current.timestamp > now` → `StaleData`. A future-dated price implies
+///   clock skew or feed manipulation; treat as untrusted.
+/// - `elapsed > max_staleness_seconds` → `StaleData`. Hard cutoff; `>` is
+///   used (not `>=`) so the boundary value is accepted — consistent with
+///   `check_deviation`'s threshold semantics.
+/// - `now - current.timestamp` cannot underflow: the future-check above
+///   guarantees `current.timestamp <= now`.
 fn check_staleness(
-    _env: &Env,
-    _current: &PriceData,
-    _config: &SafeOracleConfig,
+    env: &Env,
+    current: &PriceData,
+    config: &SafeOracleConfig,
 ) -> Result<(), OracleSafetyViolation> {
+    let now = env.ledger().timestamp();
+
+    if current.timestamp > now {
+        return Err(OracleSafetyViolation::StaleData);
+    }
+
+    let elapsed = now - current.timestamp;
+    if elapsed > config.max_staleness_seconds as u64 {
+        return Err(OracleSafetyViolation::StaleData);
+    }
+
     Ok(())
 }
 
