@@ -1,6 +1,6 @@
 #![no_std]
 
-use soroban_sdk::{contracterror, contracttype, Address, Symbol};
+use soroban_sdk::{contracterror, contracttype, Address, Env, Symbol};
 
 #[contracterror]
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
@@ -56,6 +56,137 @@ impl Default for SafeOracleConfig {
     }
 }
 
+/// Validates oracle output against five layered guardrails before returning a price.
+///
+/// This function is the public entry point of the `safe_oracle` library. Lending
+/// protocols call this instead of `reflector.lastprice()` directly. Each guardrail
+/// is a deterministic check that returns `Err` on violation, propagating to the
+/// calling contract via `?`.
+///
+/// # Guardrails
+/// - Layer 1 (Reflector-only): deviation, staleness, cross-source
+/// - Layer 2 (LiquidityRegistry-required): liquidity threshold, thin sampling
+/// - Optional: circuit breaker (Phase 5)
+///
+/// # Phase 2 Status
+/// Skeleton — Layer 1 guardrails are scaffolded as stubs returning `Ok(())`.
+/// Real guardrail logic arrives in prompts 2.2 (deviation), 2.3 (staleness),
+/// 2.4 (multi-source). Layer 2 lands in Phase 4 alongside `LiquidityRegistry`.
+pub fn lastprice(
+    env: &Env,
+    asset: &Asset,
+    reflector: &Address,
+    liquidity_registry: &Address,
+    config: &SafeOracleConfig,
+) -> Result<PriceData, OracleSafetyViolation> {
+    // 1. Fetch current price from Reflector (cross-contract call)
+    let current = fetch_reflector_price(env, reflector, asset)?;
+
+    // 2. Layer 1 guardrails (Reflector-only data)
+    check_deviation(env, reflector, asset, &current, config)?;
+    check_staleness(env, &current, config)?;
+    check_cross_source(env, asset, &current, config)?;
+
+    // 3. Layer 2 guardrails (require LiquidityRegistry)
+    check_liquidity(env, liquidity_registry, asset, config)?;
+    check_thin_sampling(env, liquidity_registry, asset, config)?;
+
+    // 4. Circuit breaker check — Phase 5'te implement edilecek
+    // check_circuit_breaker(env, asset)?;
+
+    Ok(current)
+}
+
+/// Fetches the current price from the Reflector oracle via cross-contract call.
+///
+/// Phase 2.2'de gerçek implementasyon alacak: mock-reflector WASM artifact'inden
+/// generate edilen client ile `lastprice(asset)` çağrılacak ve `Option<PriceData>`
+/// `None` dönerse uygun bir `Err` propagate edilecek. Şu an skeleton'un compile
+/// edilebilmesi için dummy bir `PriceData` döner.
+fn fetch_reflector_price(
+    env: &Env,
+    reflector: &Address,
+    asset: &Asset,
+) -> Result<PriceData, OracleSafetyViolation> {
+    let _ = (env, reflector, asset); // unused warning'i susturmak için
+    Ok(PriceData {
+        price: 1_000_000_000_000_000_000,
+        timestamp: 0,
+    })
+}
+
+/// Phase 2.2'de implement edilecek (Layer 1, Guardrail 1 — Maximum Deviation).
+///
+/// Mantık (Phase 2.2):
+/// - Reflector'dan önceki fiyatı çek (resolution=300 → ~5 dakika önce)
+/// - `(current.price - previous.price).abs() / previous.price` BPS karşılaştır
+/// - Sapma `config.max_deviation_bps`'i aşıyorsa `Err(ExcessiveDeviation)`
+fn check_deviation(
+    _env: &Env,
+    _reflector: &Address,
+    _asset: &Asset,
+    _current: &PriceData,
+    _config: &SafeOracleConfig,
+) -> Result<(), OracleSafetyViolation> {
+    Ok(())
+}
+
+/// Phase 2.3'te implement edilecek (Layer 1, Guardrail 3 — Staleness Check).
+///
+/// Mantık (Phase 2.3):
+/// - `env.ledger().sequence()` ile mevcut ledger numarasını al
+/// - `current.timestamp` Unix saniyesini ledger süresine dönüştür
+/// - Yaş `config.max_staleness_ledgers`'i aşıyorsa `Err(StaleData)`
+fn check_staleness(
+    _env: &Env,
+    _current: &PriceData,
+    _config: &SafeOracleConfig,
+) -> Result<(), OracleSafetyViolation> {
+    Ok(())
+}
+
+/// Phase 2.4'te implement edilecek (Layer 1, Guardrail 4 — Multi-Source Cross-Check).
+///
+/// Mantık (Phase 2.4):
+/// - `config.secondary_oracle` `None` ise skip
+/// - `Some(addr)` ise ikincil oracle'dan fiyat çek
+/// - İki fiyat arasındaki BPS sapma `config.max_cross_source_bps` üstündeyse
+///   `Err(CrossSourceMismatch)`
+fn check_cross_source(
+    _env: &Env,
+    _asset: &Asset,
+    _current: &PriceData,
+    _config: &SafeOracleConfig,
+) -> Result<(), OracleSafetyViolation> {
+    Ok(())
+}
+
+/// Phase 4'te implement edilecek (Layer 2, Guardrail 2 — Minimum Liquidity).
+///
+/// `LiquidityRegistry` kontratından son 30 dakika USD hacmini okur ve
+/// `config.min_liquidity_usd` altındaysa `Err(InsufficientLiquidity)` döner.
+fn check_liquidity(
+    _env: &Env,
+    _liquidity_registry: &Address,
+    _asset: &Asset,
+    _config: &SafeOracleConfig,
+) -> Result<(), OracleSafetyViolation> {
+    Ok(())
+}
+
+/// Phase 4'te implement edilecek (Layer 2, Guardrail 5 — Thin Sampling).
+///
+/// `LiquidityRegistry` kontratından son 1 saatin unique trade sayısını okur ve
+/// `config.min_trade_count_1h` altındaysa `Err(ThinSampling)` döner.
+fn check_thin_sampling(
+    _env: &Env,
+    _liquidity_registry: &Address,
+    _asset: &Asset,
+    _config: &SafeOracleConfig,
+) -> Result<(), OracleSafetyViolation> {
+    Ok(())
+}
+
 /// STUB module — Phase 2'de gerçek implementasyonla değiştirilecek.
 /// Public interface (`stub::lastprice` imzası) Phase 2'deki gerçek
 /// `lastprice` ile birebir aynı kalmalı; tüketici kontratlar (mock-lending)
@@ -107,5 +238,42 @@ mod test {
         assert_eq!(OracleSafetyViolation::ThinSampling as u32, 5);
         assert_eq!(OracleSafetyViolation::CircuitBreakerOpen as u32, 6);
         assert_eq!(OracleSafetyViolation::StaleSnapshot as u32, 7);
+    }
+
+    #[test]
+    fn test_lastprice_skeleton_returns_ok_with_dummy_data() {
+        use soroban_sdk::testutils::Address as _;
+
+        let env = Env::default();
+        let reflector = Address::generate(&env);
+        let registry = Address::generate(&env);
+        let asset = Asset::Other(Symbol::new(&env, "USDC"));
+        let config = SafeOracleConfig::default();
+
+        let price_data = lastprice(&env, &asset, &reflector, &registry, &config)
+            .expect("skeleton lastprice should return Ok while all guardrails are stubs");
+        assert_eq!(price_data.price, 1_000_000_000_000_000_000);
+        assert_eq!(price_data.timestamp, 0);
+    }
+
+    /// Compile-time guarantee: gerçek `lastprice` ile `stub::lastprice`
+    /// birebir aynı imzaya sahip. Phase 2 sonunda mock-lending tek satır
+    /// değişikliğiyle (stub::lastprice → safe_oracle::lastprice) geçecek.
+    #[test]
+    fn test_lastprice_signature_matches_stub() {
+        let _real: fn(
+            &Env,
+            &Asset,
+            &Address,
+            &Address,
+            &SafeOracleConfig,
+        ) -> Result<PriceData, OracleSafetyViolation> = lastprice;
+        let _stub: fn(
+            &Env,
+            &Asset,
+            &Address,
+            &Address,
+            &SafeOracleConfig,
+        ) -> Result<PriceData, OracleSafetyViolation> = stub::lastprice;
     }
 }
