@@ -84,9 +84,21 @@ impl<'a> TestEnv<'a> {
         };
         secondary_reflector_client.config(&secondary_cfg);
 
-        // Register mock Lending (not initialized — caller's responsibility)
+        // Register mock Lending and initialize it so tests get a Phase 2.7
+        // wired contract by default — `safe_oracle::lastprice` is invoked
+        // through the real path (no stub). Registry placeholder is the
+        // lending address itself; `check_liquidity` and `check_thin_sampling`
+        // are still stubs returning `Ok(())`, so the placeholder is never
+        // dereferenced. Phase 4 swaps in a real `LiquidityRegistry`.
         let lending_address = env.register(MockLending, ());
         let lending_client = MockLendingClient::new(&env, &lending_address);
+        let lending_admin = Address::generate(&env);
+        lending_client.initialize(
+            &lending_admin,
+            &reflector_address,
+            &lending_address,
+            &SafeOracleConfig::default(),
+        );
 
         Self {
             env,

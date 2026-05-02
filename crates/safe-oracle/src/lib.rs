@@ -313,31 +313,6 @@ fn check_thin_sampling(
     Ok(())
 }
 
-/// STUB module — Phase 2'de gerçek implementasyonla değiştirilecek.
-/// Public interface (`stub::lastprice` imzası) Phase 2'deki gerçek
-/// `lastprice` ile birebir aynı kalmalı; tüketici kontratlar (mock-lending)
-/// Phase 2'de tek satır değiştirmeden geçmeli.
-pub mod stub {
-    use super::{Address, Asset, OracleSafetyViolation, PriceData, SafeOracleConfig};
-    use soroban_sdk::Env;
-
-    /// STUB — Phase 2'de gerçek implementasyonla değiştirilecek.
-    /// Şimdilik her zaman Ok(dummy_price_data) döner.
-    /// Gerçek imza Phase 2'de bire bir aynı kalmalı.
-    pub fn lastprice(
-        _env: &Env,
-        _asset: &Asset,
-        _oracle: &Address,
-        _registry: &Address,
-        _config: &SafeOracleConfig,
-    ) -> Result<PriceData, OracleSafetyViolation> {
-        Ok(PriceData {
-            price: 1_000_000_000_000_000_000, // dummy 1.0 with 18 decimals
-            timestamp: 0,                     // dummy timestamp
-        })
-    }
-}
-
 #[cfg(test)]
 mod test {
     use super::*;
@@ -364,26 +339,5 @@ mod test {
         assert_eq!(OracleSafetyViolation::ThinSampling as u32, 5);
         assert_eq!(OracleSafetyViolation::CircuitBreakerOpen as u32, 6);
         assert_eq!(OracleSafetyViolation::StaleSnapshot as u32, 7);
-    }
-
-    /// Compile-time guarantee: gerçek `lastprice` ile `stub::lastprice`
-    /// birebir aynı imzaya sahip. Phase 2 sonunda mock-lending tek satır
-    /// değişikliğiyle (stub::lastprice → safe_oracle::lastprice) geçecek.
-    #[test]
-    fn test_lastprice_signature_matches_stub() {
-        let _real: fn(
-            &Env,
-            &Asset,
-            &Address,
-            &Address,
-            &SafeOracleConfig,
-        ) -> Result<PriceData, OracleSafetyViolation> = lastprice;
-        let _stub: fn(
-            &Env,
-            &Asset,
-            &Address,
-            &Address,
-            &SafeOracleConfig,
-        ) -> Result<PriceData, OracleSafetyViolation> = stub::lastprice;
     }
 }
