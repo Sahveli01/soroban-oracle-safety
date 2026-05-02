@@ -2423,6 +2423,7 @@ dependencies = [
 name = "test-utils"
 version = "0.1.0"
 dependencies = [
+ "liquidity-registry",
  "mock-lending",
  "mock-reflector",
  "safe-oracle",

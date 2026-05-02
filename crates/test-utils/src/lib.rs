@@ -9,6 +9,7 @@
 //! env.set_oracle_price(&asset, 100_000_000, 12345);
 //! ```
 
+use liquidity_registry::{LiquidityRegistry, LiquidityRegistryClient, LiquiditySnapshot};
 use mock_lending::{MockLending, MockLendingClient};
 use mock_reflector::{ConfigData, FeeConfig, MockReflector, MockReflectorClient};
 use safe_oracle::{Asset, SafeOracleConfig};
@@ -30,7 +31,18 @@ pub struct TestEnv<'a> {
     pub secondary_reflector_client: MockReflectorClient<'a>,
     pub lending_address: Address,
     pub lending_client: MockLendingClient<'a>,
-    // NOTE: liquidity_registry will be added in Phase 3 when the contract is implemented.
+    /// Real `LiquidityRegistry` registration. Phase 4's `check_liquidity` and
+    /// `check_thin_sampling` will read from this instance; Phase 3.5 wires it
+    /// into `TestEnv` so test setups don't reimplement registry boilerplate.
+    pub registry: Address,
+    pub registry_client: LiquidityRegistryClient<'a>,
+    /// Admin of the `LiquidityRegistry` (separate from the mock-reflector and
+    /// mock-lending admins). Tests that mutate the whitelist authenticate as
+    /// this address; `mock_all_auths` makes the auth itself a no-op.
+    pub admin: Address,
+    /// A whitelisted attester ready to call `write_snapshot`. Convenience for
+    /// the common case where a test just needs *some* authorized writer.
+    pub attester: Address,
 }
 
 impl<'a> TestEnv<'a> {
@@ -53,10 +65,10 @@ impl<'a> TestEnv<'a> {
         // Primary mock Reflector + initialize with default config.
         let reflector_address = env.register(MockReflector, ());
         let reflector_client = MockReflectorClient::new(&env, &reflector_address);
-        let admin = Address::generate(&env);
+        let reflector_admin = Address::generate(&env);
         let base_asset = Asset::Other(Symbol::new(&env, "USD"));
         let cfg = ConfigData {
-            admin: admin.clone(),
+            admin: reflector_admin.clone(),
             history_retention_period: 0,
             assets: vec![&env],
             base_asset: base_asset.clone(),
@@ -73,7 +85,7 @@ impl<'a> TestEnv<'a> {
         let secondary_reflector_client =
             MockReflectorClient::new(&env, &secondary_reflector_address);
         let secondary_cfg = ConfigData {
-            admin,
+            admin: reflector_admin,
             history_retention_period: 0,
             assets: vec![&env],
             base_asset,
@@ -100,6 +112,19 @@ impl<'a> TestEnv<'a> {
             &SafeOracleConfig::default(),
         );
 
+        // Register `LiquidityRegistry` and prime it with an admin and a single
+        // whitelisted attester. Phase 4 guardrails read from this instance, so
+        // wiring it up here lets test authors call `write_snapshot` without
+        // per-test setup. Mock-lending intentionally still keeps its own
+        // address as the registry placeholder — Phase 4 swaps it in once the
+        // read-side guardrails consume it.
+        let registry = env.register(LiquidityRegistry, ());
+        let registry_client = LiquidityRegistryClient::new(&env, &registry);
+        let admin = Address::generate(&env);
+        let attester = Address::generate(&env);
+        registry_client.initialize(&admin);
+        registry_client.add_attester(&attester);
+
         Self {
             env,
             reflector_address,
@@ -108,6 +133,10 @@ impl<'a> TestEnv<'a> {
             secondary_reflector_client,
             lending_address,
             lending_client,
+            registry,
+            registry_client,
+            admin,
+            attester,
         }
     }
 
@@ -120,6 +149,36 @@ impl<'a> TestEnv<'a> {
     pub fn set_secondary_oracle_price(&self, asset: &Asset, price: i128, timestamp: u64) {
         self.secondary_reflector_client
             .set_price(asset, &price, &timestamp);
+    }
+
+    /// Write a snapshot through the default whitelisted attester. Convenience
+    /// wrapper around `LiquidityRegistry::write_snapshot` for Phase 4 tests
+    /// that just need *some* attestation present for an asset; the explicit
+    /// timestamp lets callers exercise replay-protection edge cases.
+    pub fn write_snapshot(
+        &self,
+        asset: &Address,
+        volume_usd: i128,
+        trades_1h: u32,
+        timestamp: u64,
+    ) {
+        let snapshot = LiquiditySnapshot {
+            asset: asset.clone(),
+            volume_30m_usd: volume_usd,
+            unique_trades_1h: trades_1h,
+            timestamp,
+            attester: self.attester.clone(),
+        };
+        self.registry_client
+            .write_snapshot(&self.attester, &snapshot);
+    }
+
+    /// Write a snapshot stamped at the current ledger time. Use this when the
+    /// test doesn't care about timestamp positioning relative to staleness
+    /// thresholds — `write_snapshot` is the right call when it does.
+    pub fn write_snapshot_now(&self, asset: &Address, volume_usd: i128, trades_1h: u32) {
+        let now = self.env.ledger().timestamp();
+        self.write_snapshot(asset, volume_usd, trades_1h, now);
     }
 
     /// Returns a test-friendly config with relaxed thresholds.

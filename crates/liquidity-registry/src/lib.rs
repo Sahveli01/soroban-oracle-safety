@@ -686,6 +686,50 @@ mod test {
         assert_ne!(read_a.asset, read_b.asset);
     }
 
+    /// Two whitelisted attesters writing to the same asset in succession: the
+    /// later (newer-timestamp) write must overwrite the earlier one, and the
+    /// stored `attester` field must reflect the *latest* writer. Replay
+    /// protection compares against the asset's prior snapshot regardless of
+    /// who wrote it, so timestamp ordering is global per asset, not per
+    /// attester. This complements the single-attester replay tests above.
+    #[test]
+    fn test_write_snapshot_multi_attester_succession() {
+        let (env, client, _admin) = setup();
+
+        let attester_a = Address::generate(&env);
+        let attester_b = Address::generate(&env);
+        client.add_attester(&attester_a);
+        client.add_attester(&attester_b);
+
+        let asset = Address::generate(&env);
+
+        let snapshot_a = LiquiditySnapshot {
+            asset: asset.clone(),
+            volume_30m_usd: 1_000_000_000,
+            unique_trades_1h: 42,
+            timestamp: 1_000_000,
+            attester: attester_a.clone(),
+        };
+        client.write_snapshot(&attester_a, &snapshot_a);
+
+        let snapshot_b = LiquiditySnapshot {
+            asset: asset.clone(),
+            volume_30m_usd: 2_000_000_000,
+            unique_trades_1h: 50,
+            timestamp: 2_000_000,
+            attester: attester_b.clone(),
+        };
+        client.write_snapshot(&attester_b, &snapshot_b);
+
+        let read_back = client.get_snapshot(&asset).unwrap();
+        assert_eq!(
+            read_back.attester, attester_b,
+            "latest writer's attester should be in snapshot"
+        );
+        assert_eq!(read_back.timestamp, 2_000_000);
+        assert_eq!(read_back.volume_30m_usd, 2_000_000_000);
+    }
+
     #[test]
     fn test_get_snapshot_returns_none_when_not_initialized() {
         let env = Env::default();
