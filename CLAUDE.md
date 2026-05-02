@@ -15,8 +15,8 @@ Three components:
 
 - ✅ **Phase 1** Complete: Workspace, CI, mock infrastructure (`01f589c`)
 - ✅ **Phase 2** Complete: Layer 1 guardrails (deviation, staleness, cross-source) — tag `phase-2-complete`
-- 🟡 **Phase 3** Starting: LiquidityRegistry contract
-- ⏳ Phase 4: Layer 2 guardrails (liquidity, thin sampling)
+- ✅ **Phase 3** Complete: LiquidityRegistry contract (auth, whitelist, snapshot, replay protection) — tag `phase-3-complete`
+- 🟡 **Phase 4** Starting: Layer 2 guardrails (liquidity, thin sampling)
 - ⏳ Phase 5: Circuit breaker
 - ⏳ Phase 6: Audit + improvements
 - ⏳ Phase 7: SEP-Oracle-Safety standard draft
@@ -112,13 +112,13 @@ User is the verifier. Decisions need explicit approval. No autonomous scope chan
 - If skill recommendation conflicts with this file, this file wins (project decisions are explicit).
 - If unsure about a Soroban API, web search docs.rs/soroban-sdk/25.3.1 before guessing.
 
-## Reinitialization Protection — Phase 3 Reminder
+## Reinitialization Protection — Mandatory for All initialize() Functions
 
-When writing `LiquidityRegistry::initialize()` in Phase 3:
+When writing `initialize()` for any contract, always include reinitialization protection:
 ```rust
-pub fn initialize(env: Env, admin: Address, /* ... */) -> Result<(), LiquidityRegistryError> {
+pub fn initialize(env: Env, admin: Address, /* ... */) -> Result<(), YourError> {
     if env.storage().instance().has(&DataKey::Admin) {
-        return Err(LiquidityRegistryError::AlreadyInitialized);
+        return Err(YourError::AlreadyInitialized);
     }
     admin.require_auth();
     env.storage().instance().set(&DataKey::Admin, &admin);
@@ -127,4 +127,8 @@ pub fn initialize(env: Env, admin: Address, /* ... */) -> Result<(), LiquidityRe
 }
 ```
 
-This pattern was identified as missing in mock-lending during the post-Phase-2 audit (Medium severity). Do not repeat the omission in new contracts.
+**Status:**
+- ✅ `LiquidityRegistry::initialize()` — implemented in Phase 3.1 (commit `d6c22cb`)
+- ⚠️ `MockLending::initialize()` — missing this protection (Phase 6 audit fix scope)
+
+This pattern was identified as missing in mock-lending during the post-Phase-2 audit (Medium severity). All new contracts MUST include it from day one.

@@ -19,20 +19,27 @@ This project closes that gap.
 
 ## Status
 
-Work in progress. Phase 2 (safe_oracle Layer 1 guardrails) complete:
+Work in progress. Phase 3 (LiquidityRegistry contract) complete:
 
 - Workspace scaffolding (6 crates) — Phase 1
 - CI pipeline (GitHub Actions) — Phase 1
 - Mock Reflector + mock Lending contracts (mock-lending integrated with real `safe_oracle::lastprice`)
-- Core type definitions (`OracleSafetyViolation`, `SafeOracleConfig`, `Asset`, `PriceData`)
-- Test infrastructure (`test-utils` crate, primary + secondary mock Reflectors)
-- **Layer 1 guardrails** (real implementations):
+- Core type definitions (`OracleSafetyViolation`, `SafeOracleConfig`, `Asset`, `PriceData`, `LiquiditySnapshot`)
+- Test infrastructure (`test-utils` crate, primary + secondary mock Reflectors, LiquidityRegistry integration)
+- **Layer 1 guardrails** (real implementations) — Phase 2:
   - `check_deviation` — BPS-based, blocks YieldBlox-class SDEX manipulation
   - `check_staleness` — Unix timestamp comparison via `env.ledger().timestamp()`
   - `check_cross_source` — opt-in secondary oracle cross-check
-- 43 tests passing, 0 warnings
+- **LiquidityRegistry contract** — Phase 3:
+  - `initialize` with reinitialization protection
+  - Whitelist management (`add_attester`, `remove_attester`, `is_attester`)
+  - `write_snapshot` with 5-step validation, replay protection (strict greater timestamp)
+  - `get_snapshot` read function (Option return, freshness deferred to consumers)
+  - `safe_oracle ↔ LiquidityRegistry` cross-contract binding (`#[contractclient]` pattern)
+  - 8 error variants, 3 events (AttesterAdded, AttesterRemoved, SnapshotWritten)
+- 68 tests passing, 0 warnings
 
-Phase 3 starting next.
+Phase 4 (Layer 2 guardrails — `check_liquidity`, `check_thin_sampling`) starting next.
 
 ## Building
 
