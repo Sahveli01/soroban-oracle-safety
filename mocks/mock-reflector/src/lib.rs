@@ -35,6 +35,7 @@ enum DataKey {
     Decimals,
     Resolution,
     Price(Asset),
+    PriceHistory(Asset),
 }
 
 #[contract]
@@ -68,6 +69,31 @@ impl MockReflector {
         // TODO: extend_ttl in production
     }
 
+    /// Returns up to `records` most recent prices for `asset`, newest first.
+    /// Mirrors Reflector mainnet's `lastprices(asset, records)` shape.
+    pub fn lastprices(env: Env, asset: Asset, records: u32) -> Option<Vec<PriceData>> {
+        let history_key = DataKey::PriceHistory(asset);
+        let history: Option<Vec<PriceData>> = env.storage().persistent().get(&history_key);
+
+        match history {
+            None => None,
+            Some(prices) => {
+                let len = prices.len();
+                if len == 0 {
+                    return None;
+                }
+                let take = records.min(len);
+                let mut result = Vec::new(&env);
+                for i in 0..take {
+                    let idx = len - 1 - i;
+                    result.push_back(prices.get(idx).unwrap());
+                }
+                Some(result)
+            }
+        }
+        // TODO: extend_ttl in production
+    }
+
     /// TEST-ONLY: Mock-specific function for injecting prices in tests.
     /// No admin auth check — real Reflector uses multisig for price updates.
     /// Note: Real Reflector enforces `timestamp <= current ledger timestamp`.
@@ -76,7 +102,16 @@ impl MockReflector {
         let data = PriceData { price, timestamp };
         env.storage()
             .persistent()
-            .set(&DataKey::Price(asset), &data);
+            .set(&DataKey::Price(asset.clone()), &data);
+
+        let history_key = DataKey::PriceHistory(asset);
+        let mut history: Vec<PriceData> = env
+            .storage()
+            .persistent()
+            .get(&history_key)
+            .unwrap_or_else(|| Vec::new(&env));
+        history.push_back(data);
+        env.storage().persistent().set(&history_key, &history);
         // TODO: extend_ttl in production
     }
 }
@@ -150,5 +185,47 @@ mod test {
         let (_env, client) = setup();
         assert_eq!(client.decimals(), 14);
         assert_eq!(client.resolution(), 300);
+    }
+
+    #[test]
+    fn test_lastprices_returns_none_when_no_history() {
+        let (env, client) = setup();
+        let asset = Asset::Other(Symbol::new(&env, "BTC"));
+
+        let result = client.lastprices(&asset, &2);
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_lastprices_returns_history_in_reverse_order() {
+        let (env, client) = setup();
+        let asset = Asset::Other(Symbol::new(&env, "XLM"));
+
+        client.set_price(&asset, &100, &1000);
+        client.set_price(&asset, &200, &2000);
+        client.set_price(&asset, &300, &3000);
+
+        let result = client.lastprices(&asset, &2).unwrap();
+        assert_eq!(result.len(), 2);
+
+        assert_eq!(result.get(0).unwrap().price, 300);
+        assert_eq!(result.get(0).unwrap().timestamp, 3000);
+        assert_eq!(result.get(1).unwrap().price, 200);
+        assert_eq!(result.get(1).unwrap().timestamp, 2000);
+    }
+
+    #[test]
+    fn test_lastprices_respects_records_limit() {
+        let (env, client) = setup();
+        let asset = Asset::Other(Symbol::new(&env, "ETH"));
+
+        for i in 1u32..=5 {
+            client.set_price(&asset, &(i128::from(i) * 100), &(u64::from(i) * 1000));
+        }
+
+        let result = client.lastprices(&asset, &3).unwrap();
+        assert_eq!(result.len(), 3);
+        assert_eq!(result.get(0).unwrap().timestamp, 5000);
+        assert_eq!(result.get(2).unwrap().timestamp, 3000);
     }
 }

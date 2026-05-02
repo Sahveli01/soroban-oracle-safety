@@ -1,5 +1,5 @@
 use crate::{Asset, PriceData};
-use soroban_sdk::{contractclient, Env};
+use soroban_sdk::{contractclient, Env, Vec};
 
 /// Reflector oracle interface (SEP-40 compliant subset that `safe_oracle` consumes).
 ///
@@ -13,6 +13,7 @@ use soroban_sdk::{contractclient, Env};
 ///
 /// Trait method imzaları mock-reflector ile birebir uyumlu:
 /// - `mock_reflector::lastprice(env: Env, asset: Asset) -> Option<PriceData>`
+/// - `mock_reflector::lastprices(env: Env, asset: Asset, records: u32) -> Option<Vec<PriceData>>`
 /// - `mock_reflector::decimals(env: Env) -> u32`
 /// - `mock_reflector::resolution(env: Env) -> u32`
 // Trait yalnızca `#[contractclient]` macro'sunun client struct'ı generate
@@ -21,6 +22,7 @@ use soroban_sdk::{contractclient, Env};
 #[contractclient(name = "ReflectorClient")]
 pub trait Reflector {
     fn lastprice(env: Env, asset: Asset) -> Option<PriceData>;
+    fn lastprices(env: Env, asset: Asset, records: u32) -> Option<Vec<PriceData>>;
     fn decimals(env: Env) -> u32;
     fn resolution(env: Env) -> u32;
 }
