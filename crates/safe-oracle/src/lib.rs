@@ -35,7 +35,7 @@ pub struct PriceData {
 #[derive(Clone, Debug)]
 pub struct SafeOracleConfig {
     pub max_deviation_bps: u32,
-    pub max_staleness_ledgers: u32,
+    pub max_staleness_seconds: u32,
     pub max_cross_source_bps: u32,
     pub min_liquidity_usd: i128,
     pub min_trade_count_1h: u32,
@@ -48,7 +48,7 @@ impl Default for SafeOracleConfig {
     fn default() -> Self {
         Self {
             max_deviation_bps: 2000,
-            max_staleness_ledgers: 60,
+            max_staleness_seconds: 300,
             max_cross_source_bps: 500,
             min_liquidity_usd: 100_000_000_000,
             min_trade_count_1h: 5,
@@ -192,12 +192,12 @@ fn check_deviation(
     Ok(())
 }
 
-/// Phase 2.3'te implement edilecek (Layer 1, Guardrail 3 — Staleness Check).
+/// Phase 2.4'te implement edilecek (Layer 1, Guardrail 3 — Staleness Check).
 ///
-/// Mantık (Phase 2.3):
-/// - `env.ledger().sequence()` ile mevcut ledger numarasını al
-/// - `current.timestamp` Unix saniyesini ledger süresine dönüştür
-/// - Yaş `config.max_staleness_ledgers`'i aşıyorsa `Err(StaleData)`
+/// Mantık (Phase 2.4):
+/// - `env.ledger().timestamp()` ile mevcut Unix saniyesini al
+/// - `current.timestamp` ile farkı hesapla (her ikisi de Unix saniye)
+/// - Fark `config.max_staleness_seconds`'i aşıyorsa `Err(StaleData)`
 fn check_staleness(
     _env: &Env,
     _current: &PriceData,
@@ -281,7 +281,7 @@ mod test {
     fn test_default_config_values() {
         let cfg = SafeOracleConfig::default();
         assert_eq!(cfg.max_deviation_bps, 2000);
-        assert_eq!(cfg.max_staleness_ledgers, 60);
+        assert_eq!(cfg.max_staleness_seconds, 300);
         assert_eq!(cfg.max_cross_source_bps, 500);
         assert_eq!(cfg.min_liquidity_usd, 100_000_000_000);
         assert_eq!(cfg.min_trade_count_1h, 5);

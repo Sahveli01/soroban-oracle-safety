@@ -121,10 +121,10 @@
                           },
                           {
                             "key": {
-                              "symbol": "max_staleness_ledgers"
+                              "symbol": "max_staleness_seconds"
                             },
                             "val": {
-                              "u32": 60
+                              "u32": 300
                             }
                           },
                           {

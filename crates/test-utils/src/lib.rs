@@ -75,7 +75,7 @@ impl<'a> TestEnv<'a> {
     pub fn relaxed_config() -> SafeOracleConfig {
         SafeOracleConfig {
             max_deviation_bps: 5000,
-            max_staleness_ledgers: 1000,
+            max_staleness_seconds: 5000,
             max_cross_source_bps: 2000,
             min_liquidity_usd: 1,
             min_trade_count_1h: 1,
@@ -127,7 +127,7 @@ mod test {
         let strict = TestEnv::strict_config();
 
         assert!(relaxed.max_deviation_bps > strict.max_deviation_bps);
-        assert!(relaxed.max_staleness_ledgers > strict.max_staleness_ledgers);
+        assert!(relaxed.max_staleness_seconds > strict.max_staleness_seconds);
         assert!(relaxed.min_liquidity_usd < strict.min_liquidity_usd);
         assert!(relaxed.min_trade_count_1h <= strict.min_trade_count_1h);
     }
