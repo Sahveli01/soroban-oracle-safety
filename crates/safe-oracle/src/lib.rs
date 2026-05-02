@@ -243,7 +243,6 @@ mod test {
         assert_eq!(OracleSafetyViolation::StaleSnapshot as u32, 7);
     }
 
-
     /// Compile-time guarantee: gerçek `lastprice` ile `stub::lastprice`
     /// birebir aynı imzaya sahip. Phase 2 sonunda mock-lending tek satır
     /// değişikliğiyle (stub::lastprice → safe_oracle::lastprice) geçecek.
