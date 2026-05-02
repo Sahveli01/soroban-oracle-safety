@@ -237,6 +237,31 @@ impl LiquidityRegistry {
 
         Ok(())
     }
+
+    /// Read the most recent snapshot for an asset.
+    ///
+    /// Returns `None` when no snapshot has been written for this asset,
+    /// including the pre-initialize case (storage is empty either way). This
+    /// is the conservative answer for a read query — callers decide what
+    /// "no snapshot" means in their domain (Phase 4's `check_liquidity` treats
+    /// it as `InsufficientLiquidity`).
+    ///
+    /// **Freshness is intentionally not checked here.** This function returns
+    /// the raw stored value; consumers compare `snapshot.timestamp` against
+    /// `env.ledger().timestamp()` to enforce their own staleness threshold
+    /// (e.g., `safe_oracle::SafeOracleConfig::max_staleness_seconds`). Keeping
+    /// the registry policy-agnostic lets multiple integrators share one
+    /// attestation feed with different freshness requirements.
+    ///
+    /// Production deployment must call `extend_ttl` on read paths to prevent
+    /// silent expiration of fresh snapshots between attestations (Phase 8
+    /// deployment work).
+    pub fn get_snapshot(env: Env, asset: Address) -> Option<LiquiditySnapshot> {
+        env.storage()
+            .persistent()
+            .get::<DataKey, LiquiditySnapshot>(&DataKey::Snapshot(asset))
+        // TODO: extend_ttl on read in production (Phase 8 deployment).
+    }
 }
 
 #[cfg(test)]
@@ -558,6 +583,122 @@ mod test {
             result,
             Err(Ok(LiquidityRegistryError::StaleSnapshot)),
             "equal timestamp must be rejected for replay protection"
+        );
+    }
+
+    #[test]
+    fn test_get_snapshot_returns_none_when_no_snapshot() {
+        let (env, client, _admin) = setup();
+        let asset = Address::generate(&env);
+
+        let result = client.get_snapshot(&asset);
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_get_snapshot_returns_written_snapshot() {
+        let (env, client, _admin) = setup();
+        let attester = Address::generate(&env);
+        client.add_attester(&attester);
+
+        let asset = Address::generate(&env);
+        let snapshot = LiquiditySnapshot {
+            asset: asset.clone(),
+            volume_30m_usd: 1_000_000_000,
+            unique_trades_1h: 42,
+            timestamp: 1_000_000,
+            attester: attester.clone(),
+        };
+        client.write_snapshot(&attester, &snapshot);
+
+        let read_back = client.get_snapshot(&asset).unwrap();
+        assert_eq!(read_back.asset, snapshot.asset);
+        assert_eq!(read_back.volume_30m_usd, snapshot.volume_30m_usd);
+        assert_eq!(read_back.unique_trades_1h, snapshot.unique_trades_1h);
+        assert_eq!(read_back.timestamp, snapshot.timestamp);
+        assert_eq!(read_back.attester, snapshot.attester);
+    }
+
+    #[test]
+    fn test_get_snapshot_returns_latest_after_overwrite() {
+        let (env, client, _admin) = setup();
+        let attester = Address::generate(&env);
+        client.add_attester(&attester);
+
+        let asset = Address::generate(&env);
+
+        let snapshot1 = LiquiditySnapshot {
+            asset: asset.clone(),
+            volume_30m_usd: 1_000_000_000,
+            unique_trades_1h: 42,
+            timestamp: 1_000_000,
+            attester: attester.clone(),
+        };
+        client.write_snapshot(&attester, &snapshot1);
+
+        let snapshot2 = LiquiditySnapshot {
+            asset: asset.clone(),
+            volume_30m_usd: 2_000_000_000,
+            unique_trades_1h: 50,
+            timestamp: 2_000_000,
+            attester: attester.clone(),
+        };
+        client.write_snapshot(&attester, &snapshot2);
+
+        let read_back = client.get_snapshot(&asset).unwrap();
+        assert_eq!(read_back.timestamp, 2_000_000);
+        assert_eq!(read_back.volume_30m_usd, 2_000_000_000);
+        assert_eq!(read_back.unique_trades_1h, 50);
+    }
+
+    #[test]
+    fn test_get_snapshot_isolates_by_asset() {
+        let (env, client, _admin) = setup();
+        let attester = Address::generate(&env);
+        client.add_attester(&attester);
+
+        let asset_a = Address::generate(&env);
+        let asset_b = Address::generate(&env);
+
+        let snapshot_a = LiquiditySnapshot {
+            asset: asset_a.clone(),
+            volume_30m_usd: 1_000_000_000,
+            unique_trades_1h: 10,
+            timestamp: 1_000_000,
+            attester: attester.clone(),
+        };
+        let snapshot_b = LiquiditySnapshot {
+            asset: asset_b.clone(),
+            volume_30m_usd: 5_000_000_000,
+            unique_trades_1h: 100,
+            timestamp: 1_000_000,
+            attester: attester.clone(),
+        };
+
+        client.write_snapshot(&attester, &snapshot_a);
+        client.write_snapshot(&attester, &snapshot_b);
+
+        let read_a = client.get_snapshot(&asset_a).unwrap();
+        let read_b = client.get_snapshot(&asset_b).unwrap();
+
+        assert_eq!(read_a.volume_30m_usd, 1_000_000_000);
+        assert_eq!(read_b.volume_30m_usd, 5_000_000_000);
+        assert_ne!(read_a.asset, read_b.asset);
+    }
+
+    #[test]
+    fn test_get_snapshot_returns_none_when_not_initialized() {
+        let env = Env::default();
+        env.mock_all_auths();
+
+        let contract_id = env.register(LiquidityRegistry, ());
+        let client = LiquidityRegistryClient::new(&env, &contract_id);
+        let asset = Address::generate(&env);
+
+        let result = client.get_snapshot(&asset);
+        assert!(
+            result.is_none(),
+            "uninitialized contract must return None for read"
         );
     }
 }
