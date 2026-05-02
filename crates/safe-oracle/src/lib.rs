@@ -3,7 +3,9 @@
 use soroban_sdk::{contracterror, contracttype, Address, Env, Symbol, Vec};
 
 mod reflector_client;
+mod registry_client;
 pub use reflector_client::ReflectorClient;
+pub use registry_client::{LiquidityRegistryClient, LiquiditySnapshot};
 
 #[contracterror]
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
@@ -37,6 +39,12 @@ pub struct SafeOracleConfig {
     pub max_deviation_bps: u32,
     pub max_staleness_seconds: u32,
     pub max_cross_source_bps: u32,
+    /// Maximum age (in seconds) of a `LiquidityRegistry` snapshot still
+    /// considered fresh. Phase 4's `check_liquidity` rejects snapshots older
+    /// than this against `env.ledger().timestamp()`; the field is wired here
+    /// in Phase 3.6 so config-construction sites do not need to change again
+    /// when the Layer 2 logic lands.
+    pub max_snapshot_age_seconds: u64,
     pub min_liquidity_usd: i128,
     pub min_trade_count_1h: u32,
     pub secondary_oracle: Option<Address>,
@@ -50,6 +58,7 @@ impl Default for SafeOracleConfig {
             max_deviation_bps: 2000,
             max_staleness_seconds: 300,
             max_cross_source_bps: 500,
+            max_snapshot_age_seconds: 300,
             min_liquidity_usd: 100_000_000_000,
             min_trade_count_1h: 5,
             secondary_oracle: None,
@@ -323,6 +332,7 @@ mod test {
         assert_eq!(cfg.max_deviation_bps, 2000);
         assert_eq!(cfg.max_staleness_seconds, 300);
         assert_eq!(cfg.max_cross_source_bps, 500);
+        assert_eq!(cfg.max_snapshot_age_seconds, 300);
         assert_eq!(cfg.min_liquidity_usd, 100_000_000_000);
         assert_eq!(cfg.min_trade_count_1h, 5);
         assert!(cfg.secondary_oracle.is_none());

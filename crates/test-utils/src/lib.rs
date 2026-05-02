@@ -190,6 +190,7 @@ impl<'a> TestEnv<'a> {
             max_deviation_bps: 5000,
             max_staleness_seconds: 100_000,
             max_cross_source_bps: 2000,
+            max_snapshot_age_seconds: 100_000,
             min_liquidity_usd: 1,
             min_trade_count_1h: 1,
             secondary_oracle: None,

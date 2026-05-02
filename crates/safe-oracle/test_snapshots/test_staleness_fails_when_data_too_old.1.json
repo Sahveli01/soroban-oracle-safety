@@ -358,6 +358,14 @@
                           },
                           {
                             "key": {
+                              "symbol": "max_snapshot_age_seconds"
+                            },
+                            "val": {
+                              "u64": "300"
+                            }
+                          },
+                          {
+                            "key": {
                               "symbol": "max_staleness_seconds"
                             },
                             "val": {
