@@ -22,6 +22,13 @@ pub enum Asset {
 }
 
 #[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct PriceData {
+    pub price: i128,
+    pub timestamp: u64,
+}
+
+#[contracttype]
 #[derive(Clone, Debug)]
 pub struct SafeOracleConfig {
     pub max_deviation_bps: u32,
@@ -54,20 +61,23 @@ impl Default for SafeOracleConfig {
 /// `lastprice` ile birebir aynı kalmalı; tüketici kontratlar (mock-lending)
 /// Phase 2'de tek satır değiştirmeden geçmeli.
 pub mod stub {
-    use super::{Address, Asset, OracleSafetyViolation, SafeOracleConfig};
+    use super::{Address, Asset, OracleSafetyViolation, PriceData, SafeOracleConfig};
     use soroban_sdk::Env;
 
-    /// STUB: Şimdilik her zaman `Ok(dummy_price)` döner.
-    /// Phase 2'de bu fonksiyon Reflector + cross-source + liquidity guardrails
-    /// uygulayan gerçek implementasyonla değiştirilecek. İmza aynı kalır.
+    /// STUB — Phase 2'de gerçek implementasyonla değiştirilecek.
+    /// Şimdilik her zaman Ok(dummy_price_data) döner.
+    /// Gerçek imza Phase 2'de bire bir aynı kalmalı.
     pub fn lastprice(
         _env: &Env,
         _asset: &Asset,
         _oracle: &Address,
         _registry: &Address,
         _config: &SafeOracleConfig,
-    ) -> Result<i128, OracleSafetyViolation> {
-        Ok(1_000_000_000_000_000_000) // dummy price (1.0 with 18 decimals)
+    ) -> Result<PriceData, OracleSafetyViolation> {
+        Ok(PriceData {
+            price: 1_000_000_000_000_000_000, // dummy 1.0 with 18 decimals
+            timestamp: 0,                     // dummy timestamp
+        })
     }
 }
 

@@ -64,13 +64,13 @@ impl MockLending {
         let config: SafeOracleConfig = env.storage().instance().get(&DataKey::Config).unwrap();
 
         // Phase 2'de gerçek `safe_oracle::lastprice` ile değiştirilecek — imza aynı kalır.
-        let price = stub::lastprice(&env, &asset, &oracle, &registry, &config)?;
+        let price_data = stub::lastprice(&env, &asset, &oracle, &registry, &config)?;
 
         Borrow {
             caller,
             asset,
             amount,
-            price,
+            price: price_data.price,
         }
         .publish(&env);
 
