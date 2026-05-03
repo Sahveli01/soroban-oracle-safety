@@ -102,9 +102,13 @@ pub fn lastprice(
     check_staleness(env, &current, config)?;
     check_cross_source(env, asset, &current, config)?;
 
-    // 3. Layer 2 guardrails (require LiquidityRegistry)
-    check_liquidity(env, liquidity_registry, asset, config)?;
-    check_thin_sampling(env, liquidity_registry, asset, config)?;
+    // 3. Layer 2 guardrails (require LiquidityRegistry).
+    // Single cross-contract call shared by both threshold checks; helper
+    // returns None for Asset::Other so both guardrails skip together.
+    if let Some(snapshot) = get_validated_snapshot(env, liquidity_registry, asset, config)? {
+        check_liquidity(&snapshot, config)?;
+        check_thin_sampling(&snapshot, config)?;
+    }
 
     // 4. Circuit breaker check — Phase 5'te implement edilecek
     // check_circuit_breaker(env, asset)?;
@@ -296,48 +300,42 @@ fn check_cross_source(
     Ok(())
 }
 
-/// Layer 2, Guardrail 4 — Minimum SDEX Liquidity (Phase 4.1).
+/// Fetch and validate a `LiquiditySnapshot` for a given asset.
 ///
-/// Reads the most recent attested snapshot from `LiquidityRegistry` and
-/// rejects the borrow when the asset's 30-minute SDEX volume is below
-/// `config.min_liquidity_usd`. This is the structural defense against
-/// YieldBlox-class attacks: even when Reflector reports a clean-looking
-/// price, an attacker who can move that price with a $5 trade has —
-/// by definition — drained the order book to near-zero, and this check
-/// blocks borrowing against such an unstable feed.
+/// Encapsulates the snapshot fetch + freshness check shared by
+/// `check_liquidity` and `check_thin_sampling`. Called once per `lastprice`
+/// invocation so that both Layer 2 guardrails are served by a single
+/// cross-contract call to `LiquidityRegistry::get_snapshot` — the round-trip
+/// dominates Layer 2 cost, and Phase 4.1's per-guardrail fetch was paying it
+/// twice.
 ///
-/// # Skip semantics
-/// - `Asset::Other(symbol)` — off-chain assets (BTC, ETH, …) have no SDEX
-///   liquidity to attest to. Cross-source (Layer 1) is the relevant defense
-///   for these; skip without registry lookup so the registry placeholder
-///   address is not dereferenced for Symbol-keyed assets.
+/// # Returns
+/// - `Ok(Some(snapshot))` — `Asset::Stellar` with a fresh, attested snapshot.
+/// - `Ok(None)` — `Asset::Other` (off-chain asset). Cross-source (Layer 1)
+///   is the relevant defense for these; both Layer 2 guardrails skip when
+///   the helper returns `None`.
+/// - `Err(InsufficientLiquidity)` — `Asset::Stellar` with no snapshot in the
+///   registry. Fail-safe: "no evidence of liquidity" is treated as evidence
+///   of absence so a forgotten attester pipeline cannot silently bypass the
+///   guardrail (spec §3, Layer 2).
+/// - `Err(StaleSnapshot)` — snapshot older than `config.max_snapshot_age_seconds`.
+///   Freshness is enforced consumer-side (here) rather than in the registry,
+///   keeping the registry policy-agnostic so different integrators can use
+///   different thresholds against one shared attestation feed.
 ///
-/// # Fail-safe semantics
-/// - `get_snapshot` returns `None` → `InsufficientLiquidity`. "No evidence of
-///   liquidity" is treated identically to "evidence of insufficient liquidity"
-///   so that a forgotten or paused attester pipeline cannot silently bypass
-///   the guardrail (spec §3, Layer 2).
-/// - Snapshot older than `config.max_snapshot_age_seconds` → `StaleSnapshot`.
-///   Freshness is intentionally checked here (consumer side) rather than in
-///   the registry — different integrators may want different thresholds, and
-///   the registry deliberately stays policy-agnostic (see `get_snapshot` doc).
-/// - Future-dated snapshot (`snapshot.timestamp > now`, possible from clock
-///   drift between attesters) is accepted as fresh; underflow on the age
-///   subtraction is therefore impossible.
-///
-/// # Precision
-/// `snapshot.volume_30m_usd` and `config.min_liquidity_usd` both use 7-decimal
-/// USD precision (Stellar stroop convention) — direct `<` comparison is
-/// correct without scaling. See `LiquiditySnapshot` doc for the full convention.
-fn check_liquidity(
+/// # Future-dated snapshots
+/// If `snapshot.timestamp > now` (possible from clock drift between attesters),
+/// the snapshot is accepted as fresh — `now - snapshot.timestamp` is gated on
+/// `now > snapshot.timestamp` so the subtraction can never underflow.
+fn get_validated_snapshot(
     env: &Env,
     liquidity_registry: &Address,
     asset: &Asset,
     config: &SafeOracleConfig,
-) -> Result<(), OracleSafetyViolation> {
+) -> Result<Option<LiquiditySnapshot>, OracleSafetyViolation> {
     let asset_address = match asset {
         Asset::Stellar(addr) => addr.clone(),
-        Asset::Other(_) => return Ok(()),
+        Asset::Other(_) => return Ok(None),
     };
 
     let registry_client = LiquidityRegistryClient::new(env, liquidity_registry);
@@ -353,23 +351,60 @@ fn check_liquidity(
         }
     }
 
+    Ok(Some(snapshot))
+}
+
+/// Layer 2, Guardrail 4 — Minimum SDEX Liquidity (Phase 4.1).
+///
+/// Threshold check on a snapshot already fetched + freshness-validated by
+/// `get_validated_snapshot`. Rejects when the asset's 30-minute SDEX volume
+/// is below `config.min_liquidity_usd`.
+///
+/// Structural defense against YieldBlox-class attacks: an attacker who can
+/// move price with a $5 trade has — by definition — drained the order book
+/// to near-zero, and this check blocks borrowing against such an unstable
+/// feed even when Reflector reports a clean-looking price.
+///
+/// **Precision:** `volume_30m_usd` and `min_liquidity_usd` both use 7-decimal
+/// USD (Stellar stroop convention) — direct `<` comparison without scaling.
+/// See `LiquiditySnapshot` doc for the full precision convention. See
+/// `get_validated_snapshot` for the skip and fail-safe semantics that produce
+/// the snapshot reaching this function.
+fn check_liquidity(
+    snapshot: &LiquiditySnapshot,
+    config: &SafeOracleConfig,
+) -> Result<(), OracleSafetyViolation> {
     if snapshot.volume_30m_usd < config.min_liquidity_usd {
         return Err(OracleSafetyViolation::InsufficientLiquidity);
     }
-
     Ok(())
 }
 
-/// Phase 4'te implement edilecek (Layer 2, Guardrail 5 — Thin Sampling).
+/// Layer 2, Guardrail 5 — Thin Sampling Detection (Phase 4.2).
 ///
-/// `LiquidityRegistry` kontratından son 1 saatin unique trade sayısını okur ve
-/// `config.min_trade_count_1h` altındaysa `Err(ThinSampling)` döner.
+/// Threshold check on a snapshot already fetched + freshness-validated by
+/// `get_validated_snapshot`. Rejects when fewer than `config.min_trade_count_1h`
+/// unique trades occurred in the past hour.
+///
+/// Defense against price manipulation in markets where trade frequency is
+/// too low for VWAP/TWAP feeds to produce trustworthy prices. Even when
+/// 30-minute volume passes `check_liquidity`, a market with only 1–2 trades
+/// per hour is structurally vulnerable to single-trade manipulation — the
+/// YieldBlox attacker had effectively one trade in the relevant pricing
+/// window, and this guardrail catches that shape independently of the
+/// volume threshold.
+///
+/// `unique_trades_1h` semantics (one trade per `source_account` per ledger,
+/// $10 minimum sybil floor) are defined by `oracle-watch`; see spec §5
+/// "Trade Sayım Tanımı". See `get_validated_snapshot` for the skip and
+/// fail-safe semantics that produce the snapshot reaching this function.
 fn check_thin_sampling(
-    _env: &Env,
-    _liquidity_registry: &Address,
-    _asset: &Asset,
-    _config: &SafeOracleConfig,
+    snapshot: &LiquiditySnapshot,
+    config: &SafeOracleConfig,
 ) -> Result<(), OracleSafetyViolation> {
+    if snapshot.unique_trades_1h < config.min_trade_count_1h {
+        return Err(OracleSafetyViolation::ThinSampling);
+    }
     Ok(())
 }
 
