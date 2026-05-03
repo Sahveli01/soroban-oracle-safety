@@ -33,6 +33,7 @@ pub enum MockLendingError {
     CircuitBreakerOpen = 6,
     StaleSnapshot = 7,
     NotInitialized = 100,
+    AlreadyInitialized = 101,
     InsufficientCollateral = 200,
 }
 
@@ -64,13 +65,27 @@ pub struct MockLending;
 
 #[contractimpl]
 impl MockLending {
+    /// Initialize the mock lending contract.
+    ///
+    /// Reinitialization is rejected to prevent admin-override attacks: once
+    /// `Admin` is in instance storage, a second call returns
+    /// `AlreadyInitialized` instead of silently overwriting the oracle,
+    /// registry, or config addresses. Pattern mirrors `LiquidityRegistry`
+    /// (Phase 3.1) and is mandatory for all `initialize()` functions in this
+    /// project (see CLAUDE.md).
     pub fn initialize(
         env: Env,
         admin: Address,
         oracle: Address,
         liquidity_registry: Address,
         config: SafeOracleConfig,
-    ) {
+    ) -> Result<(), MockLendingError> {
+        if env.storage().instance().has(&DataKey::Admin) {
+            return Err(MockLendingError::AlreadyInitialized);
+        }
+
+        admin.require_auth();
+
         env.storage().instance().set(&DataKey::Admin, &admin);
         env.storage().instance().set(&DataKey::Oracle, &oracle);
         env.storage()
@@ -78,6 +93,8 @@ impl MockLending {
             .set(&DataKey::Registry, &liquidity_registry);
         env.storage().instance().set(&DataKey::Config, &config);
         // TODO: extend_ttl in production
+
+        Ok(())
     }
 
     pub fn deposit(env: Env, caller: Address, asset: Asset, amount: i128) {

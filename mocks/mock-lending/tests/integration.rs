@@ -18,6 +18,30 @@ use soroban_sdk::{
 };
 use test_utils::TestEnv;
 
+/// Reinitialization protection: `TestEnv::new()` already initializes the
+/// lending contract (Phase 2.7 wiring). A second `initialize` call from any
+/// caller — even with a different admin — must be rejected with
+/// `AlreadyInitialized` rather than silently overwriting oracle/registry/config
+/// addresses. Mirrors the LiquidityRegistry reinit guard added in Phase 3.1.
+#[test]
+fn test_initialize_prevents_reinitialization() {
+    let test_env = TestEnv::new();
+    let attacker_admin = Address::generate(&test_env.env);
+
+    let result = test_env.lending_client.try_initialize(
+        &attacker_admin,
+        &test_env.reflector_address,
+        &test_env.lending_address,
+        &SafeOracleConfig::default(),
+    );
+
+    assert_eq!(
+        result,
+        Err(Ok(MockLendingError::AlreadyInitialized)),
+        "second initialize must be rejected to prevent admin override"
+    );
+}
+
 /// 14-decimal helper: dollars → Reflector-scale price (×10^14).
 const ONE_DOLLAR: i128 = 100_000_000_000_000;
 

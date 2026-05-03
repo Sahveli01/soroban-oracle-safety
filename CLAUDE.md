@@ -37,7 +37,7 @@ Three components:
       // OR return Err(YourError::AlreadyInitialized)
   }
 ```
-- Mock-lending currently lacks this (Phase 6 fix). New contracts (LiquidityRegistry, Phase 3+) MUST include it from day one.
+- All current contracts (LiquidityRegistry from Phase 3.1, MockLending from Phase 2 carryover) include this. New contracts MUST include it from day one.
 
 ### Defensive Programming
 - BPS arithmetic: ALWAYS use `checked_mul` to prevent overflow.
@@ -129,6 +129,6 @@ pub fn initialize(env: Env, admin: Address, /* ... */) -> Result<(), YourError> 
 
 **Status:**
 - ✅ `LiquidityRegistry::initialize()` — implemented in Phase 3.1 (commit `d6c22cb`)
-- ⚠️ `MockLending::initialize()` — missing this protection (Phase 6 audit fix scope)
+- ✅ `MockLending::initialize()` — implemented as Phase 2 carryover fix (Phase 4 prep)
 
 This pattern was identified as missing in mock-lending during the post-Phase-2 audit (Medium severity). All new contracts MUST include it from day one.
