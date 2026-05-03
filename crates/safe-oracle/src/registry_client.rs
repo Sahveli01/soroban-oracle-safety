@@ -29,12 +29,29 @@ pub trait LiquidityRegistry {
 /// type as long as the field order, names, and types stay aligned. Any change
 /// to the registry's snapshot shape must be mirrored here in lockstep — Phase
 /// 4 tests will catch a drift via integration round-trip.
+///
+/// **Precision:** All USD-denominated fields use **7-decimal precision**
+/// (Stellar stroop convention). 1 USD = 10_000_000 (10^7). This matches
+/// `SafeOracleConfig::min_liquidity_usd` for direct comparison without scaling.
+/// Reflector uses 14-decimal precision for *prices*, but liquidity volumes are
+/// dollar-denominated and follow the project-wide 7-decimal convention.
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct LiquiditySnapshot {
+    /// Asset this snapshot describes.
     pub asset: Address,
+    /// SDEX trading volume during the last 30 minutes, denominated in USD with
+    /// 7-decimal precision. Example: $50,000 = `500_000_000_000`.
     pub volume_30m_usd: i128,
+    /// Count of unique trades on SDEX during the last 1 hour. Used by
+    /// `safe_oracle::check_thin_sampling` (Layer 2 Guardrail #5) to reject
+    /// markets where price discovery is too thin to trust.
     pub unique_trades_1h: u32,
+    /// Snapshot creation time, in Unix seconds (matching ledger timestamp).
+    /// Consumers compare against `env.ledger().timestamp()` and their own
+    /// `max_snapshot_age_seconds` threshold to enforce freshness.
     pub timestamp: u64,
+    /// Address that wrote this snapshot. Must be in the attester whitelist;
+    /// equality with the caller is enforced in `write_snapshot`.
     pub attester: Address,
 }

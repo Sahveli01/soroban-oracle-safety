@@ -296,16 +296,67 @@ fn check_cross_source(
     Ok(())
 }
 
-/// Phase 4'te implement edilecek (Layer 2, Guardrail 2 — Minimum Liquidity).
+/// Layer 2, Guardrail 4 — Minimum SDEX Liquidity (Phase 4.1).
 ///
-/// `LiquidityRegistry` kontratından son 30 dakika USD hacmini okur ve
-/// `config.min_liquidity_usd` altındaysa `Err(InsufficientLiquidity)` döner.
+/// Reads the most recent attested snapshot from `LiquidityRegistry` and
+/// rejects the borrow when the asset's 30-minute SDEX volume is below
+/// `config.min_liquidity_usd`. This is the structural defense against
+/// YieldBlox-class attacks: even when Reflector reports a clean-looking
+/// price, an attacker who can move that price with a $5 trade has —
+/// by definition — drained the order book to near-zero, and this check
+/// blocks borrowing against such an unstable feed.
+///
+/// # Skip semantics
+/// - `Asset::Other(symbol)` — off-chain assets (BTC, ETH, …) have no SDEX
+///   liquidity to attest to. Cross-source (Layer 1) is the relevant defense
+///   for these; skip without registry lookup so the registry placeholder
+///   address is not dereferenced for Symbol-keyed assets.
+///
+/// # Fail-safe semantics
+/// - `get_snapshot` returns `None` → `InsufficientLiquidity`. "No evidence of
+///   liquidity" is treated identically to "evidence of insufficient liquidity"
+///   so that a forgotten or paused attester pipeline cannot silently bypass
+///   the guardrail (spec §3, Layer 2).
+/// - Snapshot older than `config.max_snapshot_age_seconds` → `StaleSnapshot`.
+///   Freshness is intentionally checked here (consumer side) rather than in
+///   the registry — different integrators may want different thresholds, and
+///   the registry deliberately stays policy-agnostic (see `get_snapshot` doc).
+/// - Future-dated snapshot (`snapshot.timestamp > now`, possible from clock
+///   drift between attesters) is accepted as fresh; underflow on the age
+///   subtraction is therefore impossible.
+///
+/// # Precision
+/// `snapshot.volume_30m_usd` and `config.min_liquidity_usd` both use 7-decimal
+/// USD precision (Stellar stroop convention) — direct `<` comparison is
+/// correct without scaling. See `LiquiditySnapshot` doc for the full convention.
 fn check_liquidity(
-    _env: &Env,
-    _liquidity_registry: &Address,
-    _asset: &Asset,
-    _config: &SafeOracleConfig,
+    env: &Env,
+    liquidity_registry: &Address,
+    asset: &Asset,
+    config: &SafeOracleConfig,
 ) -> Result<(), OracleSafetyViolation> {
+    let asset_address = match asset {
+        Asset::Stellar(addr) => addr.clone(),
+        Asset::Other(_) => return Ok(()),
+    };
+
+    let registry_client = LiquidityRegistryClient::new(env, liquidity_registry);
+    let snapshot = registry_client
+        .get_snapshot(&asset_address)
+        .ok_or(OracleSafetyViolation::InsufficientLiquidity)?;
+
+    let now = env.ledger().timestamp();
+    if now > snapshot.timestamp {
+        let age = now - snapshot.timestamp;
+        if age > config.max_snapshot_age_seconds {
+            return Err(OracleSafetyViolation::StaleSnapshot);
+        }
+    }
+
+    if snapshot.volume_30m_usd < config.min_liquidity_usd {
+        return Err(OracleSafetyViolation::InsufficientLiquidity);
+    }
+
     Ok(())
 }
 
