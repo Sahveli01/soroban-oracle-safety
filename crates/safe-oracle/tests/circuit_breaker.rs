@@ -344,3 +344,269 @@ fn test_auto_halt_breaker_recovers_after_halt_window() {
          guardrail violation surfaces again (NOT CircuitBreakerOpen)"
     );
 }
+
+// ===== Phase 5.3: Beyond-basic cycle integration tests =====
+//
+// These cover scenarios the Phase 5.2 v2 trio (open / disabled-default /
+// recover) does not exercise:
+//   - asset isolation through the production `lastprice()` flow
+//   - halt persistence across many calls (no flip-flop)
+//   - boundary-ledger timing (inclusive `>=` semantics)
+//   - violation types other than `ExcessiveDeviation`
+//   - re-open cycles after auto-recovery (no permanent "fired" state)
+
+/// Asset isolation through `lastprice()`. Phase 5.1 unit test pinned this
+/// at the storage layer (`CBStorageKey` partitioning); this test pins the
+/// same property through the integrator-facing wrapper, which is what
+/// production lending pools see when they hold borrowing for one asset
+/// while continuing to serve borrows for another.
+#[test]
+fn test_breaker_isolation_between_assets_via_lastprice() {
+    let test_env = TestEnv::new();
+    let asset_a_addr = Address::generate(&test_env.env);
+    let asset_b_addr = Address::generate(&test_env.env);
+    let asset_a = Asset::Stellar(asset_a_addr.clone());
+    let asset_b = Asset::Stellar(asset_b_addr.clone());
+
+    // asset_a: 100× spike → guardrail violation
+    test_env.set_oracle_price(&asset_a, ONE_DOLLAR, 99_900);
+    test_env.set_oracle_price(&asset_a, ONE_DOLLAR * 100, 99_950);
+    test_env.write_snapshot_now(&asset_a_addr, HEALTHY_VOLUME_USD, 10_u32);
+
+    // asset_b: stable, all guardrails pass
+    test_env.set_oracle_price(&asset_b, ONE_DOLLAR, 99_900);
+    test_env.set_oracle_price(&asset_b, ONE_DOLLAR, 99_950);
+    test_env.write_snapshot_now(&asset_b_addr, HEALTHY_VOLUME_USD, 10_u32);
+
+    let config = SafeOracleConfig {
+        circuit_breaker_enabled: true,
+        ..SafeOracleConfig::default()
+    };
+
+    // Trigger asset_a halt.
+    let _ = test_env.lastprice(&asset_a, &config);
+
+    let result_a = test_env.lastprice(&asset_a, &config);
+    assert_eq!(
+        result_a,
+        Err(OracleSafetyViolation::CircuitBreakerOpen),
+        "asset_a must be halted after first violation"
+    );
+
+    let result_b = test_env.lastprice(&asset_b, &config);
+    assert!(
+        result_b.is_ok(),
+        "asset_b must succeed despite asset_a halt: {result_b:?}"
+    );
+}
+
+/// Halt persistence: while the breaker is open, every subsequent
+/// `lastprice()` returns `CircuitBreakerOpen`. The state does not flip-flop,
+/// decay, or auto-close from anything other than ledger advance. Pinning
+/// this guards against future refactors that might accidentally re-evaluate
+/// the breaker on each call.
+#[test]
+fn test_breaker_halt_persists_over_multiple_calls() {
+    let test_env = TestEnv::new();
+    let asset_address = Address::generate(&test_env.env);
+    let asset = Asset::Stellar(asset_address.clone());
+
+    test_env.set_oracle_price(&asset, ONE_DOLLAR, 99_900);
+    test_env.set_oracle_price(&asset, ONE_DOLLAR * 100, 99_950);
+    test_env.write_snapshot_now(&asset_address, HEALTHY_VOLUME_USD, 10_u32);
+
+    let config = SafeOracleConfig {
+        circuit_breaker_enabled: true,
+        ..SafeOracleConfig::default()
+    };
+
+    // Open breaker.
+    let _ = test_env.lastprice(&asset, &config);
+
+    for i in 0..5 {
+        let result = test_env.lastprice(&asset, &config);
+        assert_eq!(
+            result,
+            Err(OracleSafetyViolation::CircuitBreakerOpen),
+            "call {} must short-circuit (breaker is open, no flip-flop)",
+            i + 2 // 2nd, 3rd, ... call
+        );
+    }
+}
+
+/// Boundary timing. `check_circuit_breaker` uses `current >= halt_until`
+/// (inclusive). At `halt_until - 1` the breaker is still open; at the
+/// exact `halt_until` it auto-closes. Pinning the inclusive boundary
+/// stops a future "tighten by one" change from silently extending halts
+/// by a ledger.
+#[test]
+fn test_breaker_auto_recovers_at_exact_halt_until_ledger() {
+    let test_env = TestEnv::new();
+    let asset_address = Address::generate(&test_env.env);
+    let asset = Asset::Stellar(asset_address.clone());
+
+    test_env.set_oracle_price(&asset, ONE_DOLLAR, 99_900);
+    test_env.set_oracle_price(&asset, ONE_DOLLAR * 100, 99_950);
+    test_env.write_snapshot_now(&asset_address, HEALTHY_VOLUME_USD, 10_u32);
+
+    let config = SafeOracleConfig {
+        circuit_breaker_enabled: true,
+        circuit_breaker_halt_ledgers: 10,
+        ..SafeOracleConfig::default()
+    };
+
+    let initial_seq = test_env.env.ledger().sequence();
+
+    // Open breaker. halt_until = initial_seq + 10.
+    let _ = test_env.lastprice(&asset, &config);
+
+    // halt_until - 1: still halted.
+    test_env.env.ledger().with_mut(|li| {
+        li.sequence_number = initial_seq + 9;
+    });
+    let result_before = test_env.lastprice(&asset, &config);
+    assert_eq!(
+        result_before,
+        Err(OracleSafetyViolation::CircuitBreakerOpen),
+        "at halt_until - 1, breaker must still be open"
+    );
+
+    // Exact halt_until: auto-close (inclusive `>=`).
+    test_env.env.ledger().with_mut(|li| {
+        li.sequence_number = initial_seq + 10;
+    });
+    let result_at_boundary = test_env.lastprice(&asset, &config);
+    assert_eq!(
+        result_at_boundary,
+        Err(OracleSafetyViolation::ExcessiveDeviation),
+        "at exact halt_until, breaker auto-closes — underlying violation \
+         surfaces (NOT CircuitBreakerOpen)"
+    );
+}
+
+/// Auto-halt fires for any guardrail violation, not just `ExcessiveDeviation`
+/// (which Phase 5.2 v2 covered). Sub-tests pick one Layer 1 violation
+/// (`StaleData`) and one Layer 2 violation (`InsufficientLiquidity`) — the
+/// underlying mechanism is `lastprice_inner().is_err() && enabled`, so
+/// covering one variant per layer is sufficient to pin coverage.
+#[test]
+fn test_breaker_opens_for_diverse_violation_types() {
+    // Sub-test 1: StaleData (Layer 1)
+    {
+        let test_env = TestEnv::new();
+        let asset_address = Address::generate(&test_env.env);
+        let asset = Asset::Stellar(asset_address.clone());
+
+        // Stable price but timestamps 1h old → staleness fires.
+        let now = test_env.env.ledger().timestamp();
+        let stale_ts = now.saturating_sub(3_600);
+        test_env.set_oracle_price(&asset, ONE_DOLLAR, stale_ts.saturating_sub(100));
+        test_env.set_oracle_price(&asset, ONE_DOLLAR, stale_ts);
+        test_env.write_snapshot_now(&asset_address, HEALTHY_VOLUME_USD, 10_u32);
+
+        let config = SafeOracleConfig {
+            circuit_breaker_enabled: true,
+            ..SafeOracleConfig::default()
+        };
+
+        let result1 = test_env.lastprice(&asset, &config);
+        assert_eq!(result1, Err(OracleSafetyViolation::StaleData));
+
+        let result2 = test_env.lastprice(&asset, &config);
+        assert_eq!(
+            result2,
+            Err(OracleSafetyViolation::CircuitBreakerOpen),
+            "StaleData violation must trigger auto-halt"
+        );
+    }
+
+    // Sub-test 2: InsufficientLiquidity (Layer 2)
+    {
+        let test_env = TestEnv::new();
+        let asset_address = Address::generate(&test_env.env);
+        let asset = Asset::Stellar(asset_address.clone());
+
+        // Healthy price, drained orderbook (volume = 5 stroops).
+        test_env.set_oracle_price(&asset, ONE_DOLLAR, 99_900);
+        test_env.set_oracle_price(&asset, ONE_DOLLAR, 99_950);
+        test_env.write_snapshot_now(&asset_address, 5_i128, 10_u32);
+
+        let config = SafeOracleConfig {
+            circuit_breaker_enabled: true,
+            ..SafeOracleConfig::default()
+        };
+
+        let result1 = test_env.lastprice(&asset, &config);
+        assert_eq!(result1, Err(OracleSafetyViolation::InsufficientLiquidity));
+
+        let result2 = test_env.lastprice(&asset, &config);
+        assert_eq!(
+            result2,
+            Err(OracleSafetyViolation::CircuitBreakerOpen),
+            "InsufficientLiquidity violation must trigger auto-halt"
+        );
+    }
+}
+
+/// Re-open cycle: halt → recovery → fresh violation → re-halt → recovery.
+/// Phase 5.2 v2 only tested through one recovery; this test runs two full
+/// cycles to prove the breaker has no permanent "fired" state. A recurring
+/// oracle problem produces a recurring halt cadence — the steady-state
+/// behavior integrators rely on against an attacker probing a manipulated
+/// feed across multiple windows.
+#[test]
+fn test_breaker_reopens_after_recovery_on_new_violation() {
+    let test_env = TestEnv::new();
+    let asset_address = Address::generate(&test_env.env);
+    let asset = Asset::Stellar(asset_address.clone());
+
+    test_env.set_oracle_price(&asset, ONE_DOLLAR, 99_900);
+    test_env.set_oracle_price(&asset, ONE_DOLLAR * 100, 99_950);
+    test_env.write_snapshot_now(&asset_address, HEALTHY_VOLUME_USD, 10_u32);
+
+    let config = SafeOracleConfig {
+        circuit_breaker_enabled: true,
+        circuit_breaker_halt_ledgers: 10,
+        ..SafeOracleConfig::default()
+    };
+
+    let initial_seq = test_env.env.ledger().sequence();
+
+    // First halt.
+    let _ = test_env.lastprice(&asset, &config);
+
+    // Advance past first halt window.
+    test_env.env.ledger().with_mut(|li| {
+        li.sequence_number = initial_seq + 11;
+    });
+
+    // Auto-recovery surfaces violation; wrapper re-opens the breaker on
+    // this same call (post-failure halt logic).
+    let result_after_recovery = test_env.lastprice(&asset, &config);
+    assert_eq!(
+        result_after_recovery,
+        Err(OracleSafetyViolation::ExcessiveDeviation),
+        "auto-recovery surfaces underlying violation (and re-opens breaker)"
+    );
+
+    // Inside the second halt window: short-circuit again.
+    let result_in_second_halt = test_env.lastprice(&asset, &config);
+    assert_eq!(
+        result_in_second_halt,
+        Err(OracleSafetyViolation::CircuitBreakerOpen),
+        "breaker re-opened by violation after recovery — second halt active"
+    );
+
+    // Advance past second halt window. The recovery write happened at
+    // sequence `initial_seq + 11`, so halt_until = initial_seq + 11 + 10.
+    test_env.env.ledger().with_mut(|li| {
+        li.sequence_number = initial_seq + 22;
+    });
+
+    let result_after_second_recovery = test_env.lastprice(&asset, &config);
+    assert_eq!(
+        result_after_second_recovery,
+        Err(OracleSafetyViolation::ExcessiveDeviation),
+        "second auto-recovery surfaces violation again — full cycle works repeatedly"
+    );
+}
