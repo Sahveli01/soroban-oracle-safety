@@ -2,6 +2,7 @@
 
 use soroban_sdk::{contracterror, contracttype, Address, Env, Symbol, Vec};
 
+pub mod circuit_breaker;
 mod reflector_client;
 mod registry_client;
 pub use reflector_client::ReflectorClient;
