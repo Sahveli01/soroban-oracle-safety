@@ -86,11 +86,41 @@ pub struct TestEnv<'a> {
 }
 
 impl<'a> TestEnv<'a> {
-    /// Creates a fresh test environment with mock contracts registered.
+    /// Creates a fresh test environment with default `SafeOracleConfig`
+    /// (circuit breaker disabled — Phase 1-4 default).
+    ///
     /// Mock Reflector is initialized with decimals=14, resolution=300.
-    /// Mock Lending is NOT initialized — caller must call lending_client.initialize() if needed.
-    /// No default prices are set — each test injects its own price scenarios.
+    /// `MockLending::initialize` is invoked with the provided config (default
+    /// here). No oracle prices are set — each test injects its own scenarios.
     pub fn new() -> Self {
+        Self::with_config(SafeOracleConfig::default())
+    }
+
+    /// `TestEnv` with `circuit_breaker_enabled = true` and otherwise default
+    /// config. Used by Phase 5.4 v2+ tests that need auto-halt to fire.
+    pub fn with_circuit_breaker_enabled() -> Self {
+        Self::with_config(SafeOracleConfig {
+            circuit_breaker_enabled: true,
+            ..SafeOracleConfig::default()
+        })
+    }
+
+    /// `TestEnv` with `circuit_breaker_enabled = true` and a custom halt
+    /// window. Default `circuit_breaker_halt_ledgers` is 720 (~1 hour);
+    /// shorter values keep auto-recovery tests fast.
+    pub fn with_circuit_breaker_enabled_and_halt_ledgers(halt_ledgers: u32) -> Self {
+        Self::with_config(SafeOracleConfig {
+            circuit_breaker_enabled: true,
+            circuit_breaker_halt_ledgers: halt_ledgers,
+            ..SafeOracleConfig::default()
+        })
+    }
+
+    /// Internal: build the test environment and initialize `MockLending`
+    /// against the provided config. Public callers go through the
+    /// config-specific factory methods (`new`, `with_circuit_breaker_*`)
+    /// so each call site documents the test's policy choice in one line.
+    fn with_config(config: SafeOracleConfig) -> Self {
         let env = Env::default();
         env.mock_all_auths();
 
@@ -158,12 +188,7 @@ impl<'a> TestEnv<'a> {
         let lending_address = env.register(MockLending, ());
         let lending_client = MockLendingClient::new(&env, &lending_address);
         let lending_admin = Address::generate(&env);
-        lending_client.initialize(
-            &lending_admin,
-            &reflector_address,
-            &registry,
-            &SafeOracleConfig::default(),
-        );
+        lending_client.initialize(&lending_admin, &reflector_address, &registry, &config);
 
         // Pre-5.2: register the OracleHost harness LAST so the deterministic
         // address sequence of pre-existing contracts (reflector, secondary,

@@ -10,10 +10,10 @@
 //! `mock-lending` as a single normal dependency, which matches `test-utils`'
 //! view — types unify, the cycle disappears.
 
-use mock_lending::{DataKey, MockLendingError};
+use mock_lending::{BorrowOutcome, DataKey, MockLendingError};
 use safe_oracle::{Asset, SafeOracleConfig};
 use soroban_sdk::{
-    testutils::{Address as _, Events as _},
+    testutils::{Address as _, Events as _, Ledger as _},
     Address, Symbol,
 };
 use test_utils::TestEnv;
@@ -158,7 +158,9 @@ fn test_borrow_fails_when_oracle_deviation_excessive() {
         .try_borrow(&user, &asset, &1_000_000);
     assert_eq!(
         result,
-        Err(Ok(MockLendingError::ExcessiveDeviation)),
+        Ok(Ok(BorrowOutcome::Failed(
+            MockLendingError::ExcessiveDeviation as u32
+        ))),
         "YieldBlox-class attack must be blocked by deviation guardrail"
     );
 }
@@ -183,7 +185,9 @@ fn test_borrow_fails_when_oracle_data_stale() {
         .try_borrow(&user, &asset, &1_000_000);
     assert_eq!(
         result,
-        Err(Ok(MockLendingError::StaleData)),
+        Ok(Ok(BorrowOutcome::Failed(
+            MockLendingError::StaleData as u32
+        ))),
         "stale oracle data must block borrow"
     );
 }
@@ -221,7 +225,7 @@ fn test_borrow_happy_path_passes_all_guardrails() {
 
     assert_eq!(
         result,
-        Ok(Ok(())),
+        Ok(Ok(BorrowOutcome::Ok)),
         "borrow with healthy oracle and registry conditions must succeed"
     );
 }
@@ -251,7 +255,9 @@ fn test_borrow_blocks_yieldblox_classic_via_layer1() {
 
     assert_eq!(
         result,
-        Err(Ok(MockLendingError::ExcessiveDeviation)),
+        Ok(Ok(BorrowOutcome::Failed(
+            MockLendingError::ExcessiveDeviation as u32
+        ))),
         "100x price spike must block borrow via Layer 1 deviation check"
     );
 }
@@ -285,7 +291,9 @@ fn test_borrow_blocks_yieldblox_sophisticated_via_layer2() {
 
     assert_eq!(
         result,
-        Err(Ok(MockLendingError::InsufficientLiquidity)),
+        Ok(Ok(BorrowOutcome::Failed(
+            MockLendingError::InsufficientLiquidity as u32
+        ))),
         "sophisticated 5%-spike attack on a thin orderbook must block borrow via Layer 2"
     );
 }
@@ -315,7 +323,9 @@ fn test_borrow_blocks_stale_oracle_on_stellar_asset() {
 
     assert_eq!(
         result,
-        Err(Ok(MockLendingError::StaleData)),
+        Ok(Ok(BorrowOutcome::Failed(
+            MockLendingError::StaleData as u32
+        ))),
         "1-hour-old Reflector data must block borrow"
     );
 }
@@ -347,7 +357,233 @@ fn test_borrow_blocks_stale_snapshot() {
 
     assert_eq!(
         result,
-        Err(Ok(MockLendingError::StaleSnapshot)),
+        Ok(Ok(BorrowOutcome::Failed(
+            MockLendingError::StaleSnapshot as u32
+        ))),
         "1-hour-old registry snapshot must block borrow (default 5-minute threshold)"
+    );
+}
+
+// ===== Phase 5.4 v2: Circuit breaker via borrow() =====
+//
+// 5 e2e tests verifying circuit breaker behavior through MockLending::borrow()
+// (Ok-API, Phase 5.4 v2). Auto-halt now commits because borrow() returns Ok at
+// the Soroban boundary (BorrowOutcome::Failed wrapped in Ok), allowing
+// safe_oracle::circuit_breaker::open_circuit_breaker writes to persist.
+//
+// Pre-5.2.D empirically eliminated 8 alternative mechanisms; caller Ok-API
+// is the only viable path. This file is the lending-perspective complement
+// to crates/safe-oracle/tests/circuit_breaker.rs (library perspective).
+
+/// Auto-halt fires through the borrow path. First borrow surfaces the
+/// guardrail violation; second borrow short-circuits with `CircuitBreakerOpen`
+/// because the breaker write committed (Ok-API at the Soroban boundary).
+/// This is the regression guard for the Phase 5.4 v1 bug — that test failed
+/// with the Result-returning borrow because the breaker write rolled back.
+#[test]
+fn test_borrow_circuit_breaker_opens_after_first_violation() {
+    let test_env = TestEnv::with_circuit_breaker_enabled();
+    let asset_address = Address::generate(&test_env.env);
+    let asset = Asset::Stellar(asset_address.clone());
+
+    test_env.set_oracle_price(&asset, ONE_DOLLAR, 99_900);
+    test_env.set_oracle_price(&asset, ONE_DOLLAR * 100, 99_950);
+    test_env.write_snapshot_now(&asset_address, HEALTHY_VOLUME_USD, 10_u32);
+
+    let user = Address::generate(&test_env.env);
+
+    let result1 = test_env
+        .lending_client
+        .try_borrow(&user, &asset, &1_000_i128);
+    assert_eq!(
+        result1,
+        Ok(Ok(BorrowOutcome::Failed(
+            MockLendingError::ExcessiveDeviation as u32
+        ))),
+        "first borrow surfaces guardrail violation"
+    );
+
+    let result2 = test_env
+        .lending_client
+        .try_borrow(&user, &asset, &1_000_i128);
+    assert_eq!(
+        result2,
+        Ok(Ok(BorrowOutcome::Failed(
+            MockLendingError::CircuitBreakerOpen as u32
+        ))),
+        "second borrow hits open breaker — auto-halt committed via Ok-API"
+    );
+}
+
+/// Default config (`circuit_breaker_enabled = false`) preserves Phase 1-4
+/// behavior across the borrow path. Five repeated violations surface the
+/// underlying `ExcessiveDeviation`; the breaker is never opened.
+#[test]
+fn test_borrow_default_config_does_not_open_breaker() {
+    let test_env = TestEnv::new();
+    let asset_address = Address::generate(&test_env.env);
+    let asset = Asset::Stellar(asset_address.clone());
+
+    test_env.set_oracle_price(&asset, ONE_DOLLAR, 99_900);
+    test_env.set_oracle_price(&asset, ONE_DOLLAR * 100, 99_950);
+    test_env.write_snapshot_now(&asset_address, HEALTHY_VOLUME_USD, 10_u32);
+
+    let user = Address::generate(&test_env.env);
+
+    for i in 0..5 {
+        let result = test_env
+            .lending_client
+            .try_borrow(&user, &asset, &1_000_i128);
+        assert_eq!(
+            result,
+            Ok(Ok(BorrowOutcome::Failed(
+                MockLendingError::ExcessiveDeviation as u32
+            ))),
+            "call {} — same violation, no breaker open (default disabled)",
+            i + 1
+        );
+    }
+}
+
+/// After the halt window expires, the next borrow auto-recovers the breaker
+/// and re-runs the chain. Underlying `ExcessiveDeviation` surfaces again —
+/// the breaker buys a cool-down, it does not paper over a still-broken oracle.
+#[test]
+fn test_borrow_breaker_auto_recovers_after_halt_window() {
+    let test_env = TestEnv::with_circuit_breaker_enabled_and_halt_ledgers(10);
+    let asset_address = Address::generate(&test_env.env);
+    let asset = Asset::Stellar(asset_address.clone());
+
+    test_env.set_oracle_price(&asset, ONE_DOLLAR, 99_900);
+    test_env.set_oracle_price(&asset, ONE_DOLLAR * 100, 99_950);
+    test_env.write_snapshot_now(&asset_address, HEALTHY_VOLUME_USD, 10_u32);
+
+    let user = Address::generate(&test_env.env);
+    let initial_seq = test_env.env.ledger().sequence();
+
+    // Open breaker.
+    let _ = test_env
+        .lending_client
+        .try_borrow(&user, &asset, &1_000_i128);
+
+    // During halt window: short-circuit.
+    let result_during = test_env
+        .lending_client
+        .try_borrow(&user, &asset, &1_000_i128);
+    assert_eq!(
+        result_during,
+        Ok(Ok(BorrowOutcome::Failed(
+            MockLendingError::CircuitBreakerOpen as u32
+        ))),
+        "during halt window, borrow short-circuits"
+    );
+
+    // Advance past halt window.
+    test_env.env.ledger().with_mut(|li| {
+        li.sequence_number = initial_seq + 11;
+    });
+
+    let result_after = test_env
+        .lending_client
+        .try_borrow(&user, &asset, &1_000_i128);
+    assert_eq!(
+        result_after,
+        Ok(Ok(BorrowOutcome::Failed(
+            MockLendingError::ExcessiveDeviation as u32
+        ))),
+        "after halt expired, breaker auto-closes — underlying violation re-surfaces"
+    );
+}
+
+/// Per-asset halt does not bleed across assets through the borrow path.
+/// Production property for lending pools serving multiple collateral types —
+/// a manipulated feed for one asset must not freeze borrows against others.
+#[test]
+fn test_borrow_breaker_isolation_between_assets() {
+    let test_env = TestEnv::with_circuit_breaker_enabled();
+    let asset_a_addr = Address::generate(&test_env.env);
+    let asset_b_addr = Address::generate(&test_env.env);
+    let asset_a = Asset::Stellar(asset_a_addr.clone());
+    let asset_b = Asset::Stellar(asset_b_addr.clone());
+
+    // asset_a: violation
+    test_env.set_oracle_price(&asset_a, ONE_DOLLAR, 99_900);
+    test_env.set_oracle_price(&asset_a, ONE_DOLLAR * 100, 99_950);
+    test_env.write_snapshot_now(&asset_a_addr, HEALTHY_VOLUME_USD, 10_u32);
+
+    // asset_b: healthy
+    test_env.set_oracle_price(&asset_b, ONE_DOLLAR, 99_900);
+    test_env.set_oracle_price(&asset_b, ONE_DOLLAR, 99_950);
+    test_env.write_snapshot_now(&asset_b_addr, HEALTHY_VOLUME_USD, 10_u32);
+
+    let user = Address::generate(&test_env.env);
+
+    // Trigger asset_a halt.
+    let _ = test_env
+        .lending_client
+        .try_borrow(&user, &asset_a, &1_000_i128);
+
+    let result_a = test_env
+        .lending_client
+        .try_borrow(&user, &asset_a, &1_000_i128);
+    assert_eq!(
+        result_a,
+        Ok(Ok(BorrowOutcome::Failed(
+            MockLendingError::CircuitBreakerOpen as u32
+        ))),
+        "asset_a borrow halted"
+    );
+
+    let result_b = test_env
+        .lending_client
+        .try_borrow(&user, &asset_b, &1_000_i128);
+    assert_eq!(
+        result_b,
+        Ok(Ok(BorrowOutcome::Ok)),
+        "asset_b borrow succeeds despite asset_a halt"
+    );
+}
+
+/// Separation of concerns: the breaker protects price-dependent operations
+/// (borrow). Operations that do not consult the oracle (deposit) MUST remain
+/// functional during a halt — otherwise the breaker traps user funds, turning
+/// a defensive measure into a denial-of-service vector.
+#[test]
+fn test_borrow_halted_asset_still_allows_deposit() {
+    let test_env = TestEnv::with_circuit_breaker_enabled();
+    let asset_address = Address::generate(&test_env.env);
+    let asset = Asset::Stellar(asset_address.clone());
+
+    test_env.set_oracle_price(&asset, ONE_DOLLAR, 99_900);
+    test_env.set_oracle_price(&asset, ONE_DOLLAR * 100, 99_950);
+    test_env.write_snapshot_now(&asset_address, HEALTHY_VOLUME_USD, 10_u32);
+
+    let user = Address::generate(&test_env.env);
+
+    // Trigger halt.
+    let _ = test_env
+        .lending_client
+        .try_borrow(&user, &asset, &1_000_i128);
+
+    let borrow_result = test_env
+        .lending_client
+        .try_borrow(&user, &asset, &1_000_i128);
+    assert_eq!(
+        borrow_result,
+        Ok(Ok(BorrowOutcome::Failed(
+            MockLendingError::CircuitBreakerOpen as u32
+        ))),
+        "borrow must be halted to set up the test premise"
+    );
+
+    // Deposit does not consult the oracle — must succeed.
+    let deposit_result = test_env
+        .lending_client
+        .try_deposit(&user, &asset, &500_i128);
+    assert!(
+        deposit_result.is_ok(),
+        "deposit must succeed during borrow halt — circuit breaker only \
+         affects price-dependent operations: got {:?}",
+        deposit_result
     );
 }
