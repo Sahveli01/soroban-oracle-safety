@@ -1,22 +1,38 @@
-//! Phase 5.1 unit tests for the circuit breaker state machine.
+//! Circuit breaker tests.
 //!
-//! Tests exercise the state machine in isolation. `lastprice()` integration
-//! (auto-halt on guardrail violation) is the subject of Phase 5.2+.
+//! Two layers of coverage:
 //!
-//! All tests run inside a `TestHost` harness contract. Soroban's
-//! `instance()` storage is only accessible from inside a contract context,
-//! so we register a thin contract whose methods delegate to the public
-//! library functions and exercise them through the auto-generated client.
+//! - Phase 5.1 unit tests exercise the state machine in isolation through
+//!   a thin `TestHost` harness. Soroban's `instance()` storage is only
+//!   accessible from inside a contract context, so the harness registers a
+//!   contract whose methods delegate to the public library functions and
+//!   the auto-generated client exercises them.
+//!
+//! - Phase 5.2 v2 integration tests exercise auto-halt through the real
+//!   `lastprice()` wrapper via `TestEnv`'s `OracleHost` harness. These
+//!   prove that auto-halt actually commits to storage — the bug Phase
+//!   5.2 v1 was reverted for. The test that explicitly opens the breaker
+//!   and observes the second call short-circuiting is the regression
+//!   guard for that bug.
 
 use safe_oracle::circuit_breaker::{
     check_circuit_breaker, close_circuit_breaker, open_circuit_breaker,
 };
-use safe_oracle::{Asset, OracleSafetyViolation};
+use safe_oracle::{Asset, OracleSafetyViolation, SafeOracleConfig};
 use soroban_sdk::{
     contract, contractimpl,
     testutils::{Address as _, Ledger as _},
     Address, Env, Symbol,
 };
+use test_utils::TestEnv;
+
+/// 14-decimal Reflector price helper: dollars → ×10^14.
+const ONE_DOLLAR: i128 = 100_000_000_000_000;
+
+/// 7-decimal USD volume that comfortably clears the $10,000 default
+/// `min_liquidity_usd` so liquidity-passing scenarios isolate the failure
+/// they actually want to demonstrate.
+const HEALTHY_VOLUME_USD: i128 = 500_000_000_000;
 
 /// Harness contract: hosts the breaker storage and surfaces the three
 /// public functions as contract methods so the test client can exercise
@@ -198,5 +214,133 @@ fn test_open_overwrites_existing_halt_window() {
         result,
         Err(Ok(OracleSafetyViolation::CircuitBreakerOpen)),
         "second open must overwrite first; longer window still active"
+    );
+}
+
+// ===== Phase 5.2 v2: Auto-halt verification through lastprice() =====
+//
+// These tests pin that auto-halt actually commits to storage when enabled,
+// directly addressing the Phase 5.2 v1 bug (Result::Err returns rolled back
+// the breaker write — see commit `e98ed48` for the revert). They run
+// through the real `lastprice()` wrapper via `TestEnv`'s `OracleHost`
+// harness, so the production call shape is preserved.
+
+/// Regression guard for the Phase 5.2 v1 bug. With
+/// `circuit_breaker_enabled = true`, the FIRST guardrail violation
+/// auto-opens the breaker; the SECOND call short-circuits with
+/// `CircuitBreakerOpen`. Phase 5.2 v1 had the same intent but the breaker
+/// write rolled back; v2's `PriceResult::Err` (returned through the `Ok`
+/// boundary) makes the write commit.
+#[test]
+fn test_auto_halt_opens_breaker_after_first_violation() {
+    let test_env = TestEnv::new();
+    let asset_address = Address::generate(&test_env.env);
+    let asset = Asset::Stellar(asset_address.clone());
+
+    // Layer 1 trip: 100× spike between consecutive Reflector ticks.
+    test_env.set_oracle_price(&asset, ONE_DOLLAR, 99_900);
+    test_env.set_oracle_price(&asset, ONE_DOLLAR * 100, 99_950);
+    test_env.write_snapshot_now(&asset_address, HEALTHY_VOLUME_USD, 10_u32);
+
+    let config = SafeOracleConfig {
+        circuit_breaker_enabled: true,
+        ..SafeOracleConfig::default()
+    };
+
+    let result1 = test_env.lastprice(&asset, &config);
+    assert_eq!(
+        result1,
+        Err(OracleSafetyViolation::ExcessiveDeviation),
+        "first call must surface the deviation guardrail"
+    );
+
+    let result2 = test_env.lastprice(&asset, &config);
+    assert_eq!(
+        result2,
+        Err(OracleSafetyViolation::CircuitBreakerOpen),
+        "second call must short-circuit with CircuitBreakerOpen — \
+         this is the Phase 5.2 v1 regression guard (auto-halt MUST commit)"
+    );
+}
+
+/// Default config (`circuit_breaker_enabled = false`) does NOT open the
+/// breaker on a guardrail violation. Phase 1-4 behavior preserved end to
+/// end: two consecutive failing calls surface the *same* guardrail variant
+/// each time, never `CircuitBreakerOpen`.
+#[test]
+fn test_auto_halt_disabled_by_default_preserves_phase_1_4_behavior() {
+    let test_env = TestEnv::new();
+    let asset_address = Address::generate(&test_env.env);
+    let asset = Asset::Stellar(asset_address.clone());
+
+    test_env.set_oracle_price(&asset, ONE_DOLLAR, 99_900);
+    test_env.set_oracle_price(&asset, ONE_DOLLAR * 100, 99_950);
+    test_env.write_snapshot_now(&asset_address, HEALTHY_VOLUME_USD, 10_u32);
+
+    let config = SafeOracleConfig::default();
+    assert!(
+        !config.circuit_breaker_enabled,
+        "default must keep the breaker disabled — flipping this is a \
+         breaking change"
+    );
+
+    let result1 = test_env.lastprice(&asset, &config);
+    assert_eq!(result1, Err(OracleSafetyViolation::ExcessiveDeviation));
+
+    // If the breaker had been opened, this would return CircuitBreakerOpen.
+    let result2 = test_env.lastprice(&asset, &config);
+    assert_eq!(
+        result2,
+        Err(OracleSafetyViolation::ExcessiveDeviation),
+        "default config must not open the breaker on a violation — \
+         Phase 1-4 behavior preserved"
+    );
+}
+
+/// Auto-halt opens the breaker; halt window expires; the next call
+/// auto-closes the breaker and re-runs the chain. The underlying violation
+/// surfaces again — the breaker only buys a cool-down, it does not paper
+/// over a still-broken oracle.
+#[test]
+fn test_auto_halt_breaker_recovers_after_halt_window() {
+    let test_env = TestEnv::new();
+    let asset_address = Address::generate(&test_env.env);
+    let asset = Asset::Stellar(asset_address.clone());
+
+    test_env.set_oracle_price(&asset, ONE_DOLLAR, 99_900);
+    test_env.set_oracle_price(&asset, ONE_DOLLAR * 100, 99_950);
+    test_env.write_snapshot_now(&asset_address, HEALTHY_VOLUME_USD, 10_u32);
+
+    // Short halt window so the test can advance the ledger past it cheaply.
+    let config = SafeOracleConfig {
+        circuit_breaker_enabled: true,
+        circuit_breaker_halt_ledgers: 10,
+        ..SafeOracleConfig::default()
+    };
+
+    let initial_seq = test_env.env.ledger().sequence();
+
+    // Open the breaker.
+    let _ = test_env.lastprice(&asset, &config);
+
+    // During halt window: short-circuit.
+    let result_during = test_env.lastprice(&asset, &config);
+    assert_eq!(
+        result_during,
+        Err(OracleSafetyViolation::CircuitBreakerOpen),
+        "during halt window, lastprice must return CircuitBreakerOpen"
+    );
+
+    // Advance past `halt_until_ledger = initial_seq + 10`.
+    test_env.env.ledger().with_mut(|li| {
+        li.sequence_number = initial_seq + 11;
+    });
+
+    let result_after = test_env.lastprice(&asset, &config);
+    assert_eq!(
+        result_after,
+        Err(OracleSafetyViolation::ExcessiveDeviation),
+        "after halt window expired, breaker auto-closes — underlying \
+         guardrail violation surfaces again (NOT CircuitBreakerOpen)"
     );
 }

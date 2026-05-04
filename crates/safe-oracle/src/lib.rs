@@ -34,6 +34,116 @@ pub struct PriceData {
     pub timestamp: u64,
 }
 
+/// Result type for `lastprice()` that allows auto-halt to commit even on
+/// guardrail violations.
+///
+/// # Why a custom enum instead of `Result<PriceData, OracleSafetyViolation>`?
+///
+/// Soroban contract methods that return `Result::Err` cause **all storage
+/// writes in the same invocation to roll back**, including writes inside
+/// `open_circuit_breaker()`. The original Phase 5.2 design hit this and was
+/// reverted (commit `e98ed48`). By returning `Ok(PriceResult::Err(...))`
+/// from the contract method, the breaker write commits while still
+/// conveying the violation to the caller.
+///
+/// # Why `Err(u32)` and not `Err(OracleSafetyViolation)`?
+///
+/// `OracleSafetyViolation` is a `#[contracterror]` type. soroban-sdk 25.x
+/// derives `Arbitrary` on `#[contracttype]` types under the test feature,
+/// and that derive does not compose with `#[contracterror]` payloads —
+/// build fails with "trait bound `OracleSafetyViolation: SorobanArbitrary`
+/// is not satisfied." Carrying the violation as its `u32` discriminant
+/// sidesteps that without changing the discriminant scheme: the values
+/// here MUST stay aligned with `OracleSafetyViolation = 1..=7`. The
+/// `into_result()` shim re-hydrates the typed variant for callers that
+/// want it.
+///
+/// # Migration from the Phase 1-4 `Result<PriceData, OracleSafetyViolation>`
+///
+/// Callers that used `?` continue to do so via the `into_result()` shim:
+///
+/// ```ignore
+/// // Before (Phase 1-4):
+/// let price = safe_oracle::lastprice(&env, &asset, ...)?;
+///
+/// // After (Phase 5.2 v2):
+/// let price = safe_oracle::lastprice(&env, &asset, ...).into_result()?;
+/// ```
+///
+/// `From<Result<PriceData, OracleSafetyViolation>>` is also implemented so
+/// internal helpers that produce `Result` (e.g., `lastprice_inner`) convert
+/// at the API boundary without per-callsite match plumbing.
+///
+/// # Audit notes
+///
+/// - `PriceResult::Err(d)` is semantically identical to a guardrail
+///   failure. A lending protocol MUST NOT proceed with `PriceResult::Err`
+///   the same way it would not proceed with `Err` in Phase 1-4.
+/// - The `Ok` wrapping at the Soroban boundary is a storage-commit
+///   mechanism only; the public-facing semantics ("violation = no price")
+///   are unchanged.
+/// - Tuple variants (not named-field) match the soroban-sdk 25.x
+///   `#[contracttype]` enum constraint observed in Phase 5.1.
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum PriceResult {
+    /// Validated price data, all guardrails passed.
+    Ok(PriceData),
+
+    /// Guardrail violation; price MUST NOT be used. The `u32` is the
+    /// `OracleSafetyViolation` discriminant (1..=7); see `into_result()`
+    /// for the typed re-hydration.
+    Err(u32),
+}
+
+impl PriceResult {
+    /// Returns `true` if the result is `Ok`.
+    pub fn is_ok(&self) -> bool {
+        matches!(self, PriceResult::Ok(_))
+    }
+
+    /// Returns `true` if the result is `Err`.
+    pub fn is_err(&self) -> bool {
+        matches!(self, PriceResult::Err(_))
+    }
+
+    /// Convert to standard Rust `Result` for ergonomic `?` operator usage.
+    ///
+    /// Recommended migration path for Phase 1-4 callers: replace
+    /// `lastprice(...)?` with `lastprice(...).into_result()?`.
+    ///
+    /// Re-hydrates the `u32` discriminant into the typed
+    /// `OracleSafetyViolation`. Unknown discriminants panic — they cannot
+    /// occur on a result produced by `lastprice()`, which only emits
+    /// values from the canonical `1..=7` range, but the explicit panic
+    /// guards against forged values reaching the shim.
+    pub fn into_result(self) -> Result<PriceData, OracleSafetyViolation> {
+        match self {
+            PriceResult::Ok(p) => Ok(p),
+            PriceResult::Err(1) => Err(OracleSafetyViolation::ExcessiveDeviation),
+            PriceResult::Err(2) => Err(OracleSafetyViolation::StaleData),
+            PriceResult::Err(3) => Err(OracleSafetyViolation::CrossSourceMismatch),
+            PriceResult::Err(4) => Err(OracleSafetyViolation::InsufficientLiquidity),
+            PriceResult::Err(5) => Err(OracleSafetyViolation::ThinSampling),
+            PriceResult::Err(6) => Err(OracleSafetyViolation::CircuitBreakerOpen),
+            PriceResult::Err(7) => Err(OracleSafetyViolation::StaleSnapshot),
+            PriceResult::Err(d) => panic!(
+                "PriceResult::Err discriminant {} is outside the OracleSafetyViolation range (1..=7)",
+                d
+            ),
+        }
+    }
+}
+
+impl From<Result<PriceData, OracleSafetyViolation>> for PriceResult {
+    fn from(r: Result<PriceData, OracleSafetyViolation>) -> Self {
+        match r {
+            Ok(p) => PriceResult::Ok(p),
+            Err(e) => PriceResult::Err(e as u32),
+        }
+    }
+}
+
 #[contracttype]
 #[derive(Clone, Debug)]
 pub struct SafeOracleConfig {
@@ -69,23 +179,88 @@ impl Default for SafeOracleConfig {
     }
 }
 
-/// Validates oracle output against five layered guardrails before returning a price.
+/// Validates oracle output against five layered guardrails before returning a
+/// price, wrapped by the circuit breaker (Phase 5.2 v2).
 ///
-/// This function is the public entry point of the `safe_oracle` library. Lending
-/// protocols call this instead of `reflector.lastprice()` directly. Each guardrail
-/// is a deterministic check that returns `Err` on violation, propagating to the
-/// calling contract via `?`.
+/// Public entry point of the `safe_oracle` library. Lending protocols call
+/// this instead of `reflector.lastprice()` directly.
+///
+/// # Why `PriceResult` instead of `Result`?
+///
+/// Soroban contract methods that return `Result::Err` roll back all storage
+/// writes in the same invocation. The original Phase 5.2 design (commit
+/// `6ef65b7`, reverted in `e98ed48`) hit this and could not commit
+/// `open_circuit_breaker()` writes — auto-halt never persisted. Wrapping
+/// violations in `PriceResult::Err` (returned through the `Ok` boundary at
+/// the Soroban level) lets the breaker write commit cleanly.
+///
+/// See `PriceResult` for full migration guidance and `into_result()` shim.
 ///
 /// # Guardrails
 /// - Layer 1 (Reflector-only): deviation, staleness, cross-source
 /// - Layer 2 (LiquidityRegistry-required): liquidity threshold, thin sampling
-/// - Optional: circuit breaker (Phase 5)
+/// - Wrapper: circuit breaker (Phase 5)
 ///
-/// # Phase 2 Status
-/// Skeleton — Layer 1 guardrails are scaffolded as stubs returning `Ok(())`.
-/// Real guardrail logic arrives in prompts 2.2 (deviation), 2.3 (staleness),
-/// 2.4 (multi-source). Layer 2 lands in Phase 4 alongside `LiquidityRegistry`.
+/// # Circuit breaker integration
+///
+/// 1. Pre-flight: `check_circuit_breaker(env, asset)` runs first. If the
+///    breaker is `Open` and the halt window has not expired, returns
+///    `PriceResult::Err(CircuitBreakerOpen)` immediately — no Reflector or
+///    LiquidityRegistry calls are made, so a halted asset costs near-zero
+///    gas to reject. Auto-recovery on expiry is handled inside
+///    `check_circuit_breaker`.
+///
+/// 2. Auto-halt: if `config.circuit_breaker_enabled == true` (default
+///    `false`) and any guardrail violates, the breaker is opened for
+///    `config.circuit_breaker_halt_ledgers` ledgers (default 720, ~1 hour
+///    at 5-second close time). The violation is then returned as
+///    `PriceResult::Err(<violation>)`.
+///
+/// The breaker is opt-in. With the default config, this function preserves
+/// the exact Phase 1-4 contract: guardrail violations propagate as
+/// `PriceResult::Err` without persisting any breaker state.
 pub fn lastprice(
+    env: &Env,
+    asset: &Asset,
+    reflector: &Address,
+    liquidity_registry: &Address,
+    config: &SafeOracleConfig,
+) -> PriceResult {
+    // Pre-flight breaker check. Open + not yet expired → short-circuit
+    // before any cross-contract call. Auto-recovery (state transition
+    // Open → Closed when ledger advanced past halt window) is handled
+    // inside check_circuit_breaker.
+    if let Err(e) = circuit_breaker::check_circuit_breaker(env, asset) {
+        return PriceResult::Err(e as u32);
+    }
+
+    let result = lastprice_inner(env, asset, reflector, liquidity_registry, config);
+
+    // Auto-halt on guardrail violation. Only trips when the integrator
+    // opted in — default `circuit_breaker_enabled = false` keeps Phase 1-4
+    // behavior (no breaker side effects).
+    //
+    // CRITICAL: this write commits because the contract method returns Ok
+    // at the Soroban boundary (PriceResult::Err is wrapped in Ok). Phase
+    // 5.2 v1 used Result::Err here and the write rolled back; that is the
+    // bug this version exists to fix. Empirical evidence in the Pre-5.2.C
+    // discovery diagnostic (no-commit transient state).
+    if result.is_err() && config.circuit_breaker_enabled {
+        circuit_breaker::open_circuit_breaker(env, asset, config.circuit_breaker_halt_ledgers);
+    }
+
+    PriceResult::from(result)
+}
+
+/// Internal: full 5-guardrail chain without circuit breaker concerns.
+///
+/// Split from `lastprice` so the breaker stays a pure wrapper concern
+/// (pre-flight check + post-failure halt) and the guardrail chain itself
+/// remains the unchanged Phase 4.2 implementation. Returns `Result` rather
+/// than `PriceResult` because the wrapper composes the two with a single
+/// `PriceResult::from(result)` at the boundary — the `?` operator on
+/// `Result` keeps the inner code idiomatic.
+fn lastprice_inner(
     env: &Env,
     asset: &Asset,
     reflector: &Address,
@@ -110,9 +285,6 @@ pub fn lastprice(
         check_liquidity(&snapshot, config)?;
         check_thin_sampling(&snapshot, config)?;
     }
-
-    // 4. Circuit breaker check — Phase 5'te implement edilecek
-    // check_circuit_breaker(env, asset)?;
 
     Ok(current)
 }

@@ -131,7 +131,8 @@ impl MockLending {
 
         // Layer 1 guardrails — transparent passthrough preserves which
         // guardrail tripped (caller can match on `MockLendingError`).
-        let price_data = safe_oracle::lastprice(&env, &asset, &oracle, &registry, &config)?;
+        let price_data =
+            safe_oracle::lastprice(&env, &asset, &oracle, &registry, &config).into_result()?;
 
         Borrow {
             caller,

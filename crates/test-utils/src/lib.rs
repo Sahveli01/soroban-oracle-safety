@@ -12,7 +12,7 @@
 use liquidity_registry::{LiquidityRegistry, LiquidityRegistryClient, LiquiditySnapshot};
 use mock_lending::{MockLending, MockLendingClient};
 use mock_reflector::{ConfigData, FeeConfig, MockReflector, MockReflectorClient};
-use safe_oracle::{Asset, OracleSafetyViolation, PriceData, SafeOracleConfig};
+use safe_oracle::{Asset, OracleSafetyViolation, PriceData, PriceResult, SafeOracleConfig};
 use soroban_sdk::{
     contract, contractimpl,
     testutils::{Address as _, Ledger as _},
@@ -37,13 +37,16 @@ pub struct OracleHost;
 
 #[contractimpl]
 impl OracleHost {
+    /// Phase 5.2 v2: returns `PriceResult` (Ok-only at the Soroban boundary)
+    /// so auto-halt writes from `safe_oracle::lastprice()` commit cleanly.
+    /// `TestEnv::lastprice` unwraps to `Result<...>` for test ergonomics.
     pub fn run_lastprice(
         env: Env,
         asset: Asset,
         reflector: Address,
         registry: Address,
         config: SafeOracleConfig,
-    ) -> Result<PriceData, OracleSafetyViolation> {
+    ) -> PriceResult {
         safe_oracle::lastprice(&env, &asset, &reflector, &registry, &config)
     }
 }
@@ -227,37 +230,46 @@ impl<'a> TestEnv<'a> {
         self.write_snapshot(asset, volume_usd, trades_1h, now);
     }
 
-    /// Invoke `safe_oracle::lastprice()` through the `OracleHost` harness.
+    /// Invoke `safe_oracle::lastprice()` through the `OracleHost` harness
+    /// and convert `PriceResult` back to `Result<PriceData, OracleSafetyViolation>`
+    /// for test-call ergonomics.
     ///
-    /// This is the canonical way to call `lastprice` from integration tests.
-    /// Direct calls (`safe_oracle::lastprice(&env, ...)`) panic on `instance()`
-    /// storage access outside a contract context — the harness provides that
-    /// context, mirroring how a production lending contract reaches `lastprice`
-    /// from inside its own `borrow()` invocation.
+    /// `safe_oracle::lastprice` returns `PriceResult` (Phase 5.2 v2) so that
+    /// auto-halt writes commit at the Soroban boundary. Tests, however, were
+    /// written against the Phase 1-4 `Result<...>` shape and continue to
+    /// assert with `assert_eq!(result, Err(...))`. This shim preserves that
+    /// ergonomics — the 45 integration tests refactored in Pre-5.2.B keep
+    /// working without touching a single assertion.
     ///
     /// Soroban's auto-generated `try_*` returns a nested
-    /// `Result<Result<T, ConversionError>, Result<E, InvokeError>>` so both
-    /// host-level and conversion errors can be surfaced. Tests only care about
-    /// the contract-defined `Result<PriceData, OracleSafetyViolation>`; the
-    /// other two arms cannot fire under the deterministic test env (types are
-    /// fixed at compile time, no host panics are triggered) and are escalated
-    /// to a clear panic with context if they ever do.
+    /// `Result<Result<PriceResult, ConversionError>, Result<_, InvokeError>>`
+    /// because the *contract method* now returns `Ok(PriceResult)`. The
+    /// `Err(Ok(_))` arm therefore only fires on real contract panics or host
+    /// errors — not on guardrail violations — and is escalated with context.
     pub fn lastprice(
         &self,
         asset: &Asset,
         config: &SafeOracleConfig,
     ) -> Result<PriceData, OracleSafetyViolation> {
-        match self.oracle_host_client.try_run_lastprice(
+        let price_result: PriceResult = match self.oracle_host_client.try_run_lastprice(
             asset,
             &self.reflector_address,
             &self.registry,
             config,
         ) {
-            Ok(Ok(price)) => Ok(price),
-            Err(Ok(err)) => Err(err),
-            Ok(Err(e)) => panic!("unexpected XDR conversion error in test env: {:?}", e),
-            Err(Err(e)) => panic!("unexpected invoke error in test env: {:?}", e),
-        }
+            Ok(Ok(pr)) => pr,
+            Ok(Err(conv_err)) => panic!(
+                "unexpected XDR conversion error in test env: {:?}",
+                conv_err
+            ),
+            Err(Ok(invoke_err)) => panic!(
+                "unexpected contract invocation error in test env: {:?}",
+                invoke_err
+            ),
+            Err(Err(e)) => panic!("unexpected host error in test env: {:?}", e),
+        };
+
+        price_result.into_result()
     }
 
     /// Returns a test-friendly config with relaxed thresholds.
