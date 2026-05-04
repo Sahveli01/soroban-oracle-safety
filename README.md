@@ -19,13 +19,13 @@ This project closes that gap.
 
 ## Status
 
-Work in progress. Phase 4 (full 5-guardrail integration + e2e attack scenarios) complete:
+Work in progress. Phase 5 (circuit breaker — auto-halt + governance override) complete:
 
 - Workspace scaffolding (6 crates) — Phase 1
 - CI pipeline (GitHub Actions) — Phase 1
 - Mock Reflector + mock Lending contracts (mock-lending wired to real `safe_oracle` chain end-to-end)
 - Core type definitions (`OracleSafetyViolation`, `SafeOracleConfig`, `Asset`, `PriceData`, `LiquiditySnapshot`)
-- Test infrastructure (`test-utils` crate, primary + secondary mock Reflectors, real LiquidityRegistry wiring)
+- Test infrastructure (`test-utils` crate, primary + secondary mock Reflectors, real LiquidityRegistry wiring, `OracleHost` + `TestHost` harnesses)
 - **Layer 1 guardrails** — Phase 2:
   - `check_deviation` — BPS-based, blocks YieldBlox-class SDEX manipulation
   - `check_staleness` — Unix timestamp comparison via `env.ledger().timestamp()`
@@ -43,9 +43,26 @@ Work in progress. Phase 4 (full 5-guardrail integration + e2e attack scenarios) 
   - Stale Reflector, stale registry snapshot, drained order book, single-trade window
   - Demo command: `cargo test --test e2e_attack_scenarios`
   - Lending-perspective counterpart: `cargo test --test integration -p mock-lending`
-- 96 tests passing, 0 warnings
+- **Circuit breaker** — Phase 5:
+  - Per-asset isolated halt mechanism (`CircuitBreakerState` Closed / Open with auto-recovery)
+  - Auto-halt on guardrail violation, opt-in via `config.circuit_breaker_enabled` (default `false` preserves Phase 1-4 behavior)
+  - Auto-recovery after `config.circuit_breaker_halt_ledgers` (default 720, ~1 hour at 5s close time)
+  - Governance manual override via `close_circuit_breaker` (caller MUST gate with `require_auth`; library does not enforce)
+  - Asset::Stellar + Asset::Other coverage with isolated storage paths
+  - Pre-flight check short-circuits `lastprice()` for halted assets (near-zero gas to reject)
+  - 26 dedicated tests across state machine, lastprice integration, lending e2e, manual override, edge cases
+- **Ok-API contract types** — Phase 5.2 v2 + 5.4 v2:
+  - `safe_oracle::PriceResult` and `mock_lending::BorrowOutcome` enums (Ok-only at the Soroban boundary)
+  - Required because Soroban rolls back all storage writes when a contract method returns `Result::Err`; auto-halt writes need to commit
+  - `into_result()` shim preserves `?` operator ergonomics for callers
+  - `From<Result<...>>` impl for internal helpers producing `Result`
+- 122 tests passing, 0 warnings
 
-Phase 5 (circuit breaker — automatic halt on repeated violations) starting next.
+Demo commands:
+- Attack scenarios (Phase 4): `cargo test --test e2e_attack_scenarios`
+- Auto-halt verification (Phase 5.4 v2 regression): `cargo test --test integration -p mock-lending test_borrow_circuit_breaker_opens`
+
+Phase 6 (audit + tracked debts cleanup) starting next.
 
 ## Building
 
