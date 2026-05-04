@@ -69,72 +69,23 @@ impl Default for SafeOracleConfig {
     }
 }
 
-/// Validates oracle output against five layered guardrails before returning a
-/// price, wrapped by the circuit breaker (Phase 5.2).
+/// Validates oracle output against five layered guardrails before returning a price.
 ///
-/// Public entry point of the `safe_oracle` library. Lending protocols call this
-/// instead of `reflector.lastprice()` directly. Each guardrail is a deterministic
-/// check that returns `Err` on violation, propagating to the calling contract
-/// via `?`.
+/// This function is the public entry point of the `safe_oracle` library. Lending
+/// protocols call this instead of `reflector.lastprice()` directly. Each guardrail
+/// is a deterministic check that returns `Err` on violation, propagating to the
+/// calling contract via `?`.
 ///
 /// # Guardrails
 /// - Layer 1 (Reflector-only): deviation, staleness, cross-source
 /// - Layer 2 (LiquidityRegistry-required): liquidity threshold, thin sampling
-/// - Wrapper: circuit breaker (Phase 5)
+/// - Optional: circuit breaker (Phase 5)
 ///
-/// # Circuit breaker integration (Phase 5.2)
-///
-/// 1. Before any guardrail runs, the breaker state is checked. If `Open` (and
-///    the halt window has not yet expired), `CircuitBreakerOpen` is returned
-///    immediately — no Reflector or LiquidityRegistry calls are made, so a
-///    halted asset costs near-zero gas to reject. Auto-recovery on expiry is
-///    handled inside `check_circuit_breaker`.
-///
-/// 2. If `config.circuit_breaker_enabled == true` (default `false`) and any
-///    guardrail returns `Err`, the breaker is opened for
-///    `config.circuit_breaker_halt_ledgers` ledgers (default 720, ~1 hour at
-///    5-second close time). Subsequent `lastprice()` calls short-circuit
-///    until the halt window expires.
-///
-/// The breaker is opt-in by design. With the default config, this function
-/// preserves the exact Phase 1-4 contract: guardrail violations propagate as
-/// `Err` without persisting any breaker state, and integrators see no
-/// behavioral change unless they flip `circuit_breaker_enabled`.
-///
-/// See the `circuit_breaker` module for state semantics, storage location,
-/// and the authorization model integrators must enforce around manual
-/// open/close paths.
+/// # Phase 2 Status
+/// Skeleton — Layer 1 guardrails are scaffolded as stubs returning `Ok(())`.
+/// Real guardrail logic arrives in prompts 2.2 (deviation), 2.3 (staleness),
+/// 2.4 (multi-source). Layer 2 lands in Phase 4 alongside `LiquidityRegistry`.
 pub fn lastprice(
-    env: &Env,
-    asset: &Asset,
-    reflector: &Address,
-    liquidity_registry: &Address,
-    config: &SafeOracleConfig,
-) -> Result<PriceData, OracleSafetyViolation> {
-    // Pre-flight breaker check. Open + not yet expired → short-circuit before
-    // any cross-contract call. Auto-recovery (state transition Open → Closed
-    // when ledger advanced past halt window) is handled inside the breaker.
-    circuit_breaker::check_circuit_breaker(env, asset)?;
-
-    let result = lastprice_inner(env, asset, reflector, liquidity_registry, config);
-
-    // Auto-halt on guardrail violation. Only trips when the integrator opted
-    // in — default `circuit_breaker_enabled = false` keeps Phase 1-4 behavior.
-    if result.is_err() && config.circuit_breaker_enabled {
-        circuit_breaker::open_circuit_breaker(env, asset, config.circuit_breaker_halt_ledgers);
-    }
-
-    result
-}
-
-/// Internal: full 5-guardrail chain without circuit breaker concerns.
-///
-/// Split from `lastprice` so the breaker stays a pure wrapper concern
-/// (pre-flight check + post-failure halt) and the guardrail chain itself
-/// remains the unchanged Phase 4.2 implementation. Audit-friendly: a reviewer
-/// reading this function sees exactly the layered defense, with no halt-state
-/// bookkeeping interleaved.
-fn lastprice_inner(
     env: &Env,
     asset: &Asset,
     reflector: &Address,
@@ -159,6 +110,9 @@ fn lastprice_inner(
         check_liquidity(&snapshot, config)?;
         check_thin_sampling(&snapshot, config)?;
     }
+
+    // 4. Circuit breaker check — Phase 5'te implement edilecek
+    // check_circuit_breaker(env, asset)?;
 
     Ok(current)
 }
