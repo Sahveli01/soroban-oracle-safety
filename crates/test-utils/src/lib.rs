@@ -96,34 +96,34 @@ impl<'a> TestEnv<'a> {
         };
         secondary_reflector_client.config(&secondary_cfg);
 
-        // Register mock Lending and initialize it so tests get a Phase 2.7
-        // wired contract by default — `safe_oracle::lastprice` is invoked
-        // through the real path (no stub). Registry placeholder is the
-        // lending address itself; `check_liquidity` and `check_thin_sampling`
-        // are still stubs returning `Ok(())`, so the placeholder is never
-        // dereferenced. Phase 4 swaps in a real `LiquidityRegistry`.
-        let lending_address = env.register(MockLending, ());
-        let lending_client = MockLendingClient::new(&env, &lending_address);
-        let lending_admin = Address::generate(&env);
-        lending_client.initialize(
-            &lending_admin,
-            &reflector_address,
-            &lending_address,
-            &SafeOracleConfig::default(),
-        );
-
         // Register `LiquidityRegistry` and prime it with an admin and a single
-        // whitelisted attester. Phase 4 guardrails read from this instance, so
-        // wiring it up here lets test authors call `write_snapshot` without
-        // per-test setup. Mock-lending intentionally still keeps its own
-        // address as the registry placeholder — Phase 4 swaps it in once the
-        // read-side guardrails consume it.
+        // whitelisted attester. Order matters: this must be live before
+        // `MockLending::initialize` runs so lending can be wired to the real
+        // registry instance below.
         let registry = env.register(LiquidityRegistry, ());
         let registry_client = LiquidityRegistryClient::new(&env, &registry);
         let admin = Address::generate(&env);
         let attester = Address::generate(&env);
         registry_client.initialize(&admin);
         registry_client.add_attester(&attester);
+
+        // Register mock Lending and initialize it against the real
+        // `LiquidityRegistry` registered above. Phase 4.5 swap: prior to
+        // Phase 4, lending was initialized with its own address as a registry
+        // placeholder (Layer 2 was stubbed, so the placeholder was never
+        // dereferenced). With `check_liquidity` and `check_thin_sampling`
+        // shipping in Phases 4.1/4.2, the lending → safe_oracle →
+        // LiquidityRegistry cross-contract path is now exercised end-to-end
+        // whenever a test calls `lending_client.borrow(..., Asset::Stellar(_), _)`.
+        let lending_address = env.register(MockLending, ());
+        let lending_client = MockLendingClient::new(&env, &lending_address);
+        let lending_admin = Address::generate(&env);
+        lending_client.initialize(
+            &lending_admin,
+            &reflector_address,
+            &registry,
+            &SafeOracleConfig::default(),
+        );
 
         Self {
             env,
