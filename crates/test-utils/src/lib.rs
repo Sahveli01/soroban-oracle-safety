@@ -51,6 +51,37 @@ impl OracleHost {
     }
 }
 
+/// Test-only harness contract that exposes the `circuit_breaker` primitives
+/// (`open` / `close` / `check`) as contract methods.
+///
+/// `circuit_breaker::*` functions read/write `instance()` storage, which
+/// requires contract context. This harness lets state-machine tests exercise
+/// the primitives directly through the auto-generated client without going
+/// through the full `lastprice()` chain. Phase 5.5 also uses it for manual
+/// governance-override scenarios (open/close cycles independent of guardrail
+/// state).
+///
+/// In production, lending protocols don't use this — they integrate via
+/// `safe_oracle::lastprice()` plus their own auth-gated wrappers around
+/// `close_circuit_breaker`. This harness is purely a test affordance.
+#[contract]
+pub struct TestHost;
+
+#[contractimpl]
+impl TestHost {
+    pub fn run_check(env: Env, asset: Asset) -> Result<(), OracleSafetyViolation> {
+        safe_oracle::circuit_breaker::check_circuit_breaker(&env, &asset)
+    }
+
+    pub fn run_open(env: Env, asset: Asset, duration: u32) {
+        safe_oracle::circuit_breaker::open_circuit_breaker(&env, &asset, duration);
+    }
+
+    pub fn run_close(env: Env, asset: Asset) {
+        safe_oracle::circuit_breaker::close_circuit_breaker(&env, &asset);
+    }
+}
+
 /// Test environment that bundles Env + registered mock contracts + helpers.
 pub struct TestEnv<'a> {
     pub env: Env,
@@ -83,6 +114,12 @@ pub struct TestEnv<'a> {
     /// custom error matching) can reach it directly.
     pub oracle_host_address: Address,
     pub oracle_host_client: OracleHostClient<'a>,
+    /// `TestHost` test-harness contract exposing `circuit_breaker::*` primitives.
+    /// Used by state-machine and manual-override tests; lending integrators
+    /// don't have this in production (they wrap `close_circuit_breaker` behind
+    /// their own auth gate).
+    pub test_host_address: Address,
+    pub test_host_client: TestHostClient<'a>,
 }
 
 impl<'a> TestEnv<'a> {
@@ -193,9 +230,12 @@ impl<'a> TestEnv<'a> {
         // Pre-5.2: register the OracleHost harness LAST so the deterministic
         // address sequence of pre-existing contracts (reflector, secondary,
         // registry, lending) is preserved — keeps test snapshots stable for
-        // tests that don't go through the harness.
+        // tests that don't go through the harness. Phase 5.5 adds TestHost
+        // after OracleHost for the same reason.
         let oracle_host_address = env.register(OracleHost, ());
         let oracle_host_client = OracleHostClient::new(&env, &oracle_host_address);
+        let test_host_address = env.register(TestHost, ());
+        let test_host_client = TestHostClient::new(&env, &test_host_address);
 
         Self {
             env,
@@ -211,6 +251,8 @@ impl<'a> TestEnv<'a> {
             attester,
             oracle_host_address,
             oracle_host_client,
+            test_host_address,
+            test_host_client,
         }
     }
 
