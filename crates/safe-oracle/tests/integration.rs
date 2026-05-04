@@ -8,7 +8,7 @@
 //! Integration tests in `tests/` see `safe-oracle` as a single normal dependency,
 //! which matches `test-utils`' view — types unify, and the cycle disappears.
 
-use safe_oracle::{lastprice, Asset, OracleSafetyViolation};
+use safe_oracle::{Asset, OracleSafetyViolation};
 use soroban_sdk::{testutils::Ledger as _, Symbol};
 use test_utils::TestEnv;
 
@@ -26,13 +26,7 @@ fn test_lastprice_with_real_reflector_call() {
     test_env.set_oracle_price(&asset, 101_000_000_000_000, 12345);
 
     let config = TestEnv::relaxed_config();
-    let result = lastprice(
-        &test_env.env,
-        &asset,
-        &test_env.reflector_address,
-        &test_env.lending_address, // dummy registry — Phase 4'te gerçek olacak
-        &config,
-    );
+    let result = test_env.lastprice(&asset, &config);
 
     assert!(result.is_ok(), "expected Ok, got {:?}", result);
     let price_data = result.unwrap();
@@ -48,13 +42,7 @@ fn test_lastprice_returns_stale_data_when_reflector_has_no_price() {
     let asset = Asset::Other(Symbol::new(&test_env.env, "BTC")); // hiç fiyat set edilmedi
     let config = TestEnv::relaxed_config();
 
-    let result = lastprice(
-        &test_env.env,
-        &asset,
-        &test_env.reflector_address,
-        &test_env.lending_address,
-        &config,
-    );
+    let result = test_env.lastprice(&asset, &config);
 
     assert_eq!(result, Err(OracleSafetyViolation::StaleData));
 }
@@ -73,13 +61,7 @@ fn test_deviation_passes_with_small_change() {
     test_env.set_oracle_price(&asset, ONE_DOLLAR + ONE_DOLLAR / 20, 1300);
 
     let config = TestEnv::relaxed_config(); // max_deviation_bps = 5000
-    let result = lastprice(
-        &test_env.env,
-        &asset,
-        &test_env.reflector_address,
-        &test_env.lending_address,
-        &config,
-    );
+    let result = test_env.lastprice(&asset, &config);
 
     assert!(
         result.is_ok(),
@@ -99,13 +81,7 @@ fn test_deviation_fails_at_threshold_breach() {
     test_env.set_oracle_price(&asset, 125 * ONE_DOLLAR, 1300);
 
     let config = TestEnv::strict_config(); // max_deviation_bps = 2000
-    let result = lastprice(
-        &test_env.env,
-        &asset,
-        &test_env.reflector_address,
-        &test_env.lending_address,
-        &config,
-    );
+    let result = test_env.lastprice(&asset, &config);
 
     assert_eq!(result, Err(OracleSafetyViolation::ExcessiveDeviation));
 }
@@ -128,13 +104,7 @@ fn test_deviation_passes_at_exact_threshold() {
     test_env.set_oracle_price(&asset, 120 * ONE_DOLLAR, 1300);
 
     let config = TestEnv::strict_config(); // max_deviation_bps = 2000
-    let result = lastprice(
-        &test_env.env,
-        &asset,
-        &test_env.reflector_address,
-        &test_env.lending_address,
-        &config,
-    );
+    let result = test_env.lastprice(&asset, &config);
 
     assert!(
         result.is_ok(),
@@ -156,13 +126,7 @@ fn test_deviation_yieldblox_attack_simulation() {
     test_env.set_oracle_price(&asset, 106 * ONE_DOLLAR, 1300);
 
     let config = TestEnv::strict_config();
-    let result = lastprice(
-        &test_env.env,
-        &asset,
-        &test_env.reflector_address,
-        &test_env.lending_address,
-        &config,
-    );
+    let result = test_env.lastprice(&asset, &config);
 
     assert_eq!(
         result,
@@ -182,13 +146,7 @@ fn test_deviation_fails_when_only_one_price_in_history() {
     // intentionally only one price — deviation needs two
 
     let config = TestEnv::relaxed_config();
-    let result = lastprice(
-        &test_env.env,
-        &asset,
-        &test_env.reflector_address,
-        &test_env.lending_address,
-        &config,
-    );
+    let result = test_env.lastprice(&asset, &config);
 
     assert_eq!(result, Err(OracleSafetyViolation::StaleData));
 }
@@ -204,13 +162,7 @@ fn test_deviation_fails_when_previous_price_is_zero() {
     test_env.set_oracle_price(&asset, ONE_DOLLAR, 1300);
 
     let config = TestEnv::relaxed_config();
-    let result = lastprice(
-        &test_env.env,
-        &asset,
-        &test_env.reflector_address,
-        &test_env.lending_address,
-        &config,
-    );
+    let result = test_env.lastprice(&asset, &config);
 
     assert_eq!(result, Err(OracleSafetyViolation::ExcessiveDeviation));
 }
@@ -229,13 +181,7 @@ fn test_staleness_passes_when_data_is_fresh() {
     test_env.set_oracle_price(&asset, ONE_DOLLAR, 4900); // 100s eski (current)
 
     let config = TestEnv::relaxed_config();
-    let result = lastprice(
-        &test_env.env,
-        &asset,
-        &test_env.reflector_address,
-        &test_env.lending_address,
-        &config,
-    );
+    let result = test_env.lastprice(&asset, &config);
 
     assert!(
         result.is_ok(),
@@ -258,13 +204,7 @@ fn test_staleness_fails_when_data_too_old() {
     test_env.set_oracle_price(&asset, ONE_DOLLAR * 100, 1000); // 4000s eski (current)
 
     let config = TestEnv::strict_config(); // max_staleness_seconds = 300
-    let result = lastprice(
-        &test_env.env,
-        &asset,
-        &test_env.reflector_address,
-        &test_env.lending_address,
-        &config,
-    );
+    let result = test_env.lastprice(&asset, &config);
 
     assert_eq!(result, Err(OracleSafetyViolation::StaleData));
 }
@@ -284,13 +224,7 @@ fn test_staleness_fails_with_future_timestamp() {
     test_env.set_oracle_price(&asset, ONE_DOLLAR, 6000); // future (current)
 
     let config = TestEnv::relaxed_config();
-    let result = lastprice(
-        &test_env.env,
-        &asset,
-        &test_env.reflector_address,
-        &test_env.lending_address,
-        &config,
-    );
+    let result = test_env.lastprice(&asset, &config);
 
     assert_eq!(result, Err(OracleSafetyViolation::StaleData));
 }
@@ -310,13 +244,7 @@ fn test_staleness_passes_at_exact_threshold() {
     test_env.set_oracle_price(&asset, ONE_DOLLAR, 4700); // exactly 300s eski
 
     let config = TestEnv::strict_config(); // max_staleness_seconds = 300
-    let result = lastprice(
-        &test_env.env,
-        &asset,
-        &test_env.reflector_address,
-        &test_env.lending_address,
-        &config,
-    );
+    let result = test_env.lastprice(&asset, &config);
 
     assert!(
         result.is_ok(),
@@ -338,13 +266,7 @@ fn test_cross_source_skipped_when_secondary_is_none() {
     let mut config = TestEnv::relaxed_config();
     config.secondary_oracle = None;
 
-    let result = lastprice(
-        &test_env.env,
-        &asset,
-        &test_env.reflector_address,
-        &test_env.lending_address,
-        &config,
-    );
+    let result = test_env.lastprice(&asset, &config);
 
     assert!(
         result.is_ok(),
@@ -366,13 +288,7 @@ fn test_cross_source_passes_with_matching_prices() {
     let mut config = TestEnv::relaxed_config();
     config.secondary_oracle = Some(test_env.secondary_reflector_address.clone());
 
-    let result = lastprice(
-        &test_env.env,
-        &asset,
-        &test_env.reflector_address,
-        &test_env.lending_address,
-        &config,
-    );
+    let result = test_env.lastprice(&asset, &config);
 
     assert!(
         result.is_ok(),
@@ -394,13 +310,7 @@ fn test_cross_source_passes_with_small_difference() {
     let mut config = TestEnv::relaxed_config(); // max_cross_source_bps = 2000
     config.secondary_oracle = Some(test_env.secondary_reflector_address.clone());
 
-    let result = lastprice(
-        &test_env.env,
-        &asset,
-        &test_env.reflector_address,
-        &test_env.lending_address,
-        &config,
-    );
+    let result = test_env.lastprice(&asset, &config);
 
     assert!(
         result.is_ok(),
@@ -428,13 +338,7 @@ fn test_cross_source_fails_with_excessive_difference() {
     let mut config = TestEnv::strict_config(); // max_cross_source_bps = 500
     config.secondary_oracle = Some(test_env.secondary_reflector_address.clone());
 
-    let result = lastprice(
-        &test_env.env,
-        &asset,
-        &test_env.reflector_address,
-        &test_env.lending_address,
-        &config,
-    );
+    let result = test_env.lastprice(&asset, &config);
 
     assert_eq!(result, Err(OracleSafetyViolation::CrossSourceMismatch));
 }
@@ -452,13 +356,7 @@ fn test_cross_source_skipped_when_secondary_returns_none() {
     let mut config = TestEnv::relaxed_config();
     config.secondary_oracle = Some(test_env.secondary_reflector_address.clone());
 
-    let result = lastprice(
-        &test_env.env,
-        &asset,
-        &test_env.reflector_address,
-        &test_env.lending_address,
-        &config,
-    );
+    let result = test_env.lastprice(&asset, &config);
 
     assert!(
         result.is_ok(),
@@ -481,13 +379,7 @@ fn test_cross_source_fails_when_secondary_price_is_zero() {
     let mut config = TestEnv::relaxed_config();
     config.secondary_oracle = Some(test_env.secondary_reflector_address.clone());
 
-    let result = lastprice(
-        &test_env.env,
-        &asset,
-        &test_env.reflector_address,
-        &test_env.lending_address,
-        &config,
-    );
+    let result = test_env.lastprice(&asset, &config);
 
     assert_eq!(result, Err(OracleSafetyViolation::CrossSourceMismatch));
 }

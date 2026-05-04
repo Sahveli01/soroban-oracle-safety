@@ -6,7 +6,7 @@
 //! `tests/integration.rs`'de; bu dosya farklı: Layer 1'in kombine
 //! davranışına ve hata önceliğine odaklanır.
 
-use safe_oracle::{lastprice, Asset, OracleSafetyViolation, SafeOracleConfig};
+use safe_oracle::{Asset, OracleSafetyViolation, SafeOracleConfig};
 use soroban_sdk::Symbol;
 use test_utils::TestEnv;
 
@@ -27,13 +27,7 @@ fn test_layer1_happy_path_all_guardrails_pass() {
     let mut config = TestEnv::relaxed_config();
     config.secondary_oracle = Some(test_env.secondary_reflector_address.clone());
 
-    let result = lastprice(
-        &test_env.env,
-        &asset,
-        &test_env.reflector_address,
-        &test_env.lending_address,
-        &config,
-    );
+    let result = test_env.lastprice(&asset, &config);
 
     assert!(
         result.is_ok(),
@@ -60,13 +54,7 @@ fn test_layer1_execution_order_deviation_before_staleness() {
 
     let config = TestEnv::strict_config();
 
-    let result = lastprice(
-        &test_env.env,
-        &asset,
-        &test_env.reflector_address,
-        &test_env.lending_address,
-        &config,
-    );
+    let result = test_env.lastprice(&asset, &config);
 
     assert_eq!(
         result,
@@ -89,13 +77,7 @@ fn test_layer1_execution_order_staleness_after_deviation_pass() {
 
     let config = TestEnv::strict_config();
 
-    let result = lastprice(
-        &test_env.env,
-        &asset,
-        &test_env.reflector_address,
-        &test_env.lending_address,
-        &config,
-    );
+    let result = test_env.lastprice(&asset, &config);
 
     assert_eq!(
         result,
@@ -120,13 +102,7 @@ fn test_layer1_execution_order_cross_source_after_staleness_pass() {
     let mut config = TestEnv::strict_config();
     config.secondary_oracle = Some(test_env.secondary_reflector_address.clone());
 
-    let result = lastprice(
-        &test_env.env,
-        &asset,
-        &test_env.reflector_address,
-        &test_env.lending_address,
-        &config,
-    );
+    let result = test_env.lastprice(&asset, &config);
 
     assert_eq!(
         result,
@@ -151,13 +127,7 @@ fn test_layer1_with_default_config_passes_normal_scenario() {
     // Default: secondary_oracle = None → cross-source skip
     let config = SafeOracleConfig::default();
 
-    let result = lastprice(
-        &test_env.env,
-        &asset,
-        &test_env.reflector_address,
-        &test_env.lending_address,
-        &config,
-    );
+    let result = test_env.lastprice(&asset, &config);
 
     assert!(
         result.is_ok(),

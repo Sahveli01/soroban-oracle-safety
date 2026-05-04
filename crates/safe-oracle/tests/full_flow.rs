@@ -16,7 +16,7 @@
 //! No implementation changes — every assertion verifies behavior already
 //! shipped in Phases 4.1 and 4.2.
 
-use safe_oracle::{lastprice, Asset, OracleSafetyViolation, SafeOracleConfig};
+use safe_oracle::{Asset, OracleSafetyViolation, SafeOracleConfig};
 use soroban_sdk::{testutils::Address as _, Address};
 use test_utils::TestEnv;
 
@@ -56,13 +56,7 @@ fn test_full_flow_deviation_caught_before_staleness() {
     test_env.set_oracle_price(&asset, ONE_DOLLAR, 94_950);
     test_env.set_oracle_price(&asset, ONE_DOLLAR * 100, 95_000);
 
-    let result = lastprice(
-        &test_env.env,
-        &asset,
-        &test_env.reflector_address,
-        &test_env.registry,
-        &SafeOracleConfig::default(),
-    );
+    let result = test_env.lastprice(&asset, &SafeOracleConfig::default());
 
     assert_eq!(
         result,
@@ -97,13 +91,7 @@ fn test_full_flow_staleness_caught_before_cross_source() {
         ..SafeOracleConfig::default()
     };
 
-    let result = lastprice(
-        &test_env.env,
-        &asset,
-        &test_env.reflector_address,
-        &test_env.registry,
-        &config,
-    );
+    let result = test_env.lastprice(&asset, &config);
 
     assert_eq!(
         result,
@@ -129,13 +117,7 @@ fn test_full_flow_layer1_pass_then_layer2_blocks() {
     // `min_liquidity_usd` of $10,000.
     test_env.write_snapshot_now(&asset_address, 5_i128, 10_u32);
 
-    let result = lastprice(
-        &test_env.env,
-        &asset,
-        &test_env.reflector_address,
-        &test_env.registry,
-        &SafeOracleConfig::default(),
-    );
+    let result = test_env.lastprice(&asset, &SafeOracleConfig::default());
 
     assert_eq!(
         result,
@@ -157,13 +139,7 @@ fn test_full_flow_all_guardrails_pass() {
     prime_layer1(&test_env, &asset);
     test_env.write_snapshot_now(&asset_address, HEALTHY_VOLUME_USD, 10_u32);
 
-    let result = lastprice(
-        &test_env.env,
-        &asset,
-        &test_env.reflector_address,
-        &test_env.registry,
-        &SafeOracleConfig::default(),
-    );
+    let result = test_env.lastprice(&asset, &SafeOracleConfig::default());
 
     let price = result.expect("all healthy conditions must pass");
     assert_eq!(
@@ -197,13 +173,7 @@ fn test_full_flow_cross_source_skipped_without_secondary() {
         ..SafeOracleConfig::default()
     };
 
-    let result = lastprice(
-        &test_env.env,
-        &asset,
-        &test_env.reflector_address,
-        &test_env.registry,
-        &config,
-    );
+    let result = test_env.lastprice(&asset, &config);
 
     assert!(
         result.is_ok(),

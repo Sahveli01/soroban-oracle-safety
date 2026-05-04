@@ -12,11 +12,41 @@
 use liquidity_registry::{LiquidityRegistry, LiquidityRegistryClient, LiquiditySnapshot};
 use mock_lending::{MockLending, MockLendingClient};
 use mock_reflector::{ConfigData, FeeConfig, MockReflector, MockReflectorClient};
-use safe_oracle::{Asset, SafeOracleConfig};
+use safe_oracle::{Asset, OracleSafetyViolation, PriceData, SafeOracleConfig};
 use soroban_sdk::{
+    contract, contractimpl,
     testutils::{Address as _, Ledger as _},
     vec, Address, Env, Symbol,
 };
+
+/// Test-only harness contract that hosts `safe_oracle::lastprice()` calls
+/// inside a Soroban contract context.
+///
+/// Required because `safe_oracle::lastprice` reads from the calling contract's
+/// instance storage (Phase 5.2 circuit breaker integration). Outside a
+/// contract context, `env.storage().instance()` panics. This harness provides
+/// a contract that test code can invoke via auto-generated client, mirroring
+/// the production call pattern (e.g., `MockLending::borrow()` calls `lastprice`
+/// from inside its own contract context).
+///
+/// Test code never instantiates this directly — `TestEnv::new()` registers it,
+/// and tests call `test_env.lastprice(asset, config)` which proxies through
+/// `oracle_host_client.try_run_lastprice(...)`.
+#[contract]
+pub struct OracleHost;
+
+#[contractimpl]
+impl OracleHost {
+    pub fn run_lastprice(
+        env: Env,
+        asset: Asset,
+        reflector: Address,
+        registry: Address,
+        config: SafeOracleConfig,
+    ) -> Result<PriceData, OracleSafetyViolation> {
+        safe_oracle::lastprice(&env, &asset, &reflector, &registry, &config)
+    }
+}
 
 /// Test environment that bundles Env + registered mock contracts + helpers.
 pub struct TestEnv<'a> {
@@ -43,6 +73,13 @@ pub struct TestEnv<'a> {
     /// A whitelisted attester ready to call `write_snapshot`. Convenience for
     /// the common case where a test just needs *some* authorized writer.
     pub attester: Address,
+    /// `OracleHost` test-harness contract that wraps `safe_oracle::lastprice()`
+    /// so integration tests run inside a contract context (Pre-5.2 refactor).
+    /// Tests call `test_env.lastprice(asset, config)`; this address and client
+    /// are exposed so callers that need the raw client (e.g., `try_*` for
+    /// custom error matching) can reach it directly.
+    pub oracle_host_address: Address,
+    pub oracle_host_client: OracleHostClient<'a>,
 }
 
 impl<'a> TestEnv<'a> {
@@ -125,6 +162,13 @@ impl<'a> TestEnv<'a> {
             &SafeOracleConfig::default(),
         );
 
+        // Pre-5.2: register the OracleHost harness LAST so the deterministic
+        // address sequence of pre-existing contracts (reflector, secondary,
+        // registry, lending) is preserved — keeps test snapshots stable for
+        // tests that don't go through the harness.
+        let oracle_host_address = env.register(OracleHost, ());
+        let oracle_host_client = OracleHostClient::new(&env, &oracle_host_address);
+
         Self {
             env,
             reflector_address,
@@ -137,6 +181,8 @@ impl<'a> TestEnv<'a> {
             registry_client,
             admin,
             attester,
+            oracle_host_address,
+            oracle_host_client,
         }
     }
 
@@ -179,6 +225,39 @@ impl<'a> TestEnv<'a> {
     pub fn write_snapshot_now(&self, asset: &Address, volume_usd: i128, trades_1h: u32) {
         let now = self.env.ledger().timestamp();
         self.write_snapshot(asset, volume_usd, trades_1h, now);
+    }
+
+    /// Invoke `safe_oracle::lastprice()` through the `OracleHost` harness.
+    ///
+    /// This is the canonical way to call `lastprice` from integration tests.
+    /// Direct calls (`safe_oracle::lastprice(&env, ...)`) panic on `instance()`
+    /// storage access outside a contract context — the harness provides that
+    /// context, mirroring how a production lending contract reaches `lastprice`
+    /// from inside its own `borrow()` invocation.
+    ///
+    /// Soroban's auto-generated `try_*` returns a nested
+    /// `Result<Result<T, ConversionError>, Result<E, InvokeError>>` so both
+    /// host-level and conversion errors can be surfaced. Tests only care about
+    /// the contract-defined `Result<PriceData, OracleSafetyViolation>`; the
+    /// other two arms cannot fire under the deterministic test env (types are
+    /// fixed at compile time, no host panics are triggered) and are escalated
+    /// to a clear panic with context if they ever do.
+    pub fn lastprice(
+        &self,
+        asset: &Asset,
+        config: &SafeOracleConfig,
+    ) -> Result<PriceData, OracleSafetyViolation> {
+        match self.oracle_host_client.try_run_lastprice(
+            asset,
+            &self.reflector_address,
+            &self.registry,
+            config,
+        ) {
+            Ok(Ok(price)) => Ok(price),
+            Err(Ok(err)) => Err(err),
+            Ok(Err(e)) => panic!("unexpected XDR conversion error in test env: {:?}", e),
+            Err(Err(e)) => panic!("unexpected invoke error in test env: {:?}", e),
+        }
     }
 
     /// Returns a test-friendly config with relaxed thresholds.

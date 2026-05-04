@@ -12,7 +12,7 @@
 //! SDEX volume, which is structurally a Layer 2 signal even though the
 //! visible price move is what most observers notice first.
 
-use safe_oracle::{lastprice, Asset, OracleSafetyViolation, SafeOracleConfig};
+use safe_oracle::{Asset, OracleSafetyViolation, SafeOracleConfig};
 use soroban_sdk::{testutils::Address as _, Address, Symbol};
 use test_utils::TestEnv;
 
@@ -54,13 +54,7 @@ fn test_check_liquidity_blocks_yieldblox_thin_liquidity() {
     // `check_liquidity`'s threshold comparison.
     test_env.write_snapshot_now(&asset_address, 5_i128, 1_u32);
 
-    let result = lastprice(
-        &test_env.env,
-        &asset,
-        &test_env.reflector_address,
-        &test_env.registry,
-        &SafeOracleConfig::default(),
-    );
+    let result = test_env.lastprice(&asset, &SafeOracleConfig::default());
 
     assert_eq!(
         result,
@@ -81,13 +75,7 @@ fn test_check_liquidity_passes_with_sufficient_volume() {
     prime_layer1(&test_env, &asset);
     test_env.write_snapshot_now(&asset_address, HEALTHY_VOLUME_USD, 10_u32);
 
-    let result = lastprice(
-        &test_env.env,
-        &asset,
-        &test_env.reflector_address,
-        &test_env.registry,
-        &SafeOracleConfig::default(),
-    );
+    let result = test_env.lastprice(&asset, &SafeOracleConfig::default());
 
     assert!(
         result.is_ok(),
@@ -113,13 +101,7 @@ fn test_check_liquidity_blocks_stale_snapshot() {
     let stale_ts = test_env.env.ledger().timestamp().saturating_sub(3_600);
     test_env.write_snapshot(&asset_address, HEALTHY_VOLUME_USD, 10_u32, stale_ts);
 
-    let result = lastprice(
-        &test_env.env,
-        &asset,
-        &test_env.reflector_address,
-        &test_env.registry,
-        &SafeOracleConfig::default(),
-    );
+    let result = test_env.lastprice(&asset, &SafeOracleConfig::default());
 
     assert_eq!(
         result,
@@ -142,13 +124,7 @@ fn test_check_liquidity_blocks_missing_snapshot() {
     prime_layer1(&test_env, &asset);
     // No write_snapshot — registry returns None.
 
-    let result = lastprice(
-        &test_env.env,
-        &asset,
-        &test_env.reflector_address,
-        &test_env.registry,
-        &SafeOracleConfig::default(),
-    );
+    let result = test_env.lastprice(&asset, &SafeOracleConfig::default());
 
     assert_eq!(
         result,
@@ -170,13 +146,7 @@ fn test_check_liquidity_skips_for_asset_other() {
     prime_layer1(&test_env, &asset);
     // Intentionally no snapshot — skip path means the registry is never asked.
 
-    let result = lastprice(
-        &test_env.env,
-        &asset,
-        &test_env.reflector_address,
-        &test_env.registry,
-        &SafeOracleConfig::default(),
-    );
+    let result = test_env.lastprice(&asset, &SafeOracleConfig::default());
 
     assert!(
         result.is_ok(),
