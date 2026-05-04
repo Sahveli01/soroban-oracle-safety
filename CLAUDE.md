@@ -16,8 +16,8 @@ Three components:
 - ✅ **Phase 1** Complete: Workspace, CI, mock infrastructure (`01f589c`)
 - ✅ **Phase 2** Complete: Layer 1 guardrails (deviation, staleness, cross-source) — tag `phase-2-complete`
 - ✅ **Phase 3** Complete: LiquidityRegistry contract (auth, whitelist, snapshot, replay protection) — tag `phase-3-complete`
-- 🟡 **Phase 4** Starting: Layer 2 guardrails (liquidity, thin sampling)
-- ⏳ Phase 5: Circuit breaker
+- ✅ **Phase 4** Complete: Layer 2 guardrails (liquidity, thin sampling) + e2e attack scenarios — tag `phase-4-complete`
+- 🟡 **Phase 5** Starting: Circuit breaker (automatic halt on repeated violations)
 - ⏳ Phase 6: Audit + improvements
 - ⏳ Phase 7: SEP-Oracle-Safety standard draft
 - ⏳ Phase 8: Testnet deployment
