@@ -14,3 +14,10 @@ soroban-sdk = { workspace = true }
 soroban-sdk = { workspace = true, features = ["testutils"] }
 test-utils = { path = "../test-utils" }
 proptest = { workspace = true }
+# Hardening 5 (#18+#20): the manual-close-after-auto-halt regression
+# test in tests/circuit_breaker.rs exercises the borrow path (which
+# routes through MockLending and so shares its instance() storage with
+# the cfg-gated breaker primitives). Direct dev-dep on mock-lending lets
+# that test name `BorrowOutcome` and `MockLendingError` without pulling
+# them through `test-utils` or duplicating the discriminant set.
+mock-lending = { path = "../../mocks/mock-lending", features = ["testutils"] }

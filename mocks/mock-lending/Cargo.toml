@@ -10,6 +10,15 @@ rust-version.workspace = true
 [lib]
 crate-type = ["cdylib", "rlib"]
 
+[features]
+default = []
+# Enables test-only harness methods on `MockLending` (run_check, run_open,
+# run_close) so consumer test crates can drive `safe_oracle::circuit_breaker`
+# primitives through the same contract instance that hosts `borrow()`.
+# Production WASM builds do not enable this feature.
+# Hardening Phase debt #18+#20 — see lib.rs for full rationale.
+testutils = []
+
 [dependencies]
 soroban-sdk = { workspace = true }
 safe-oracle = { path = "../../crates/safe-oracle" }

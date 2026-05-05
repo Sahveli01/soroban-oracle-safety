@@ -15,6 +15,7 @@
 //!   and observes the second call short-circuiting is the regression
 //!   guard for that bug.
 
+use mock_lending::{BorrowOutcome, MockLendingError};
 use safe_oracle::{Asset, OracleSafetyViolation, SafeOracleConfig};
 use soroban_sdk::{
     testutils::{Address as _, Ledger as _},
@@ -22,8 +23,14 @@ use soroban_sdk::{
 };
 use test_utils::TestEnv;
 
-// Phase 5.1 unit tests exercise the state machine through `TestEnv::test_host_client`,
-// the harness moved into `test-utils` in Phase 5.5 (previously inline here).
+// Phase 5.1 unit tests exercise the breaker state machine through
+// `TestEnv::lending_client`. Hardening 5 (#18+#20) folded the previous
+// `TestHost` harness into `MockLending` itself: the `run_check`,
+// `run_open`, `run_close` methods on the lending client share the same
+// `instance()` storage that `lastprice`'s auto-halt commits to. Pre-Hardening 5
+// the breaker primitives lived on a separate `TestHost` contract whose
+// storage was disjoint, requiring workaround patterns for any test that
+// exercised both auto-halt and manual close on the same asset.
 
 /// Default state for an asset never touched by `open_circuit_breaker`
 /// must be `Closed`. `unwrap_or(Closed)` on the `get` is what makes
@@ -33,7 +40,7 @@ fn test_initial_state_is_closed() {
     let test_env = TestEnv::new();
     let asset = Asset::Stellar(Address::generate(&test_env.env));
 
-    let result = test_env.test_host_client.try_run_check(&asset);
+    let result = test_env.lending_client.try_run_check(&asset);
     assert!(
         result.is_ok(),
         "initial state must be Closed (no storage entry yet), got {:?}",
@@ -50,9 +57,9 @@ fn test_open_then_check_returns_circuit_breaker_open() {
     let test_env = TestEnv::new();
     let asset = Asset::Stellar(Address::generate(&test_env.env));
 
-    test_env.test_host_client.run_open(&asset, &720);
+    test_env.lending_client.run_open(&asset, &720);
 
-    let result = test_env.test_host_client.try_run_check(&asset);
+    let result = test_env.lending_client.try_run_check(&asset);
     assert_eq!(
         result,
         Err(Ok(OracleSafetyViolation::CircuitBreakerOpen)),
@@ -69,14 +76,14 @@ fn test_open_breaker_auto_recovers_after_halt_window() {
     let asset = Asset::Stellar(Address::generate(&test_env.env));
 
     let initial_seq = test_env.env.ledger().sequence();
-    test_env.test_host_client.run_open(&asset, &10);
+    test_env.lending_client.run_open(&asset, &10);
 
     // Advance the ledger past `halt_until_ledger = initial_seq + 10`.
     test_env.env.ledger().with_mut(|li| {
         li.sequence_number = initial_seq + 11;
     });
 
-    let result = test_env.test_host_client.try_run_check(&asset);
+    let result = test_env.lending_client.try_run_check(&asset);
     assert!(
         result.is_ok(),
         "halt window expired — breaker must auto-close, got {:?}",
@@ -92,10 +99,10 @@ fn test_close_after_open_resets_state() {
     let test_env = TestEnv::new();
     let asset = Asset::Stellar(Address::generate(&test_env.env));
 
-    test_env.test_host_client.run_open(&asset, &720);
-    test_env.test_host_client.run_close(&asset);
+    test_env.lending_client.run_open(&asset, &720);
+    test_env.lending_client.run_close(&asset);
 
-    let result = test_env.test_host_client.try_run_check(&asset);
+    let result = test_env.lending_client.try_run_check(&asset);
     assert!(
         result.is_ok(),
         "manual close must reset state, got {:?}",
@@ -113,16 +120,16 @@ fn test_breaker_isolated_per_asset() {
     let asset_a = Asset::Stellar(Address::generate(&test_env.env));
     let asset_b = Asset::Stellar(Address::generate(&test_env.env));
 
-    test_env.test_host_client.run_open(&asset_a, &720);
+    test_env.lending_client.run_open(&asset_a, &720);
 
-    let result_a = test_env.test_host_client.try_run_check(&asset_a);
+    let result_a = test_env.lending_client.try_run_check(&asset_a);
     assert_eq!(
         result_a,
         Err(Ok(OracleSafetyViolation::CircuitBreakerOpen)),
         "asset_a must be halted"
     );
 
-    let result_b = test_env.test_host_client.try_run_check(&asset_b);
+    let result_b = test_env.lending_client.try_run_check(&asset_b);
     assert!(
         result_b.is_ok(),
         "asset_b must remain Closed despite asset_a halt, got {:?}",
@@ -141,9 +148,9 @@ fn test_asset_other_uses_separate_storage_path() {
     let stellar_asset = Asset::Stellar(Address::generate(&test_env.env));
     let other_asset = Asset::Other(Symbol::new(&test_env.env, "BTC"));
 
-    test_env.test_host_client.run_open(&stellar_asset, &720);
+    test_env.lending_client.run_open(&stellar_asset, &720);
 
-    let result = test_env.test_host_client.try_run_check(&other_asset);
+    let result = test_env.lending_client.try_run_check(&other_asset);
     assert!(
         result.is_ok(),
         "Asset::Other must have independent breaker state from Asset::Stellar, got {:?}",
@@ -163,8 +170,8 @@ fn test_open_overwrites_existing_halt_window() {
 
     let initial_seq = test_env.env.ledger().sequence();
 
-    test_env.test_host_client.run_open(&asset, &10);
-    test_env.test_host_client.run_open(&asset, &1000);
+    test_env.lending_client.run_open(&asset, &10);
+    test_env.lending_client.run_open(&asset, &1000);
 
     // Advance to a sequence where the first 10-ledger window would have
     // already auto-recovered if it had not been overwritten.
@@ -172,7 +179,7 @@ fn test_open_overwrites_existing_halt_window() {
         li.sequence_number = initial_seq + 50;
     });
 
-    let result = test_env.test_host_client.try_run_check(&asset);
+    let result = test_env.lending_client.try_run_check(&asset);
     assert_eq!(
         result,
         Err(Ok(OracleSafetyViolation::CircuitBreakerOpen)),
@@ -599,49 +606,51 @@ fn test_manual_close_resets_open_breaker_state() {
     test_env.set_oracle_price(&asset, TestEnv::ONE_DOLLAR * 100, 99_950);
     test_env.write_snapshot_now(&asset_address, TestEnv::HEALTHY_VOLUME_USD, 10_u32);
 
-    let config = SafeOracleConfig {
-        circuit_breaker_enabled: true,
-        ..SafeOracleConfig::default()
-    };
+    // Note: `TestEnv::with_circuit_breaker_enabled()` already initialized
+    // MockLending with `circuit_breaker_enabled = true`; `try_borrow` reads
+    // that config from instance storage, so the caller does not pass it.
+    let user = Address::generate(&test_env.env);
 
-    // Auto-halt fires.
-    let _ = test_env.lastprice(&asset, &config);
+    // Auto-halt fires through `MockLending::borrow`'s internal call to
+    // `safe_oracle::lastprice` — the breaker's `Open` state is committed
+    // to MockLending's instance() storage. Hardening 5 (#18+#20) folded
+    // the breaker primitives onto the same contract, so subsequent
+    // run_check / run_close calls share that storage.
+    let _ = test_env
+        .lending_client
+        .try_borrow(&user, &asset, &1_000_i128);
 
-    let result_during_halt = test_env.lastprice(&asset, &config);
+    let result_during_halt = test_env.lending_client.try_run_check(&asset);
     assert_eq!(
         result_during_halt,
-        Err(OracleSafetyViolation::CircuitBreakerOpen),
-        "breaker open before governance close"
+        Err(Ok(OracleSafetyViolation::CircuitBreakerOpen)),
+        "breaker must be Open after auto-halt before governance close"
     );
 
-    // Important: TestEnv::lastprice routes through OracleHost; manual
-    // close goes through TestHost. Both contracts share the same `env`,
-    // but each has its own instance() storage, so the breaker state
-    // for `asset` is per-contract. Phase 5.5 model: governance issues
-    // close against the *integrator*'s contract — here OracleHost — so
-    // we open/close via OracleHost too. TestHost.run_close on a
-    // separate contract would not affect OracleHost's state.
-    //
-    // Adapter: re-trigger an auto-close via TestHost is the wrong
-    // shape here; instead, we use auto-recovery (advance ledger past
-    // halt window) to land in Closed, mirroring what an integrator
-    // governance close would observe. Pure manual close via TestHost
-    // is exercised in `test_manual_close_overrides_pending_halt_window`
-    // where TestHost is both the opener and the closer.
-    let initial_seq = test_env.env.ledger().sequence();
-    test_env.env.ledger().with_mut(|li| {
-        li.sequence_number = initial_seq + 721; // past default halt_ledgers (720)
-    });
+    // True manual close — runs against the SAME MockLending contract
+    // whose storage holds the auto-halt state. Pre-Hardening 5 this
+    // step lived on a separate `TestHost` contract whose storage was
+    // disjoint from the lastprice path's, forcing this test to use
+    // ledger-advance auto-recovery as a workaround. Now the close
+    // resets the actual halt that was just committed.
+    test_env.lending_client.run_close(&asset);
 
-    // After auto-recovery (the integrator's-contract analogue of
-    // governance close), the underlying violation re-surfaces — close
-    // does not paper over a still-broken oracle.
-    let result_after_close = test_env.lastprice(&asset, &config);
+    // After manual close, the next borrow re-runs the guardrail chain;
+    // the underlying ExcessiveDeviation surfaces again — close clears
+    // the halt, not the cause. Without Hardening 5's unified storage
+    // the previous borrow would have continued returning
+    // CircuitBreakerOpen because run_close would have written to the
+    // wrong contract's state.
+    let result_after_close = test_env
+        .lending_client
+        .try_borrow(&user, &asset, &1_000_i128);
     assert_eq!(
         result_after_close,
-        Err(OracleSafetyViolation::ExcessiveDeviation),
-        "after the breaker transitions out of Open, lastprice re-runs \
-         the chain and surfaces the underlying violation again"
+        Ok(Ok(BorrowOutcome::Failed(
+            MockLendingError::ExcessiveDeviation as u32
+        ))),
+        "after manual close, borrow re-runs the chain and surfaces \
+         the underlying violation (close clears halt, not cause)"
     );
 }
 
@@ -663,7 +672,7 @@ fn test_manual_open_enables_operational_halt() {
     let asset = Asset::Stellar(Address::generate(&test_env.env));
 
     // Initial state: Closed (verified by Phase 5.1 test).
-    let result_normal = test_env.test_host_client.try_run_check(&asset);
+    let result_normal = test_env.lending_client.try_run_check(&asset);
     assert!(
         result_normal.is_ok(),
         "no halt before manual open, got {:?}",
@@ -671,11 +680,11 @@ fn test_manual_open_enables_operational_halt() {
     );
 
     // Governance manual open (e.g., off-chain monitor alert).
-    test_env.test_host_client.run_open(&asset, &720);
+    test_env.lending_client.run_open(&asset, &720);
 
     // Now check returns CircuitBreakerOpen — manual halt active despite
     // no guardrail violation having fired.
-    let result_halted = test_env.test_host_client.try_run_check(&asset);
+    let result_halted = test_env.lending_client.try_run_check(&asset);
     assert_eq!(
         result_halted,
         Err(Ok(OracleSafetyViolation::CircuitBreakerOpen)),
@@ -694,8 +703,8 @@ fn test_manual_open_close_open_cycle() {
     let asset = Asset::Stellar(Address::generate(&test_env.env));
 
     // First manual open.
-    test_env.test_host_client.run_open(&asset, &720);
-    let result1 = test_env.test_host_client.try_run_check(&asset);
+    test_env.lending_client.run_open(&asset, &720);
+    let result1 = test_env.lending_client.try_run_check(&asset);
     assert_eq!(
         result1,
         Err(Ok(OracleSafetyViolation::CircuitBreakerOpen)),
@@ -703,13 +712,13 @@ fn test_manual_open_close_open_cycle() {
     );
 
     // Manual close.
-    test_env.test_host_client.run_close(&asset);
-    let result2 = test_env.test_host_client.try_run_check(&asset);
+    test_env.lending_client.run_close(&asset);
+    let result2 = test_env.lending_client.try_run_check(&asset);
     assert!(result2.is_ok(), "after close: state transitions to Closed");
 
     // Second manual open.
-    test_env.test_host_client.run_open(&asset, &720);
-    let result3 = test_env.test_host_client.try_run_check(&asset);
+    test_env.lending_client.run_open(&asset, &720);
+    let result3 = test_env.lending_client.try_run_check(&asset);
     assert_eq!(
         result3,
         Err(Ok(OracleSafetyViolation::CircuitBreakerOpen)),
@@ -729,9 +738,9 @@ fn test_manual_close_overrides_pending_halt_window() {
     let initial_seq = test_env.env.ledger().sequence();
 
     // Open with long halt window.
-    test_env.test_host_client.run_open(&asset, &720);
+    test_env.lending_client.run_open(&asset, &720);
 
-    let result_during = test_env.test_host_client.try_run_check(&asset);
+    let result_during = test_env.lending_client.try_run_check(&asset);
     assert_eq!(
         result_during,
         Err(Ok(OracleSafetyViolation::CircuitBreakerOpen)),
@@ -743,7 +752,7 @@ fn test_manual_close_overrides_pending_halt_window() {
         li.sequence_number = initial_seq + 5;
     });
 
-    let result_mid_window = test_env.test_host_client.try_run_check(&asset);
+    let result_mid_window = test_env.lending_client.try_run_check(&asset);
     assert_eq!(
         result_mid_window,
         Err(Ok(OracleSafetyViolation::CircuitBreakerOpen)),
@@ -751,9 +760,9 @@ fn test_manual_close_overrides_pending_halt_window() {
     );
 
     // Governance overrides via manual close.
-    test_env.test_host_client.run_close(&asset);
+    test_env.lending_client.run_close(&asset);
 
-    let result_after_override = test_env.test_host_client.try_run_check(&asset);
+    let result_after_override = test_env.lending_client.try_run_check(&asset);
     assert!(
         result_after_override.is_ok(),
         "manual close overrides the pending halt window, got {:?}",
@@ -773,16 +782,16 @@ fn test_manual_operations_isolated_between_asset_variants() {
     let other_asset = Asset::Other(Symbol::new(&test_env.env, "BTC"));
 
     // Open Asset::Stellar only.
-    test_env.test_host_client.run_open(&stellar_asset, &720);
+    test_env.lending_client.run_open(&stellar_asset, &720);
 
-    let result_stellar = test_env.test_host_client.try_run_check(&stellar_asset);
+    let result_stellar = test_env.lending_client.try_run_check(&stellar_asset);
     assert_eq!(
         result_stellar,
         Err(Ok(OracleSafetyViolation::CircuitBreakerOpen)),
         "Asset::Stellar halted"
     );
 
-    let result_other = test_env.test_host_client.try_run_check(&other_asset);
+    let result_other = test_env.lending_client.try_run_check(&other_asset);
     assert!(
         result_other.is_ok(),
         "Asset::Other unaffected by Asset::Stellar manual open, got {:?}",
@@ -790,8 +799,8 @@ fn test_manual_operations_isolated_between_asset_variants() {
     );
 
     // Open Asset::Other independently.
-    test_env.test_host_client.run_open(&other_asset, &720);
-    let result_other_halted = test_env.test_host_client.try_run_check(&other_asset);
+    test_env.lending_client.run_open(&other_asset, &720);
+    let result_other_halted = test_env.lending_client.try_run_check(&other_asset);
     assert_eq!(
         result_other_halted,
         Err(Ok(OracleSafetyViolation::CircuitBreakerOpen)),
@@ -799,8 +808,8 @@ fn test_manual_operations_isolated_between_asset_variants() {
     );
 
     // Closing Asset::Stellar must not affect Asset::Other.
-    test_env.test_host_client.run_close(&stellar_asset);
-    let result_other_still_halted = test_env.test_host_client.try_run_check(&other_asset);
+    test_env.lending_client.run_close(&stellar_asset);
+    let result_other_still_halted = test_env.lending_client.try_run_check(&other_asset);
     assert_eq!(
         result_other_still_halted,
         Err(Ok(OracleSafetyViolation::CircuitBreakerOpen)),
@@ -819,9 +828,9 @@ fn test_halt_duration_zero_recovers_on_next_call() {
     let test_env = TestEnv::new();
     let asset = Asset::Stellar(Address::generate(&test_env.env));
 
-    test_env.test_host_client.run_open(&asset, &0);
+    test_env.lending_client.run_open(&asset, &0);
 
-    let result = test_env.test_host_client.try_run_check(&asset);
+    let result = test_env.lending_client.try_run_check(&asset);
     assert!(
         result.is_ok(),
         "halt_duration=0 → halt_until=current_seq → check sees \

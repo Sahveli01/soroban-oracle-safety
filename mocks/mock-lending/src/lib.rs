@@ -295,4 +295,67 @@ impl MockLending {
 
         BorrowOutcome::from(inner())
     }
+
+    // ===== Test-only circuit-breaker primitive surface =====
+    //
+    // Hardening Phase debts #18 + #20 (merged): Phase 5.5 had two harness
+    // contracts in `test-utils` — `OracleHost` (drove `lastprice`) and
+    // `TestHost` (drove the breaker primitives). They had separate
+    // `instance()` storage, so a manual `close_circuit_breaker` call routed
+    // through `TestHost` could not reset the auto-halt state that
+    // `lastprice` (via `borrow`) had committed to `OracleHost`'s storage.
+    // The Phase 5.5 `test_manual_close_resets_open_breaker_state` worked
+    // around this with a ledger-advance + auto-recovery hack; the test
+    // documented manual-close semantics it could not actually exercise.
+    //
+    // Hardening 5 unifies the two harnesses on `MockLending` itself: the
+    // breaker writes that `borrow()` triggers via `safe_oracle::lastprice`
+    // land in `MockLending`'s `instance()` storage (verified empirically
+    // since Phase 5.4 v2). Exposing the primitives as test-only methods
+    // here means tests share that storage — manual-close after auto-halt
+    // becomes a real test, not a workaround.
+    //
+    // The methods are gated behind `#[cfg(any(test, feature = "testutils"))]`
+    // so they are present in:
+    //   - `cargo test` builds for this crate's own inline tests
+    //   - any consumer crate that pulls `mock-lending` with the `testutils`
+    //     feature flag (the test-utils crate does this — see its
+    //     `Cargo.toml`)
+    // and absent from production WASM builds (the `cdylib` artifact
+    // compiled by `stellar contract build` ships without them).
+    //
+    // Empirical PoC (Pre-5 Discovery) verified two prerequisites:
+    //   1. Soroban's `#[contractimpl]` accepts method-level `#[cfg(any(...))]`
+    //      attributes — the auto-generated client picks up only the
+    //      currently-compiled methods.
+    //   2. The `borrow` path's auto-halt write is observable from a
+    //      cfg-gated `run_check` on the same contract — `Err(Ok(
+    //      CircuitBreakerOpen))` returned in the PoC, confirming shared
+    //      `instance()` storage.
+
+    /// Test-only: invoke `safe_oracle::circuit_breaker::check_circuit_breaker`
+    /// in `MockLending`'s contract context. Reads the same `instance()`
+    /// storage that `lastprice`'s auto-halt writes commit to.
+    #[cfg(any(test, feature = "testutils"))]
+    pub fn run_check(env: Env, asset: Asset) -> Result<(), OracleSafetyViolation> {
+        safe_oracle::circuit_breaker::check_circuit_breaker(&env, &asset)
+    }
+
+    /// Test-only: invoke `safe_oracle::circuit_breaker::open_circuit_breaker`
+    /// in `MockLending`'s contract context. Mirrors what `lastprice`'s
+    /// auto-halt does, exposed here so tests can drive the open/close
+    /// state machine without going through a guardrail violation.
+    #[cfg(any(test, feature = "testutils"))]
+    pub fn run_open(env: Env, asset: Asset, duration: u32) {
+        safe_oracle::circuit_breaker::open_circuit_breaker(&env, &asset, duration);
+    }
+
+    /// Test-only: invoke `safe_oracle::circuit_breaker::close_circuit_breaker`
+    /// in `MockLending`'s contract context. Resets state set by either
+    /// `run_open` or by `lastprice`'s auto-halt — the unification this
+    /// whole block exists to enable.
+    #[cfg(any(test, feature = "testutils"))]
+    pub fn run_close(env: Env, asset: Asset) {
+        safe_oracle::circuit_breaker::close_circuit_breaker(&env, &asset);
+    }
 }

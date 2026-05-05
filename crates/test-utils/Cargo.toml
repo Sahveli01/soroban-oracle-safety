@@ -12,4 +12,4 @@ soroban-sdk = { workspace = true, features = ["testutils"] }
 safe-oracle = { path = "../safe-oracle" }
 liquidity-registry = { path = "../liquidity-registry" }
 mock-reflector = { path = "../../mocks/mock-reflector" }
-mock-lending = { path = "../../mocks/mock-lending" }
+mock-lending = { path = "../../mocks/mock-lending", features = ["testutils"] }
