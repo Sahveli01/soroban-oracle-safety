@@ -37,7 +37,7 @@ fn prime_layer1(test_env: &TestEnv, asset: &Asset) {
 /// 30-minute volume in the attested snapshot reflects that emptiness, and
 /// `check_liquidity` blocks the borrow with `InsufficientLiquidity`.
 ///
-/// Phase 4.4 will broaden this into the full e2e attack scenario; here we
+/// Phase 4.4 broadens this into the full e2e attack scenario; here we
 /// pin the single-guardrail behavior so a regression in `check_liquidity`
 /// surfaces independently of the other guardrails.
 #[test]

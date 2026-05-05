@@ -7,6 +7,14 @@
 //! the breaker auto-closes on the next `check_circuit_breaker` call and
 //! normal flow resumes.
 //!
+//! # Spec
+//!
+//! See spec §4 — Circuit Breaker Mode and Circuit Breaker State Location.
+//! The auto-halt + governance-override + per-asset isolation semantics
+//! implemented here all derive directly from the §4 specification; the
+//! storage-location decision below (calling-contract instance storage,
+//! keyed by asset) is the §4 "State Location" subsection, exact.
+//!
 //! # Storage location
 //!
 //! State is stored in the **calling contract's** instance storage under a
@@ -130,6 +138,14 @@ pub fn check_circuit_breaker(env: &Env, asset: &Asset) -> Result<(), OracleSafet
 /// Open the circuit breaker for an asset, halting `lastprice()` calls until
 /// `env.ledger().sequence() + halt_duration_ledgers`.
 ///
+/// # Spec
+///
+/// See spec §4 — Circuit Breaker Mode (auto-halt path). Invoked by
+/// `lastprice` after a guardrail violation when
+/// `config.circuit_breaker_enabled = true`; integrators may also invoke it
+/// directly for an off-chain-monitor-driven manual halt, behind their own
+/// auth gate (see Authorization below).
+///
 /// # Authorization
 ///
 /// `safe_oracle` does **not** enforce auth here. Intended for internal use by
@@ -170,6 +186,13 @@ pub fn open_circuit_breaker(env: &Env, asset: &Asset, halt_duration_ledgers: u32
 }
 
 /// Manually close the circuit breaker for an asset (governance override).
+///
+/// # Spec
+///
+/// See spec §4 — Circuit Breaker Mode (governance manual override path).
+/// Spec §4 specifies that halts can be cleared by DAO/governance action
+/// after off-chain verification; this is the primitive integrators wrap
+/// behind an auth-gated wrapper to deliver that capability.
 ///
 /// # CRITICAL — Authorization
 ///

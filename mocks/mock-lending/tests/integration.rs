@@ -49,8 +49,8 @@ const ONE_DOLLAR: i128 = 100_000_000_000_000;
 /// `min_liquidity_usd` for Phase 4.5 Layer 2 happy-path tests.
 const HEALTHY_VOLUME_USD: i128 = 500_000_000_000;
 
-/// `TestEnv::new()` Phase 2.7'de lending'i initialize ediyor; storage'da
-/// beklenen alanların yazılı olduğunu doğrula.
+/// `TestEnv::new()` initializes the lending contract in Phase 2.7; verify
+/// that the expected fields landed in storage.
 #[test]
 fn test_initialize_sets_storage() {
     let test_env = TestEnv::new();
@@ -143,7 +143,7 @@ fn test_borrow_succeeds_with_valid_oracle_data() {
 
 /// YieldBlox-class attack: $1.05 → $106 SDEX pump. `safe_oracle::lastprice`
 /// deviation guardrail blocks the borrow and `MockLendingError::ExcessiveDeviation`
-/// propagates transparently — the pitch demo (("bu test pass olunca proje çalışıyor")).
+/// propagates transparently — the pitch demo (("if this test passes, the project works")).
 #[test]
 fn test_borrow_fails_when_oracle_deviation_excessive() {
     let test_env = TestEnv::new();

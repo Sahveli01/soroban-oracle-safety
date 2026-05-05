@@ -1,10 +1,11 @@
 //! Layer 1 combined-behavior integration tests.
 //!
-//! Bu dosya `safe_oracle::lastprice`'in tüm Layer 1 guardrail zincirinin
-//! birlikte çalışmasını ve execution order'ı doğrular. Bireysel guardrail
-//! testleri (deviation, staleness, cross-source — her biri 6/4/6 senaryo)
-//! `tests/integration.rs`'de; bu dosya farklı: Layer 1'in kombine
-//! davranışına ve hata önceliğine odaklanır.
+//! This file verifies that the full Layer 1 guardrail chain in
+//! `safe_oracle::lastprice` runs together and in the correct execution order.
+//! Individual guardrail tests (deviation, staleness, cross-source — 6/4/6
+//! scenarios respectively) live in `tests/integration.rs`; this file is
+//! different: it focuses on Layer 1's *combined* behavior and error
+//! precedence.
 
 use safe_oracle::{Asset, OracleSafetyViolation, SafeOracleConfig};
 use soroban_sdk::Symbol;
@@ -13,8 +14,8 @@ use test_utils::TestEnv;
 /// 14-decimal helper: dollars → Reflector-scale price (×10^14).
 const ONE_DOLLAR: i128 = 100_000_000_000_000;
 
-/// Tüm Layer 1 guardrail'leri (deviation, staleness, cross-source) geçiyor → Ok.
-/// Returned price newest entry'yi yansıtmalı.
+/// All Layer 1 guardrails (deviation, staleness, cross-source) pass → Ok.
+/// The returned price must reflect the newest entry.
 #[test]
 fn test_layer1_happy_path_all_guardrails_pass() {
     let test_env = TestEnv::new();
@@ -39,9 +40,9 @@ fn test_layer1_happy_path_all_guardrails_pass() {
     assert_eq!(price.timestamp, 99_950);
 }
 
-/// Hem deviation hem staleness fail durumunda deviation önce çalıştığı için
-/// `ExcessiveDeviation` döner. Bu test execution order garantisini bozsa
-/// failed assertion ile yakalar.
+/// When both deviation and staleness would fail, `ExcessiveDeviation` is
+/// returned because deviation runs first. A regression that swaps the
+/// execution order is caught here by the failing assertion.
 #[test]
 fn test_layer1_execution_order_deviation_before_staleness() {
     let test_env = TestEnv::new();
@@ -49,6 +50,7 @@ fn test_layer1_execution_order_deviation_before_staleness() {
 
     // ts=50_000/50_300 → ~50_000s elapsed (strict max_staleness=300 → stale)
     // prices: $100 → $200 = 10_000 BPS deviation (strict max=2000 → excessive)
+    // Both Layer 1 checks would fire; deviation must surface first.
     test_env.set_oracle_price(&asset, 100 * ONE_DOLLAR, 50_000);
     test_env.set_oracle_price(&asset, 200 * ONE_DOLLAR, 50_300);
 
@@ -63,15 +65,15 @@ fn test_layer1_execution_order_deviation_before_staleness() {
     );
 }
 
-/// Deviation pass (küçük), staleness fail (eski) → `StaleData`.
-/// Pipeline'ın deviation'dan sonra staleness'e gerçekten geldiğini doğrular.
+/// Deviation passes (small), staleness fails (old) → `StaleData`.
+/// Verifies the pipeline actually reaches staleness after deviation.
 #[test]
 fn test_layer1_execution_order_staleness_after_deviation_pass() {
     let test_env = TestEnv::new();
     let asset = Asset::Other(Symbol::new(&test_env.env, "BTC"));
 
     // ts=50_000/50_300 → ~49_700s elapsed (strict max_staleness=300 → stale)
-    // %1 deviation = 100 BPS (strict max=2000 → pass)
+    // 1% deviation = 100 BPS (strict max=2000 → pass)
     test_env.set_oracle_price(&asset, ONE_DOLLAR, 50_000);
     test_env.set_oracle_price(&asset, ONE_DOLLAR + ONE_DOLLAR / 100, 50_300);
 
@@ -86,8 +88,8 @@ fn test_layer1_execution_order_staleness_after_deviation_pass() {
     );
 }
 
-/// Deviation + staleness pass, cross-source fail → `CrossSourceMismatch`.
-/// Pipeline'ın staleness'tan sonra cross-source'a geldiğini doğrular.
+/// Deviation + staleness pass, cross-source fails → `CrossSourceMismatch`.
+/// Verifies the pipeline actually reaches cross-source after staleness.
 #[test]
 fn test_layer1_execution_order_cross_source_after_staleness_pass() {
     let test_env = TestEnv::new();
@@ -96,7 +98,7 @@ fn test_layer1_execution_order_cross_source_after_staleness_pass() {
     // Fresh (50s elapsed ≤ 300), 0 BPS deviation (≤ 2000)
     test_env.set_oracle_price(&asset, ONE_DOLLAR, 99_900);
     test_env.set_oracle_price(&asset, ONE_DOLLAR, 99_950);
-    // Secondary $1.10 = 1000 BPS cross-source (strict max=500 → mismatch)
+    // Secondary $1.10 = 1000 BPS cross-source delta (strict max=500 → mismatch)
     test_env.set_secondary_oracle_price(&asset, ONE_DOLLAR * 110 / 100, 99_950);
 
     let mut config = TestEnv::strict_config();
@@ -111,16 +113,16 @@ fn test_layer1_execution_order_cross_source_after_staleness_pass() {
     );
 }
 
-/// `SafeOracleConfig::default()` ile production-realistic senaryo:
-/// %1 deviation, 150s eski, secondary yok → tüm guardrail'ler geçer.
-/// Default değerlerin reasonable workflow'u kabul ettiğini doğrular.
+/// Production-realistic scenario with `SafeOracleConfig::default()`:
+/// 1% deviation, 150s old, no secondary → all guardrails pass. Verifies
+/// the default values accept a reasonable workflow.
 #[test]
 fn test_layer1_with_default_config_passes_normal_scenario() {
     let test_env = TestEnv::new();
     let asset = Asset::Other(Symbol::new(&test_env.env, "USDC"));
 
     // baseline=100_000; ts=99_750/99_850 → 250/150s elapsed (default max=300 → ok)
-    // %1 deviation = 100 BPS (default max=2000 → ok)
+    // 1% deviation = 100 BPS (default max=2000 → ok)
     test_env.set_oracle_price(&asset, ONE_DOLLAR, 99_750);
     test_env.set_oracle_price(&asset, ONE_DOLLAR + ONE_DOLLAR / 100, 99_850);
 

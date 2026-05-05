@@ -8,6 +8,23 @@ mod registry_client;
 pub use reflector_client::ReflectorClient;
 pub use registry_client::{LiquidityRegistryClient, LiquiditySnapshot};
 
+/// Reasons a guardrail has rejected a price; the `Err` payload of every
+/// safe_oracle public API.
+///
+/// Discriminants are stable u32 values (1..=7) so they can be carried as the
+/// `u32` inside [`PriceResult::Err`] and re-hydrated through
+/// [`PriceResult::into_result`]. Integrators surfacing oracle violations to
+/// their own callers typically mirror these discriminants 1:1 in their own
+/// error enum (see `mock_lending::MockLendingError` for the canonical
+/// reference) so audit logs preserve which guardrail tripped.
+///
+/// # Spec
+///
+/// See spec §4 — Error Enum. The seven variants here implement the spec's
+/// required violation taxonomy. Phases 1–5 wired the variants in order:
+/// 1–3 (Layer 1) in Phase 2, 4–5 (Layer 2) in Phase 4, 6 (circuit breaker)
+/// in Phase 5, and 7 (stale snapshot) introduced alongside the freshness
+/// check in Phase 4.
 #[contracterror]
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub enum OracleSafetyViolation {
@@ -84,6 +101,13 @@ pub struct PriceData {
 ///   are unchanged.
 /// - Tuple variants (not named-field) match the soroban-sdk 25.x
 ///   `#[contracttype]` enum constraint observed in Phase 5.1.
+///
+/// # Spec
+///
+/// See spec §4 — Function Signature and Stub Contract. `PriceResult`
+/// preserves the spec's `lastprice → Ok(price) | Err(violation)` semantic
+/// at the public API level (via [`PriceResult::into_result`]) while letting
+/// auto-halt writes inside `lastprice` commit at the Soroban boundary.
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum PriceResult {
@@ -144,6 +168,21 @@ impl From<Result<PriceData, OracleSafetyViolation>> for PriceResult {
     }
 }
 
+/// Configuration for the safe_oracle library — the per-pool tuning surface.
+///
+/// Holds the thresholds and toggles consumed by [`lastprice`] and the
+/// [`circuit_breaker`] module. Integrators construct it once at init time
+/// and pass it to every `lastprice` call; the library is stateless, so the
+/// integrator owns where this lives in storage.
+///
+/// # Spec
+///
+/// See spec §4 — Config Struct. The defaults returned by
+/// [`SafeOracleConfig::default`] match the spec's recommended values
+/// (`max_deviation_bps=2000`, `max_staleness_seconds=300`,
+/// `max_cross_source_bps=500`, `min_liquidity_usd=$10,000` at 7-decimal
+/// precision, `min_trade_count_1h=5`); integrators requiring tighter or
+/// looser thresholds override per-field.
 #[contracttype]
 #[derive(Clone, Debug)]
 pub struct SafeOracleConfig {
@@ -184,6 +223,13 @@ impl Default for SafeOracleConfig {
 ///
 /// Public entry point of the `safe_oracle` library. Lending protocols call
 /// this instead of `reflector.lastprice()` directly.
+///
+/// # Spec
+///
+/// See spec §4 — `safe_oracle` Library API. This is the canonical entry
+/// point defined in "Function Signature and Stub Contract"; the integration
+/// example in §4 shows the one-line migration from `reflector.lastprice(asset)`
+/// to this call.
 ///
 /// # Why `PriceResult` instead of `Result`?
 ///
@@ -432,9 +478,9 @@ fn check_staleness(
 ///
 /// Primary is the BPS reference (`|primary - secondary| * 10_000 / primary`)
 /// because primary is the value the lending contract actually consumes.
-/// Secondary staleness is intentionally not checked here — Phase 6 audit will
-/// revisit whether stale secondaries should silently disable cross-check or
-/// hard-fail.
+/// Secondary staleness is intentionally not checked here — the Hardening
+/// Phase (debt #3) revisits whether stale secondaries should silently
+/// disable cross-check or hard-fail.
 fn check_cross_source(
     env: &Env,
     asset: &Asset,
@@ -569,7 +615,7 @@ fn check_liquidity(
 ///
 /// `unique_trades_1h` semantics (one trade per `source_account` per ledger,
 /// $10 minimum sybil floor) are defined by `oracle-watch`; see spec §5
-/// "Trade Sayım Tanımı". See `get_validated_snapshot` for the skip and
+/// "Trade Counting Definition". See `get_validated_snapshot` for the skip and
 /// fail-safe semantics that produce the snapshot reaching this function.
 fn check_thin_sampling(
     snapshot: &LiquiditySnapshot,

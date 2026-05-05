@@ -18,9 +18,10 @@ Three components:
 - ✅ **Phase 3** Complete: LiquidityRegistry contract (auth, whitelist, snapshot, replay protection) — tag `phase-3-complete`
 - ✅ **Phase 4** Complete: Layer 2 guardrails (liquidity, thin sampling) + e2e attack scenarios — tag `phase-4-complete`
 - ✅ **Phase 5** Complete: Circuit breaker (auto-halt + governance override + Ok-API types) — tag `phase-5-complete`
-- 🟡 **Phase 6** Starting: Audit + improvements (tracked debts cleanup)
-- ⏳ Phase 7: SEP-Oracle-Safety standard draft
-- ⏳ Phase 8: Testnet deployment
+- 🟡 **Hardening Phase** In Progress: 19 tracked debts cleanup before Phase 6 — closure tag `hardening-complete` planned
+- ⏳ **Phase 6**: oracle-watch off-chain service (per roadmap)
+- ⏳ **Phase 7**: SEP-Oracle-Safety standard draft
+- ⏳ **Phase 8**: Testnet deployment + pitch deck
 
 ## Critical Rules — ALWAYS Apply
 
@@ -65,7 +66,7 @@ Three components:
 ### Versioning
 - soroban-sdk: **25.3.1** (production stable, NOT 26.x rc)
 - WASM target: `wasm32v1-none` (NOT legacy `wasm32-unknown-unknown`)
-- Rust edition: 2024
+- Rust edition: 2021
 - Stellar Protocol: 25 (mainnet, Jan 2026)
 - Stellar CLI: 26.0.0 in CI (latest stable)
 

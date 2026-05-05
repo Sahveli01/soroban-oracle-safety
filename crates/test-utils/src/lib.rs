@@ -95,9 +95,10 @@ pub struct TestEnv<'a> {
     pub secondary_reflector_client: MockReflectorClient<'a>,
     pub lending_address: Address,
     pub lending_client: MockLendingClient<'a>,
-    /// Real `LiquidityRegistry` registration. Phase 4's `check_liquidity` and
-    /// `check_thin_sampling` will read from this instance; Phase 3.5 wires it
-    /// into `TestEnv` so test setups don't reimplement registry boilerplate.
+    /// Real `LiquidityRegistry` registration consumed by safe-oracle's
+    /// Layer 2 guardrails (`check_liquidity` and `check_thin_sampling`).
+    /// Wired into `TestEnv` since Phase 3.5 so test setups don't reimplement
+    /// registry boilerplate.
     pub registry: Address,
     pub registry_client: LiquidityRegistryClient<'a>,
     /// Admin of the `LiquidityRegistry` (separate from the mock-reflector and

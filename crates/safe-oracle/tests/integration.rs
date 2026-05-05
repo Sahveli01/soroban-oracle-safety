@@ -12,10 +12,10 @@ use safe_oracle::{Asset, OracleSafetyViolation};
 use soroban_sdk::{testutils::Ledger as _, Symbol};
 use test_utils::TestEnv;
 
-/// Happy path: mock-reflector'a iki fiyat enjekte ettikten sonra gerçek
-/// cross-contract call ile `lastprice` çağrısı `Ok(PriceData)` dönmeli.
-/// Phase 2.3b sonrası `check_deviation` 2 kayıt ister; aralarındaki sapma
-/// relaxed_config eşiği altında olduğu için Layer 1 geçer.
+/// Happy path: after injecting two prices into mock-reflector, the real
+/// cross-contract `lastprice` call must return `Ok(PriceData)`. Post Phase
+/// 2.3b `check_deviation` requires 2 records; the deviation between them
+/// stays under the `relaxed_config` threshold so Layer 1 passes.
 #[test]
 fn test_lastprice_with_real_reflector_call() {
     let test_env = TestEnv::new();
@@ -34,12 +34,12 @@ fn test_lastprice_with_real_reflector_call() {
     assert_eq!(price_data.timestamp, 12345);
 }
 
-/// Reflector hiç fiyat tutmuyorsa `lastprices` `None` döner;
-/// `fetch_reflector_prices` bunu fail-safe `Err(StaleData)`'e map eder.
+/// When Reflector holds no prices for the asset, `lastprices` returns `None`
+/// and `fetch_reflector_prices` maps it fail-safe to `Err(StaleData)`.
 #[test]
 fn test_lastprice_returns_stale_data_when_reflector_has_no_price() {
     let test_env = TestEnv::new();
-    let asset = Asset::Other(Symbol::new(&test_env.env, "BTC")); // hiç fiyat set edilmedi
+    let asset = Asset::Other(Symbol::new(&test_env.env, "BTC")); // no price set
     let config = TestEnv::relaxed_config();
 
     let result = test_env.lastprice(&asset, &config);
@@ -50,7 +50,7 @@ fn test_lastprice_returns_stale_data_when_reflector_has_no_price() {
 /// 14-decimal helper: dollars → Reflector-scale price (×10^14).
 const ONE_DOLLAR: i128 = 100_000_000_000_000;
 
-/// %5 değişim relaxed_config (max=5000 BPS) altında kalır → Ok.
+/// 5% change stays under `relaxed_config` (max=5000 BPS) → Ok.
 #[test]
 fn test_deviation_passes_with_small_change() {
     let test_env = TestEnv::new();
@@ -70,7 +70,7 @@ fn test_deviation_passes_with_small_change() {
     );
 }
 
-/// %25 değişim strict_config (max=2000 BPS) eşiğini aşıyor → ExcessiveDeviation.
+/// 25% change exceeds the `strict_config` threshold (max=2000 BPS) → ExcessiveDeviation.
 #[test]
 fn test_deviation_fails_at_threshold_breach() {
     let test_env = TestEnv::new();
@@ -86,8 +86,8 @@ fn test_deviation_fails_at_threshold_breach() {
     assert_eq!(result, Err(OracleSafetyViolation::ExcessiveDeviation));
 }
 
-/// Tam %20 değişim sınır değerinde — `>` kullandığımız için Ok döner
-/// (eşit olmak fail-trigger değil; sadece *aşan* sapma reddedilir).
+/// Exactly 20% change at the boundary — since the check uses `>` (not `>=`),
+/// equality passes; only deviation *exceeding* the threshold is rejected.
 #[test]
 fn test_deviation_passes_at_exact_threshold() {
     let test_env = TestEnv::new();
@@ -113,15 +113,15 @@ fn test_deviation_passes_at_exact_threshold() {
     );
 }
 
-/// YieldBlox-sınıfı saldırı simülasyonu: ince SDEX pazarında küçük bir trade
-/// ile $1.05 → $106 fiyat şişirme. Strict guardrail bunu reddetmeli; pitch
-/// slide'da "bu test geçince proje çalışıyor" demeli.
+/// YieldBlox-class attack simulation: a small trade in a thin SDEX market
+/// pumps the price from $1.05 → $106. The strict guardrail must reject this;
+/// pitch slide caption: "if this test passes, the project works".
 #[test]
 fn test_deviation_yieldblox_attack_simulation() {
     let test_env = TestEnv::new();
     let asset = Asset::Other(Symbol::new(&test_env.env, "USTRY"));
 
-    // Baseline: $1.05 — sonra saldırgan SDEX'te ~$5 trade ile $106'ya pumpluyor.
+    // Baseline: $1.05 — then the attacker pumps it to $106 via a ~$5 SDEX trade.
     test_env.set_oracle_price(&asset, ONE_DOLLAR + ONE_DOLLAR / 20, 1000);
     test_env.set_oracle_price(&asset, 106 * ONE_DOLLAR, 1300);
 
@@ -135,8 +135,8 @@ fn test_deviation_yieldblox_attack_simulation() {
     );
 }
 
-/// Tek fiyat varsa deviation karşılaştırması yapılamaz —
-/// `fetch_reflector_prices(records=2)` `len < records` görüp StaleData döner.
+/// With only one stored price, deviation cannot be computed —
+/// `fetch_reflector_prices(records=2)` sees `len < records` and returns StaleData.
 #[test]
 fn test_deviation_fails_when_only_one_price_in_history() {
     let test_env = TestEnv::new();
@@ -151,8 +151,9 @@ fn test_deviation_fails_when_only_one_price_in_history() {
     assert_eq!(result, Err(OracleSafetyViolation::StaleData));
 }
 
-/// Önceki fiyat 0 ise paydaya bölmeden önce manipülasyon sinyali olarak
-/// ExcessiveDeviation döneriz (current pozitif, sıfır → herhangi BPS = ∞).
+/// If the previous price is 0, we return ExcessiveDeviation before dividing
+/// by it — treating it as a manipulation signal (current positive, zero →
+/// any BPS = ∞).
 #[test]
 fn test_deviation_fails_when_previous_price_is_zero() {
     let test_env = TestEnv::new();
@@ -167,7 +168,7 @@ fn test_deviation_fails_when_previous_price_is_zero() {
     assert_eq!(result, Err(OracleSafetyViolation::ExcessiveDeviation));
 }
 
-/// Fiyat 100 saniye eski, relaxed_config 100_000 saniye toleranslı → Ok.
+/// Price is 100 seconds old; `relaxed_config` tolerates 100_000 seconds → Ok.
 #[test]
 fn test_staleness_passes_when_data_is_fresh() {
     let test_env = TestEnv::new();
@@ -177,8 +178,8 @@ fn test_staleness_passes_when_data_is_fresh() {
         li.timestamp = 5000;
     });
 
-    test_env.set_oracle_price(&asset, ONE_DOLLAR, 4800); // 200s eski
-    test_env.set_oracle_price(&asset, ONE_DOLLAR, 4900); // 100s eski (current)
+    test_env.set_oracle_price(&asset, ONE_DOLLAR, 4800); // 200s old
+    test_env.set_oracle_price(&asset, ONE_DOLLAR, 4900); // 100s old (current)
 
     let config = TestEnv::relaxed_config();
     let result = test_env.lastprice(&asset, &config);
@@ -190,7 +191,7 @@ fn test_staleness_passes_when_data_is_fresh() {
     );
 }
 
-/// 4000 saniye eski fiyat strict_config (300s tolerance) altında StaleData döner.
+/// A 4000-second-old price returns StaleData under `strict_config` (300s tolerance).
 #[test]
 fn test_staleness_fails_when_data_too_old() {
     let test_env = TestEnv::new();
@@ -200,8 +201,8 @@ fn test_staleness_fails_when_data_too_old() {
         li.timestamp = 5000;
     });
 
-    test_env.set_oracle_price(&asset, ONE_DOLLAR * 100, 800); // 4200s eski
-    test_env.set_oracle_price(&asset, ONE_DOLLAR * 100, 1000); // 4000s eski (current)
+    test_env.set_oracle_price(&asset, ONE_DOLLAR * 100, 800); // 4200s old
+    test_env.set_oracle_price(&asset, ONE_DOLLAR * 100, 1000); // 4000s old (current)
 
     let config = TestEnv::strict_config(); // max_staleness_seconds = 300
     let result = test_env.lastprice(&asset, &config);
@@ -209,8 +210,8 @@ fn test_staleness_fails_when_data_too_old() {
     assert_eq!(result, Err(OracleSafetyViolation::StaleData));
 }
 
-/// Future timestamp (current.timestamp > now) clock skew veya feed manipulation
-/// sinyalidir; defensive future-check StaleData döner.
+/// Future timestamp (current.timestamp > now) is a clock-skew or feed-manipulation
+/// signal; the defensive future-check returns StaleData.
 #[test]
 fn test_staleness_fails_with_future_timestamp() {
     let test_env = TestEnv::new();
@@ -220,7 +221,7 @@ fn test_staleness_fails_with_future_timestamp() {
         li.timestamp = 5000;
     });
 
-    test_env.set_oracle_price(&asset, ONE_DOLLAR, 5500); // 1 önceki (de future)
+    test_env.set_oracle_price(&asset, ONE_DOLLAR, 5500); // previous record (also future)
     test_env.set_oracle_price(&asset, ONE_DOLLAR, 6000); // future (current)
 
     let config = TestEnv::relaxed_config();
@@ -229,8 +230,9 @@ fn test_staleness_fails_with_future_timestamp() {
     assert_eq!(result, Err(OracleSafetyViolation::StaleData));
 }
 
-/// Tam strict eşiği (300s) üzerinde — `>` kullandığımız için Ok döner
-/// (eşit pass; sadece *aşan* yaş reddedilir). check_deviation ile tutarlı.
+/// Exactly at the strict threshold (300s) — since the check uses `>` (not
+/// `>=`), equality passes; only ages *exceeding* the threshold are rejected.
+/// Consistent with `check_deviation`'s threshold semantics.
 #[test]
 fn test_staleness_passes_at_exact_threshold() {
     let test_env = TestEnv::new();
@@ -240,8 +242,8 @@ fn test_staleness_passes_at_exact_threshold() {
         li.timestamp = 5000;
     });
 
-    test_env.set_oracle_price(&asset, ONE_DOLLAR, 4500); // 500s eski
-    test_env.set_oracle_price(&asset, ONE_DOLLAR, 4700); // exactly 300s eski
+    test_env.set_oracle_price(&asset, ONE_DOLLAR, 4500); // 500s old
+    test_env.set_oracle_price(&asset, ONE_DOLLAR, 4700); // exactly 300s old
 
     let config = TestEnv::strict_config(); // max_staleness_seconds = 300
     let result = test_env.lastprice(&asset, &config);
@@ -275,7 +277,7 @@ fn test_cross_source_skipped_when_secondary_is_none() {
     );
 }
 
-/// İki kaynak aynı fiyatı veriyor → 0 BPS sapma → Ok.
+/// Both sources report the same price → 0 BPS deviation → Ok.
 #[test]
 fn test_cross_source_passes_with_matching_prices() {
     let test_env = TestEnv::new();
@@ -343,7 +345,7 @@ fn test_cross_source_fails_with_excessive_difference() {
     assert_eq!(result, Err(OracleSafetyViolation::CrossSourceMismatch));
 }
 
-/// Secondary'de hiç fiyat yok → "no evidence" semantiği → Ok (skip, fail değil).
+/// Secondary has no price for the asset → "no evidence" semantic → Ok (skip, not fail).
 #[test]
 fn test_cross_source_skipped_when_secondary_returns_none() {
     let test_env = TestEnv::new();
@@ -365,8 +367,8 @@ fn test_cross_source_skipped_when_secondary_returns_none() {
     );
 }
 
-/// Secondary fiyatı 0 → "live feed reporting zero" manipulation sinyali →
-/// CrossSourceMismatch. (None ile 0 arasındaki ayrım: None=veri yok, 0=manipule fiyat.)
+/// Secondary price of 0 → "live feed reporting zero" manipulation signal →
+/// CrossSourceMismatch. (Distinction: None = no data, 0 = manipulated price.)
 #[test]
 fn test_cross_source_fails_when_secondary_price_is_zero() {
     let test_env = TestEnv::new();
