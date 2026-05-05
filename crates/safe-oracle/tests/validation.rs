@@ -222,3 +222,23 @@ fn test_validate_default_config_passes_all_seven_checks() {
     let config = SafeOracleConfig::default();
     assert!(config.validate().is_ok(), "default config must be valid");
 }
+
+// ===== AR.H M1: Zero Liquidity Threshold Silent Disable =====
+//
+// SafeOracleConfig::validate() runtime check for the third silent-disable
+// case. Mirrors test_validate_zero_trade_count_rejected (Debt #22) and
+// closes the asymmetry that AR.H (Adversarial Review) identified as the
+// residual gap from Hardening Closure.
+
+#[test]
+fn test_validate_zero_liquidity_threshold_rejected() {
+    let config = SafeOracleConfig {
+        min_liquidity_usd: 0,
+        ..SafeOracleConfig::default()
+    };
+    assert_eq!(
+        config.validate(),
+        Err(ConfigError::InvalidLiquidityThreshold),
+        "zero min_liquidity_usd silently disables the Layer 2 liquidity check — must be rejected"
+    );
+}

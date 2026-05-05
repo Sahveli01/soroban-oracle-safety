@@ -289,9 +289,18 @@ pub enum ConfigError {
     /// regardless of how lenient the integrator wants to be).
     InvalidStalenessSeconds,
 
-    /// `min_liquidity_usd` is negative. The field is `i128` so this is
-    /// representable, but a negative volume threshold is structurally
-    /// meaningless (liquidity is non-negative by definition).
+    /// `min_liquidity_usd` is `<= 0` — negative values are semantically
+    /// nonsense (liquidity is non-negative by definition), and `0` silently
+    /// disables the Layer 2 liquidity check (every snapshot's
+    /// `volume_30m_usd > 0` trivially passes the threshold). Same defensive
+    /// principle as `InvalidTradeCountThreshold`: a zero guardrail is no
+    /// guardrail.
+    ///
+    /// # AR.H M1 closure
+    ///
+    /// This variant's runtime rule was tightened from `< 0` to `<= 0` after
+    /// AR.H surfaced the silent-disable case as the single residual asymmetry
+    /// from Hardening Closure (Debt #22).
     InvalidLiquidityThreshold,
 
     /// `secondary_oracle` is `Some(_)` but `max_cross_source_bps > 10_000`.
@@ -378,7 +387,15 @@ impl SafeOracleConfig {
             return Err(ConfigError::InvalidStalenessSeconds);
         }
 
-        if self.min_liquidity_usd < 0 {
+        // AR.H M1 fix: also reject == 0 to prevent silent-disable.
+        // With min_liquidity_usd == 0, the runtime check
+        // `snapshot.volume_30m_usd < 0` is unreachable because write_snapshot
+        // rejects volume_30m_usd <= 0 — every attestation passes the threshold,
+        // silently disabling the Layer 2 liquidity guardrail (the YieldBlox
+        // vector). Mirrors the silent-disable defenses Hardening 3A established
+        // for the deviation/staleness/halt-ledgers fields and Hardening Closure
+        // (Debt #22) extended to min_trade_count_1h and max_snapshot_age_seconds.
+        if self.min_liquidity_usd <= 0 {
             return Err(ConfigError::InvalidLiquidityThreshold);
         }
 
@@ -905,5 +922,9 @@ mod test {
         assert_eq!(OracleSafetyViolation::ThinSampling as u32, 5);
         assert_eq!(OracleSafetyViolation::CircuitBreakerOpen as u32, 6);
         assert_eq!(OracleSafetyViolation::StaleSnapshot as u32, 7);
+        // AR.H L5 fix: ExternalContractFailure = 8 (Hardening 3C) regression guard.
+        // The discriminant is correctly used in PriceResult::into_result and the
+        // mock-lending mirror; the gap was solely in this regression test.
+        assert_eq!(OracleSafetyViolation::ExternalContractFailure as u32, 8);
     }
 }
