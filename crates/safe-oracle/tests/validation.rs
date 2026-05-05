@@ -169,3 +169,56 @@ fn test_validate_zero_halt_ledgers_skipped_when_breaker_disabled() {
         "halt_ledgers validation must skip when circuit_breaker_enabled is false"
     );
 }
+
+// ===== Hardening Closure (Debt #22): Trade Count + Snapshot Age =====
+//
+// SafeOracleConfig::validate() runtime checks for the two remaining
+// silent-disable cases identified in Hardening 3A but left as audit-trail
+// gap until this Closure patch.
+
+#[test]
+fn test_validate_zero_trade_count_rejected() {
+    let config = SafeOracleConfig {
+        min_trade_count_1h: 0,
+        ..SafeOracleConfig::default()
+    };
+    assert_eq!(
+        config.validate(),
+        Err(ConfigError::InvalidTradeCountThreshold),
+        "zero min_trade_count_1h disables thin-sampling check — must be rejected"
+    );
+}
+
+#[test]
+fn test_validate_zero_snapshot_age_rejected() {
+    let config = SafeOracleConfig {
+        max_snapshot_age_seconds: 0,
+        ..SafeOracleConfig::default()
+    };
+    assert_eq!(
+        config.validate(),
+        Err(ConfigError::InvalidSnapshotAge),
+        "zero max_snapshot_age_seconds rejects all snapshots — must be rejected"
+    );
+}
+
+#[test]
+fn test_validate_excessive_snapshot_age_rejected() {
+    let config = SafeOracleConfig {
+        max_snapshot_age_seconds: 86_401, // > 24h
+        ..SafeOracleConfig::default()
+    };
+    assert_eq!(
+        config.validate(),
+        Err(ConfigError::InvalidSnapshotAge),
+        "snapshot age > 24h is unsafe staleness — must be rejected"
+    );
+}
+
+/// Regression guard: default config must satisfy all 7 validation rules
+/// (5 from Hardening 3A + 2 from Hardening Closure / Debt #22).
+#[test]
+fn test_validate_default_config_passes_all_seven_checks() {
+    let config = SafeOracleConfig::default();
+    assert!(config.validate().is_ok(), "default config must be valid");
+}

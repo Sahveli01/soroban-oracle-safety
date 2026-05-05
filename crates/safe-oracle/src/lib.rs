@@ -307,6 +307,32 @@ pub enum ConfigError {
     /// halt. When the breaker is disabled, the halt-ledgers field is
     /// dormant, so this check is conditional.
     InvalidHaltLedgers,
+
+    /// `min_trade_count_1h` is 0 — disables thin-sampling check entirely
+    /// (every snapshot's `unique_trades_1h >= 0` always true). Same defensive
+    /// principle as `InvalidDeviationBps`: a "guardrail of zero" is no
+    /// guardrail at all. Integrators wanting to disable Layer 2 thin-sampling
+    /// should leave the guardrail's threshold meaningful and route around it
+    /// via Layer 1 / circuit breaker controls.
+    ///
+    /// # Hardening 3A follow-up (Debt #22)
+    ///
+    /// This variant closes the gap intentionally left open in Hardening 3A,
+    /// where the prompt's "5 variant" boundary kept the pattern consistent
+    /// with the other guardrails but left two silent-disable cases
+    /// undetected. Hardening Closure brings parity.
+    InvalidTradeCountThreshold,
+
+    /// `max_snapshot_age_seconds` is 0 (rejects all snapshots) or > 86_400
+    /// (24h — staler than this is unsafe regardless of integrator intent).
+    /// Mirrors `InvalidStalenessSeconds` boundary logic for the Layer 2 path.
+    ///
+    /// # Hardening 3A follow-up (Debt #22)
+    ///
+    /// Same closure rationale as `InvalidTradeCountThreshold`. The Hardening
+    /// 3A boundary kept the new-variant count at 5; the Layer 2 snapshot age
+    /// validation remained an audit-trail gap until this patch.
+    InvalidSnapshotAge,
 }
 
 impl SafeOracleConfig {
@@ -332,6 +358,10 @@ impl SafeOracleConfig {
     ///   but `max_cross_source_bps > 10_000`.
     /// - [`ConfigError::InvalidHaltLedgers`] — `circuit_breaker_enabled`
     ///   and `circuit_breaker_halt_ledgers == 0`.
+    /// - [`ConfigError::InvalidTradeCountThreshold`] — `min_trade_count_1h
+    ///   == 0` (Hardening Closure / Debt #22).
+    /// - [`ConfigError::InvalidSnapshotAge`] — `max_snapshot_age_seconds
+    ///   == 0` or `> 86_400` (Hardening Closure / Debt #22).
     ///
     /// # Examples
     ///
@@ -358,6 +388,18 @@ impl SafeOracleConfig {
 
         if self.circuit_breaker_enabled && self.circuit_breaker_halt_ledgers == 0 {
             return Err(ConfigError::InvalidHaltLedgers);
+        }
+
+        // Hardening Closure (Debt #22): Layer 2 thin-sampling guard.
+        // min_trade_count_1h == 0 silently disables the check.
+        if self.min_trade_count_1h == 0 {
+            return Err(ConfigError::InvalidTradeCountThreshold);
+        }
+
+        // Hardening Closure (Debt #22): Layer 2 snapshot age guard.
+        // 0 rejects all snapshots; > 86_400 (24h) accepts unsafe staleness.
+        if self.max_snapshot_age_seconds == 0 || self.max_snapshot_age_seconds > 86_400 {
+            return Err(ConfigError::InvalidSnapshotAge);
         }
 
         Ok(())
