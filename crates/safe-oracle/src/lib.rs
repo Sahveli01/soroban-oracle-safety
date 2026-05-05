@@ -435,14 +435,37 @@ fn lastprice_inner(
     liquidity_registry: &Address,
     config: &SafeOracleConfig,
 ) -> Result<PriceData, OracleSafetyViolation> {
-    // 1. Fetch the most recent price (records=1 — `check_deviation` will fetch
-    //    the second-most-recent on its own). Single source of truth: every
-    //    Reflector read goes through `fetch_reflector_prices`.
-    let prices = fetch_reflector_prices(env, reflector, asset, 1)?;
-    let current = prices.get(0).ok_or(OracleSafetyViolation::StaleData)?;
+    // 1. Fetch newest + previous prices in a single cross-contract call.
+    //
+    // Hardening Phase debt #14: pre-6A this path issued two reads —
+    // `records=1` here for `current`, then `records=2` again inside
+    // `check_deviation` for the previous price. The records=2 fetch
+    // already returns both, so the records=1 call was redundant; folding
+    // it eliminates one Reflector round-trip per Layer 1 evaluation.
+    // Actual gas savings will be measured during testnet deployment
+    // (debt #13, deferred to Phase 8).
+    //
+    // `fetch_reflector_prices` enforces `prices.len() >= records`, so
+    // missing-history scenarios (0 or 1 stored price) surface as
+    // `StaleData` from the helper itself — `prices.get(1)` here is
+    // always populated when this path executes.
+    let prices = fetch_reflector_prices(env, reflector, asset, 2)?;
+    let p0 = prices.get(0).ok_or(OracleSafetyViolation::StaleData)?;
+    let p1 = prices.get(1).ok_or(OracleSafetyViolation::StaleData)?;
 
-    // 2. Layer 1 guardrails (Reflector-only data)
-    check_deviation(env, reflector, asset, &current, config)?;
+    // Newest/oldest by `timestamp`, not vec index — the mock currently
+    // returns newest-first, but production code does not depend on that
+    // ordering convention.
+    let (current, previous) = if p0.timestamp >= p1.timestamp {
+        (p0, p1)
+    } else {
+        (p1, p0)
+    };
+
+    // 2. Layer 1 guardrails (Reflector-only data).
+    // `check_deviation_from_pair` is pure validation — both prices are
+    // already in hand, no further cross-contract calls.
+    check_deviation_from_pair(&current, &previous, config)?;
     check_staleness(env, &current, config)?;
     check_cross_source(env, asset, &current, config)?;
 
@@ -460,11 +483,12 @@ fn lastprice_inner(
 /// Fetches the most recent `records` prices from Reflector via cross-contract call.
 ///
 /// Returns prices ordered newest-first. Single source of truth for every
-/// Reflector read: `lastprice` calls with `records=1`, `check_deviation` with
-/// `records=2`. Reflector returns `None` when the asset has no recorded prices,
-/// and a shorter `Vec` when history is thinner than `records`; both cases map
-/// to `Err(StaleData)` here — fail-safe default that downstream guardrails can
-/// rely on.
+/// Reflector read: `lastprice_inner` calls this once with `records=2`
+/// (Hardening 6A debt #14 collapsed the previous two-call pattern into
+/// one). Reflector returns `None` when the asset has no recorded prices,
+/// and a shorter `Vec` when history is thinner than `records`; both cases
+/// map to `Err(StaleData)` here — fail-safe default that downstream
+/// guardrails can rely on.
 fn fetch_reflector_prices(
     env: &Env,
     reflector: &Address,
@@ -497,53 +521,42 @@ fn fetch_reflector_prices(
     Ok(prices)
 }
 
-/// Layer 1, Guardrail 1 — Maximum Deviation.
+/// Layer 1, Guardrail 1 — Maximum Deviation (pure validation).
 ///
-/// Compares the current price against the previous price recorded by Reflector
-/// (one resolution-window earlier — typically ~5 min) and rejects updates whose
-/// BPS deviation exceeds `config.max_deviation_bps`. This is the primary defense
-/// against YieldBlox-class SDEX manipulation: an attacker who shifts the spot
-/// price by buying/selling on a thin market produces a delta that this guardrail
-/// flags as `ExcessiveDeviation`.
+/// Compares the newest price against its predecessor recorded by Reflector
+/// (one resolution-window earlier — typically ~5 min) and rejects updates
+/// whose BPS deviation exceeds `config.max_deviation_bps`. This is the
+/// primary defense against YieldBlox-class SDEX manipulation: an attacker
+/// who shifts the spot price by buying/selling on a thin market produces a
+/// delta that this guardrail flags as `ExcessiveDeviation`.
+///
+/// # Hardening Phase debt #14
+///
+/// Pre-6A this lived as `check_deviation`, which made its own
+/// `fetch_reflector_prices(records=2)` call independent of the records=1
+/// fetch in `lastprice_inner` — two cross-contract reads on every Layer 1
+/// evaluation. The records=2 fetch is now done once at the entry point
+/// and both prices passed in here as references; this helper became pure
+/// validation (no env/reflector/asset parameters).
+///
+/// The pre-6A sanity check `current.timestamp != newest.timestamp` was a
+/// defense against the (impossible-in-single-tx) scenario where storage
+/// mutated between the two cross-contract reads. With one read, that
+/// scenario cannot arise; the check is removed as dead code.
 ///
 /// # Defensive logic
-/// - `current.price <= 0` → `ExcessiveDeviation`. Reflector should never return a
-///   non-positive price, but a corrupted or malicious feed is the threat model.
-/// - Newest/oldest are determined by `timestamp`, not vec index — the mock
-///   currently returns newest-first, but we don't make production code rely on it.
-/// - Sanity-check that `current` matches the newest from the 2-record fetch.
-///   Storage cannot mutate within a single transaction, so a mismatch implies
-///   a feed bug → fail safe with `StaleData`.
-/// - `previous.price <= 0` → `ExcessiveDeviation`. Same reasoning as current.
-/// - `checked_mul(10_000)` catches the rare overflow where `abs_diff * 10_000`
-///   would exceed `i128::MAX`; treating overflow as deviation is the safe default.
-fn check_deviation(
-    env: &Env,
-    reflector: &Address,
-    asset: &Asset,
+/// - `current.price <= 0` or `previous.price <= 0` → `ExcessiveDeviation`.
+///   Reflector should never return a non-positive price, but a corrupted
+///   or malicious feed is the threat model.
+/// - `checked_mul(10_000)` catches the rare overflow where
+///   `abs_diff * 10_000` would exceed `i128::MAX`; treating overflow as
+///   deviation is the safe default.
+fn check_deviation_from_pair(
     current: &PriceData,
+    previous: &PriceData,
     config: &SafeOracleConfig,
 ) -> Result<(), OracleSafetyViolation> {
-    if current.price <= 0 {
-        return Err(OracleSafetyViolation::ExcessiveDeviation);
-    }
-
-    let prices = fetch_reflector_prices(env, reflector, asset, 2)?;
-    let p0 = prices.get(0).ok_or(OracleSafetyViolation::StaleData)?;
-    let p1 = prices.get(1).ok_or(OracleSafetyViolation::StaleData)?;
-
-    let (newest, oldest) = if p0.timestamp >= p1.timestamp {
-        (p0, p1)
-    } else {
-        (p1, p0)
-    };
-
-    if current.timestamp != newest.timestamp || current.price != newest.price {
-        return Err(OracleSafetyViolation::StaleData);
-    }
-
-    let previous = oldest;
-    if previous.price <= 0 {
+    if current.price <= 0 || previous.price <= 0 {
         return Err(OracleSafetyViolation::ExcessiveDeviation);
     }
 
