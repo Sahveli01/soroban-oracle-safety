@@ -2,7 +2,7 @@
 
 use safe_oracle::{Asset, ConfigError, OracleSafetyViolation, SafeOracleConfig};
 use soroban_sdk::{
-    contract, contracterror, contractevent, contractimpl, contracttype, Address, Env,
+    contract, contracterror, contractevent, contractimpl, contracttype, Address, Env, IntoVal,
 };
 
 #[contractevent]
@@ -253,7 +253,13 @@ impl MockLending {
     /// converts the inner `Result` to the Ok-only outer return at the very
     /// last step, after every potential write has already happened.
     pub fn borrow(env: Env, caller: Address, asset: Asset, amount: i128) -> BorrowOutcome {
-        caller.require_auth();
+        // Hardening Phase debt #11: granular auth — `caller`'s signature is
+        // bound to the exact `(asset, amount)` pair this borrow is for.
+        // A captured signature for "borrow 1000 USDC" cannot be replayed
+        // to borrow 10_000 USDC, or to borrow against a different asset.
+        // Generic `require_auth()` would approve any args under the same
+        // signature; that is too coarse for high-value paths like borrow.
+        caller.require_auth_for_args((asset.clone(), amount).into_val(&env));
 
         let inner = || -> Result<(), MockLendingError> {
             let oracle: Address = env

@@ -54,9 +54,6 @@
               "function_name": "write_snapshot",
               "args": [
                 {
-                  "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M"
-                },
-                {
                   "map": [
                     {
                       "key": {

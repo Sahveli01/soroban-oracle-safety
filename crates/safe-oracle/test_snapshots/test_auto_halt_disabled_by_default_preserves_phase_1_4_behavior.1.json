@@ -162,9 +162,6 @@
               "function_name": "write_snapshot",
               "args": [
                 {
-                  "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAMDR4"
-                },
-                {
                   "map": [
                     {
                       "key": {

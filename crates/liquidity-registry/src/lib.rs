@@ -1,7 +1,7 @@
 #![no_std]
 
 use soroban_sdk::{
-    contract, contracterror, contractevent, contractimpl, contracttype, Address, Env,
+    contract, contracterror, contractevent, contractimpl, contracttype, Address, Env, IntoVal,
 };
 
 /// Errors returned by `LiquidityRegistry`.
@@ -240,7 +240,14 @@ impl LiquidityRegistry {
             return Err(LiquidityRegistryError::NotInitialized);
         }
 
-        attester.require_auth();
+        // Hardening Phase debt #11: granular auth — attester's signature
+        // is bound to the exact `snapshot` payload. A captured signature
+        // for `{ volume: $5M, trades: 100 }` cannot be replayed for a
+        // crafted `{ volume: $5, trades: 1 }` snapshot. Generic
+        // `require_auth()` would approve any args under the same
+        // signature; that is too coarse for write_snapshot, which is the
+        // primary attack surface against Layer 2 attestations.
+        attester.require_auth_for_args((snapshot.clone(),).into_val(&env));
 
         let whitelist_key = DataKey::Whitelist(attester.clone());
         if !env.storage().instance().has(&whitelist_key) {
@@ -318,7 +325,7 @@ impl LiquidityRegistry {
 #[cfg(test)]
 mod test {
     use super::*;
-    use soroban_sdk::testutils::{Address as _, Ledger as _};
+    use soroban_sdk::testutils::{Address as _, Ledger as _, MockAuth, MockAuthInvoke};
 
     fn setup() -> (Env, LiquidityRegistryClient<'static>, Address) {
         let env = Env::default();
@@ -350,11 +357,24 @@ mod test {
     #[test]
     fn test_initialize_sets_admin() {
         let env = Env::default();
-        env.mock_all_auths();
-
         let contract_id = env.register(LiquidityRegistry, ());
         let client = LiquidityRegistryClient::new(&env, &contract_id);
         let admin = Address::generate(&env);
+
+        // Hardening Phase debt #8: granular auth — only admin's signature
+        // is approved, and only for the specific `initialize(admin)`
+        // invocation. Generic `mock_all_auths()` would have approved any
+        // address signing any call; this declaration pins admin auth as
+        // the only one needed.
+        env.mock_auths(&[MockAuth {
+            address: &admin,
+            invoke: &MockAuthInvoke {
+                contract: &contract_id,
+                fn_name: "initialize",
+                args: (admin.clone(),).into_val(&env),
+                sub_invokes: &[],
+            },
+        }]);
 
         client.initialize(&admin);
     }
@@ -362,12 +382,26 @@ mod test {
     #[test]
     fn test_initialize_twice_returns_already_initialized() {
         let env = Env::default();
-        env.mock_all_auths();
-
         let contract_id = env.register(LiquidityRegistry, ());
         let client = LiquidityRegistryClient::new(&env, &contract_id);
         let admin1 = Address::generate(&env);
         let admin2 = Address::generate(&env);
+
+        // Hardening Phase debt #8: granular auth — admin1's signature
+        // covers the first `initialize` call. The second call short-
+        // circuits at `AlreadyInitialized` *before* reaching
+        // `require_auth()`, so admin2 deliberately has no entry here —
+        // pinning that the rejection happens on the storage check, not
+        // because admin2's signature was missing.
+        env.mock_auths(&[MockAuth {
+            address: &admin1,
+            invoke: &MockAuthInvoke {
+                contract: &contract_id,
+                fn_name: "initialize",
+                args: (admin1.clone(),).into_val(&env),
+                sub_invokes: &[],
+            },
+        }]);
 
         client.initialize(&admin1);
 
@@ -455,7 +489,10 @@ mod test {
     #[test]
     fn test_add_attester_fails_when_not_initialized() {
         let env = Env::default();
-        env.mock_all_auths();
+        // No `mock_auths` needed: `add_attester` returns `NotInitialized`
+        // before reaching the `admin.require_auth()` call. Hardening 4
+        // (#8) cleanup — removed the dead `mock_all_auths` call so the
+        // test reads as "auth never enters the picture for this path".
 
         let contract_id = env.register(LiquidityRegistry, ());
         let client = LiquidityRegistryClient::new(&env, &contract_id);
@@ -798,7 +835,10 @@ mod test {
     #[test]
     fn test_get_snapshot_returns_none_when_not_initialized() {
         let env = Env::default();
-        env.mock_all_auths();
+        // No `mock_auths` needed: `get_snapshot` is read-only and never
+        // invokes `require_auth()`. Hardening 4 (#8) cleanup — removed
+        // the dead `mock_all_auths` call so the test reads as
+        // "auth never enters the picture for read paths".
 
         let contract_id = env.register(LiquidityRegistry, ());
         let client = LiquidityRegistryClient::new(&env, &contract_id);
@@ -808,6 +848,40 @@ mod test {
         assert!(
             result.is_none(),
             "uninitialized contract must return None for read"
+        );
+    }
+
+    /// Hardening 4 (#8) boundary test: `initialize(admin)` calls
+    /// `admin.require_auth()`. When `admin`'s signature is *not* in the
+    /// mock-auths declaration, the host treats the auth check as missing
+    /// and the invocation traps — observable as `Err(_)` from `try_*`.
+    /// Pins that the auth gate is real, not a cosmetic call.
+    #[test]
+    fn test_initialize_rejects_unauthorized_signer() {
+        let env = Env::default();
+        let contract_id = env.register(LiquidityRegistry, ());
+        let client = LiquidityRegistryClient::new(&env, &contract_id);
+        let admin = Address::generate(&env);
+        let unauthorized = Address::generate(&env);
+
+        // Only `unauthorized` is declared as a signer. Admin's
+        // require_auth() call has no matching MockAuth and therefore
+        // fails the host-side auth check.
+        env.mock_auths(&[MockAuth {
+            address: &unauthorized,
+            invoke: &MockAuthInvoke {
+                contract: &contract_id,
+                fn_name: "initialize",
+                args: (admin.clone(),).into_val(&env),
+                sub_invokes: &[],
+            },
+        }]);
+
+        let result = client.try_initialize(&admin);
+        assert!(
+            result.is_err(),
+            "init must fail when admin's signature is not provided: {:?}",
+            result
         );
     }
 
