@@ -79,14 +79,38 @@ pub struct PriceData {
 /// # Why `Err(u32)` and not `Err(OracleSafetyViolation)`?
 ///
 /// `OracleSafetyViolation` is a `#[contracterror]` type. soroban-sdk 25.x
-/// derives `Arbitrary` on `#[contracttype]` types under the test feature,
-/// and that derive does not compose with `#[contracterror]` payloads —
-/// build fails with "trait bound `OracleSafetyViolation: SorobanArbitrary`
-/// is not satisfied." Carrying the violation as its `u32` discriminant
-/// sidesteps that without changing the discriminant scheme: the values
-/// here MUST stay aligned with `OracleSafetyViolation = 1..=7`. The
-/// `into_result()` shim re-hydrates the typed variant for callers that
-/// want it.
+/// has two distinct constraints that block embedding it inside the
+/// `#[contracttype]` enum below — both empirically verified, the second
+/// not surfaced until Hardening 6C's PoC:
+///
+/// 1. **`SorobanArbitrary` bound (Pre-5.4 finding).** Under the test
+///    feature `soroban-sdk` derives an `Arbitrary` prototype for every
+///    `#[contracttype]`. The derive recursively requires every variant's
+///    payload to implement `SorobanArbitrary`, which `#[contracterror]`
+///    types do not — build fails with "trait bound
+///    `OracleSafetyViolation: SorobanArbitrary` is not satisfied."
+///    Manual `SorobanArbitrary` impl on the error type is conceptually
+///    possible (the trait is `pub`, three trait bounds to satisfy).
+///
+/// 2. **`ScVec: TryFrom<(ScSymbol, &OracleSafetyViolation)>` bound
+///    (Hardening 6C finding, deferred).** Independent of the
+///    `Arbitrary` derive, the `#[contracttype]` macro's XDR encoding
+///    expects each variant payload to be convertible into the tuple
+///    shape `(ScSymbol, &T)` ⟶ `ScVec`. `#[contracterror]` types
+///    implement `IntoVal<Env, Val>` but not this specific tuple-to-XDR
+///    path. A manual impl is blocked by Rust's orphan rule — both
+///    `ScVec` and `(ScSymbol, &T)` are foreign, so neither side of the
+///    `TryFrom` can host the impl from this crate. Closing this would
+///    require either (a) a `soroban-sdk` change exposing the conversion
+///    or (b) reshaping `OracleSafetyViolation` away from
+///    `#[contracterror]` (which would lose the stable u32 discriminants
+///    that integrators consume).
+///
+/// Carrying the violation as its `u32` discriminant sidesteps both
+/// constraints. The values here MUST stay aligned with
+/// `OracleSafetyViolation = 1..=8`. The `into_result()` shim re-hydrates
+/// the typed variant for callers that want it. Hardening Phase debt #17
+/// remains deferred for future SDK releases that resolve constraint (2).
 ///
 /// # Migration from the Phase 1-4 `Result<PriceData, OracleSafetyViolation>`
 ///
