@@ -35,6 +35,19 @@ pub enum OracleSafetyViolation {
     ThinSampling = 5,
     CircuitBreakerOpen = 6,
     StaleSnapshot = 7,
+    /// An external contract (Reflector primary feed or `LiquidityRegistry`)
+    /// failed unexpectedly — host-level trap, contract upgrade
+    /// incompatibility, storage corruption, or any other invocation error
+    /// surfaced through Soroban's `try_*` client variants. Hardening Phase
+    /// debt #4 added this variant so cross-contract failures arrive as
+    /// regular guardrail violations rather than propagating to the caller
+    /// (which would prevent auto-halt from committing — same Phase 5.2 v1
+    /// root cause).
+    ///
+    /// Secondary-feed failures intentionally do NOT surface as this variant
+    /// — `check_cross_source` skips silently on secondary trap, consistent
+    /// with `None` and "secondary returned `None`" semantics.
+    ExternalContractFailure = 8,
 }
 
 #[contracttype]
@@ -151,8 +164,9 @@ impl PriceResult {
             PriceResult::Err(5) => Err(OracleSafetyViolation::ThinSampling),
             PriceResult::Err(6) => Err(OracleSafetyViolation::CircuitBreakerOpen),
             PriceResult::Err(7) => Err(OracleSafetyViolation::StaleSnapshot),
+            PriceResult::Err(8) => Err(OracleSafetyViolation::ExternalContractFailure),
             PriceResult::Err(d) => panic!(
-                "PriceResult::Err discriminant {} is outside the OracleSafetyViolation range (1..=7)",
+                "PriceResult::Err discriminant {} is outside the OracleSafetyViolation range (1..=8)",
                 d
             ),
         }
@@ -458,9 +472,23 @@ fn fetch_reflector_prices(
     records: u32,
 ) -> Result<Vec<PriceData>, OracleSafetyViolation> {
     let client = ReflectorClient::new(env, reflector);
-    let prices = client
-        .lastprices(asset, &records)
-        .ok_or(OracleSafetyViolation::StaleData)?;
+    // Hardening Phase debt #4: graceful handling of Reflector contract
+    // trap. `try_lastprices` wraps the cross-contract invocation so a
+    // Reflector panic (upgrade incompatibility, storage corruption, host
+    // trap) lands in the `Err(Ok(_))` arm rather than propagating to the
+    // caller. Without this guard a primary-feed crash would prevent the
+    // auto-halt write from committing — same root-cause family as the
+    // Phase 5.2 v1 revert.
+    //
+    // Empirical PoC (pre-3C): a panicking contract method invoked through
+    // `try_<method>` lands in `Err(Ok(_))` with a framework
+    // representation of the trap. The wildcard arm below catches that
+    // plus all other non-success shapes (XDR conversion, host error).
+    let prices = match client.try_lastprices(asset, &records) {
+        Ok(Ok(Some(p))) => p,
+        Ok(Ok(None)) => return Err(OracleSafetyViolation::StaleData),
+        _ => return Err(OracleSafetyViolation::ExternalContractFailure),
+    };
 
     if prices.len() < records {
         return Err(OracleSafetyViolation::StaleData);
@@ -609,9 +637,16 @@ fn check_cross_source(
     }
 
     let client = ReflectorClient::new(env, secondary);
-    let secondary_price = match client.lastprice(asset) {
-        Some(p) => p,
-        None => return Ok(()),
+    // Hardening Phase debt #4: graceful handling of secondary Reflector
+    // trap. Secondary failure short-circuits to `Ok(())` (silent skip) —
+    // same semantics as `secondary_oracle = None` and "secondary returned
+    // `None`". The cross-source check is opt-in defense-in-depth; a
+    // broken secondary feed must not freeze borrowing on an
+    // otherwise-healthy primary. Primary failure is handled separately in
+    // `fetch_reflector_prices` and surfaces as `ExternalContractFailure`.
+    let secondary_price = match client.try_lastprice(asset) {
+        Ok(Ok(Some(p))) => p,
+        _ => return Ok(()),
     };
 
     if secondary_price.price <= 0 {
@@ -687,9 +722,17 @@ fn get_validated_snapshot(
     };
 
     let registry_client = LiquidityRegistryClient::new(env, liquidity_registry);
-    let snapshot = registry_client
-        .get_snapshot(&asset_address)
-        .ok_or(OracleSafetyViolation::InsufficientLiquidity)?;
+    // Hardening Phase debt #4: graceful handling of `LiquidityRegistry`
+    // contract trap. A registry failure (upgrade incompatibility, storage
+    // corruption) becomes `ExternalContractFailure` rather than
+    // propagating; integrators with `circuit_breaker_enabled = true` then
+    // auto-halt on the failure, treating it as "no fresh evidence" the
+    // same way Reflector failures are treated.
+    let snapshot = match registry_client.try_get_snapshot(&asset_address) {
+        Ok(Ok(Some(s))) => s,
+        Ok(Ok(None)) => return Err(OracleSafetyViolation::InsufficientLiquidity),
+        _ => return Err(OracleSafetyViolation::ExternalContractFailure),
+    };
 
     let now = env.ledger().timestamp();
     if now > snapshot.timestamp {

@@ -32,6 +32,11 @@ pub enum MockLendingError {
     ThinSampling = 5,
     CircuitBreakerOpen = 6,
     StaleSnapshot = 7,
+    /// Mirror of `OracleSafetyViolation::ExternalContractFailure` (Hardening
+    /// Phase debt #4). Surfaces when Reflector or `LiquidityRegistry`
+    /// trapped during a cross-contract invocation; the lending integrator's
+    /// caller sees the same granular reason safe-oracle reported.
+    ExternalContractFailure = 8,
     NotInitialized = 100,
     AlreadyInitialized = 101,
     /// Returned by `initialize` when `SafeOracleConfig::validate()` rejects
@@ -53,6 +58,9 @@ impl From<OracleSafetyViolation> for MockLendingError {
             OracleSafetyViolation::ThinSampling => MockLendingError::ThinSampling,
             OracleSafetyViolation::CircuitBreakerOpen => MockLendingError::CircuitBreakerOpen,
             OracleSafetyViolation::StaleSnapshot => MockLendingError::StaleSnapshot,
+            OracleSafetyViolation::ExternalContractFailure => {
+                MockLendingError::ExternalContractFailure
+            }
         }
     }
 }
@@ -136,6 +144,7 @@ impl BorrowOutcome {
             BorrowOutcome::Failed(5) => Err(MockLendingError::ThinSampling),
             BorrowOutcome::Failed(6) => Err(MockLendingError::CircuitBreakerOpen),
             BorrowOutcome::Failed(7) => Err(MockLendingError::StaleSnapshot),
+            BorrowOutcome::Failed(8) => Err(MockLendingError::ExternalContractFailure),
             BorrowOutcome::Failed(100) => Err(MockLendingError::NotInitialized),
             BorrowOutcome::Failed(101) => Err(MockLendingError::AlreadyInitialized),
             BorrowOutcome::Failed(102) => Err(MockLendingError::InvalidConfig),
