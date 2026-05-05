@@ -218,6 +218,114 @@ impl Default for SafeOracleConfig {
     }
 }
 
+/// Errors returned by [`SafeOracleConfig::validate`] when a config field
+/// has an out-of-range value that would silently disable a guardrail or
+/// produce nonsensical behavior at runtime.
+///
+/// # Spec
+///
+/// See spec §4 — Config Struct. Validation prevents silent guardrail
+/// disabling caused by misconfiguration (e.g., `max_deviation_bps = 0`
+/// allows infinite deviation, effectively disabling the deviation check
+/// without any visible signal).
+///
+/// # Audit notes
+///
+/// - Validation is **opt-in** — callers must invoke `config.validate()`.
+///   The library does not enforce validation in `lastprice()` to avoid
+///   per-call gas cost. Production integrators should validate at init
+///   time (recommended pattern: `MockLending::initialize` calls validate).
+///
+/// - All errors are recoverable at init time; runtime config changes are
+///   not supported (config is immutable after deploy per spec §4).
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum ConfigError {
+    /// `max_deviation_bps` is 0 (allows infinite deviation, disabling the
+    /// check) or > 10_000 (100% — values above this are nonsensical for a
+    /// relative-deviation threshold).
+    InvalidDeviationBps,
+
+    /// `max_staleness_seconds` is 0 (rejects every recorded price as
+    /// stale) or > 86_400 (24h — stale data older than a day is unsafe
+    /// regardless of how lenient the integrator wants to be).
+    InvalidStalenessSeconds,
+
+    /// `min_liquidity_usd` is negative. The field is `i128` so this is
+    /// representable, but a negative volume threshold is structurally
+    /// meaningless (liquidity is non-negative by definition).
+    InvalidLiquidityThreshold,
+
+    /// `secondary_oracle` is `Some(_)` but `max_cross_source_bps > 10_000`.
+    /// The cross-source guardrail is configured but its threshold is
+    /// nonsensical. When `secondary_oracle = None` the value of
+    /// `max_cross_source_bps` is irrelevant (cross-source is skipped
+    /// entirely), so this check is conditional.
+    InvalidCrossSourceBps,
+
+    /// `circuit_breaker_enabled = true` but `circuit_breaker_halt_ledgers
+    /// == 0`. A degenerate halt window: the breaker would fire and
+    /// immediately auto-recover on the same call, providing no actual
+    /// halt. When the breaker is disabled, the halt-ledgers field is
+    /// dormant, so this check is conditional.
+    InvalidHaltLedgers,
+}
+
+impl SafeOracleConfig {
+    /// Validates the config and returns an error if any field has an
+    /// out-of-range value. Recommended call site: at integrator
+    /// initialization, before storing the config in instance storage.
+    ///
+    /// # Spec
+    ///
+    /// See spec §4 — Config Struct. Validation is opt-in (the library
+    /// does not enforce it on every `lastprice` call) so integrators pay
+    /// the check exactly once per config change.
+    ///
+    /// # Errors
+    ///
+    /// - [`ConfigError::InvalidDeviationBps`] — `max_deviation_bps == 0`
+    ///   or `> 10_000`.
+    /// - [`ConfigError::InvalidStalenessSeconds`] — `max_staleness_seconds
+    ///   == 0` or `> 86_400`.
+    /// - [`ConfigError::InvalidLiquidityThreshold`] — `min_liquidity_usd
+    ///   < 0`.
+    /// - [`ConfigError::InvalidCrossSourceBps`] — secondary configured
+    ///   but `max_cross_source_bps > 10_000`.
+    /// - [`ConfigError::InvalidHaltLedgers`] — `circuit_breaker_enabled`
+    ///   and `circuit_breaker_halt_ledgers == 0`.
+    ///
+    /// # Examples
+    ///
+    /// ```rust,ignore
+    /// let config = SafeOracleConfig::default();
+    /// config.validate().expect("default config is valid by construction");
+    /// ```
+    pub fn validate(&self) -> Result<(), ConfigError> {
+        if self.max_deviation_bps == 0 || self.max_deviation_bps > 10_000 {
+            return Err(ConfigError::InvalidDeviationBps);
+        }
+
+        if self.max_staleness_seconds == 0 || self.max_staleness_seconds > 86_400 {
+            return Err(ConfigError::InvalidStalenessSeconds);
+        }
+
+        if self.min_liquidity_usd < 0 {
+            return Err(ConfigError::InvalidLiquidityThreshold);
+        }
+
+        if self.secondary_oracle.is_some() && self.max_cross_source_bps > 10_000 {
+            return Err(ConfigError::InvalidCrossSourceBps);
+        }
+
+        if self.circuit_breaker_enabled && self.circuit_breaker_halt_ledgers == 0 {
+            return Err(ConfigError::InvalidHaltLedgers);
+        }
+
+        Ok(())
+    }
+}
+
 /// Validates oracle output against five layered guardrails before returning a
 /// price, wrapped by the circuit breaker (Phase 5.2 v2).
 ///

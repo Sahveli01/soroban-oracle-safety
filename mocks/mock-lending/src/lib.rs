@@ -1,6 +1,6 @@
 #![no_std]
 
-use safe_oracle::{Asset, OracleSafetyViolation, SafeOracleConfig};
+use safe_oracle::{Asset, ConfigError, OracleSafetyViolation, SafeOracleConfig};
 use soroban_sdk::{
     contract, contracterror, contractevent, contractimpl, contracttype, Address, Env,
 };
@@ -34,6 +34,12 @@ pub enum MockLendingError {
     StaleSnapshot = 7,
     NotInitialized = 100,
     AlreadyInitialized = 101,
+    /// Returned by `initialize` when `SafeOracleConfig::validate()` rejects
+    /// the supplied config (Hardening Phase debt #2). Surfaces every
+    /// `safe_oracle::ConfigError` variant under one lending-side
+    /// discriminant — the granular reason is in the audit log emitted by
+    /// the safe-oracle library.
+    InvalidConfig = 102,
     InsufficientCollateral = 200,
 }
 
@@ -48,6 +54,17 @@ impl From<OracleSafetyViolation> for MockLendingError {
             OracleSafetyViolation::CircuitBreakerOpen => MockLendingError::CircuitBreakerOpen,
             OracleSafetyViolation::StaleSnapshot => MockLendingError::StaleSnapshot,
         }
+    }
+}
+
+/// All `safe_oracle::ConfigError` variants collapse to
+/// [`MockLendingError::InvalidConfig`]. The lending-side surface only needs
+/// to know that init was rejected; the precise validation reason
+/// (`InvalidDeviationBps`, `InvalidStalenessSeconds`, etc.) belongs in the
+/// safe-oracle audit log, not in the lending integrator's error enum.
+impl From<ConfigError> for MockLendingError {
+    fn from(_: ConfigError) -> Self {
+        MockLendingError::InvalidConfig
     }
 }
 
@@ -121,6 +138,7 @@ impl BorrowOutcome {
             BorrowOutcome::Failed(7) => Err(MockLendingError::StaleSnapshot),
             BorrowOutcome::Failed(100) => Err(MockLendingError::NotInitialized),
             BorrowOutcome::Failed(101) => Err(MockLendingError::AlreadyInitialized),
+            BorrowOutcome::Failed(102) => Err(MockLendingError::InvalidConfig),
             BorrowOutcome::Failed(200) => Err(MockLendingError::InsufficientCollateral),
             BorrowOutcome::Failed(d) => panic!(
                 "BorrowOutcome::Failed discriminant {} not mapped — \
@@ -162,6 +180,16 @@ impl MockLending {
     /// registry, or config addresses. Pattern mirrors `LiquidityRegistry`
     /// (Phase 3.1) and is mandatory for all `initialize()` functions in this
     /// project (see CLAUDE.md).
+    ///
+    /// # Config validation (Hardening Phase debt #2)
+    ///
+    /// `config.validate()` runs before any storage write. A misconfigured
+    /// deploy (e.g., `max_deviation_bps = 0`, which would silently disable
+    /// the deviation guardrail) is rejected with `InvalidConfig` instead of
+    /// being persisted. Validation runs as the last gate before storage:
+    /// after the `AlreadyInitialized` check (only fresh deploys validate)
+    /// and after `admin.require_auth()` (signature verification is the
+    /// caller-side prerequisite for any state change).
     pub fn initialize(
         env: Env,
         admin: Address,
@@ -174,6 +202,11 @@ impl MockLending {
         }
 
         admin.require_auth();
+
+        // Hardening debt #2: reject misconfigured deploys before persisting
+        // anything. Validation is opt-in at the library layer; the lending
+        // integrator opts in here on behalf of its caller.
+        config.validate().map_err(MockLendingError::from)?;
 
         env.storage().instance().set(&DataKey::Admin, &admin);
         env.storage().instance().set(&DataKey::Oracle, &oracle);

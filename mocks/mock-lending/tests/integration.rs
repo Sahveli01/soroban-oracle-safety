@@ -10,11 +10,11 @@
 //! `mock-lending` as a single normal dependency, which matches `test-utils`'
 //! view — types unify, the cycle disappears.
 
-use mock_lending::{BorrowOutcome, DataKey, MockLendingError};
+use mock_lending::{BorrowOutcome, DataKey, MockLending, MockLendingClient, MockLendingError};
 use safe_oracle::{Asset, SafeOracleConfig};
 use soroban_sdk::{
     testutils::{Address as _, Events as _, Ledger as _},
-    Address, Symbol,
+    Address, Env, Symbol,
 };
 use test_utils::TestEnv;
 
@@ -796,5 +796,42 @@ fn test_borrow_halted_other_asset_still_allows_deposit() {
         deposit_result.is_ok(),
         "Asset::Other deposit must succeed during borrow halt: got {:?}",
         deposit_result
+    );
+}
+
+// ===== Hardening Phase debt #2: Configuration sanity validation =====
+
+/// `MockLending::initialize` rejects a misconfigured `SafeOracleConfig`
+/// before persisting any state. This is the integrator-side wiring of the
+/// library's `validate()` method: a deploy with `max_deviation_bps = 0`
+/// (which would silently disable the deviation guardrail) is refused
+/// outright with `InvalidConfig` rather than landing in storage.
+///
+/// Uses raw `Env::default()` rather than `TestEnv::new()` because the
+/// latter pre-initializes the lending contract — a second `initialize`
+/// call would short-circuit at `AlreadyInitialized` before reaching
+/// `validate()`.
+#[test]
+fn test_initialize_rejects_invalid_config() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let admin = Address::generate(&env);
+    let oracle = Address::generate(&env);
+    let registry = Address::generate(&env);
+
+    let lending_addr = env.register(MockLending, ());
+    let lending_client = MockLendingClient::new(&env, &lending_addr);
+
+    let invalid_config = SafeOracleConfig {
+        max_deviation_bps: 0, // disables the deviation guardrail — invalid
+        ..SafeOracleConfig::default()
+    };
+
+    let result = lending_client.try_initialize(&admin, &oracle, &registry, &invalid_config);
+    assert_eq!(
+        result,
+        Err(Ok(MockLendingError::InvalidConfig)),
+        "init must surface InvalidConfig when validate() rejects the config"
     );
 }
