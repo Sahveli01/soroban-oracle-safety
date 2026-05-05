@@ -10,7 +10,7 @@
 //! `mock-lending` as a single normal dependency, which matches `test-utils`'
 //! view — types unify, the cycle disappears.
 
-use mock_lending::{BorrowOutcome, DataKey, MockLending, MockLendingClient, MockLendingError};
+use mock_lending::{BorrowOutcome, DataKey, MockLending, MockLendingError};
 use safe_oracle::{Asset, SafeOracleConfig};
 use soroban_sdk::{
     testutils::{Address as _, Events as _, Ledger as _},
@@ -18,29 +18,13 @@ use soroban_sdk::{
 };
 use test_utils::TestEnv;
 
-/// Reinitialization protection: `TestEnv::new()` already initializes the
-/// lending contract (Phase 2.7 wiring). A second `initialize` call from any
-/// caller — even with a different admin — must be rejected with
-/// `AlreadyInitialized` rather than silently overwriting oracle/registry/config
-/// addresses. Mirrors the LiquidityRegistry reinit guard added in Phase 3.1.
-#[test]
-fn test_initialize_prevents_reinitialization() {
-    let test_env = TestEnv::new();
-    let attacker_admin = Address::generate(&test_env.env);
-
-    let result = test_env.lending_client.try_initialize(
-        &attacker_admin,
-        &test_env.reflector_address,
-        &test_env.lending_address,
-        &SafeOracleConfig::default(),
-    );
-
-    assert_eq!(
-        result,
-        Err(Ok(MockLendingError::AlreadyInitialized)),
-        "second initialize must be rejected to prevent admin override"
-    );
-}
+// Pre-Hardening 6B `test_initialize_prevents_reinitialization` was deleted:
+// a CAP-0058 `__constructor` cannot be invoked twice on the same contract,
+// so the `AlreadyInitialized` re-init path is unreachable. The
+// `MockLendingError::AlreadyInitialized` variant is retained
+// (`#[allow(dead_code)]`) for audit-history continuity. Atomic deploy+init
+// removes the entire deploy/init race window the original guard defended
+// against; this is a strictly stronger guarantee.
 
 /// `TestEnv::new()` initializes the lending contract in Phase 2.7; verify
 /// that the expected fields landed in storage.
@@ -807,11 +791,18 @@ fn test_borrow_halted_other_asset_still_allows_deposit() {
 /// (which would silently disable the deviation guardrail) is refused
 /// outright with `InvalidConfig` rather than landing in storage.
 ///
-/// Uses raw `Env::default()` rather than `TestEnv::new()` because the
-/// latter pre-initializes the lending contract — a second `initialize`
-/// call would short-circuit at `AlreadyInitialized` before reaching
-/// `validate()`.
+/// # Hardening 6B (#10) — CAP-0058 update
+///
+/// With `__constructor` migration, validation runs during `env.register`
+/// itself; an `InvalidConfig` Err from the constructor traps the
+/// registration at the host level. The previous `try_initialize -> Err`
+/// pattern is gone — no separate init step exists. The test now uses
+/// `#[should_panic]` to assert the host trap fires. The error variant
+/// is still emitted in the trap message; future tightening could match
+/// on the message text, but `should_panic` without a string predicate
+/// keeps the test resilient to SDK message-format changes.
 #[test]
+#[should_panic]
 fn test_initialize_rejects_invalid_config() {
     let env = Env::default();
     env.mock_all_auths();
@@ -820,18 +811,14 @@ fn test_initialize_rejects_invalid_config() {
     let oracle = Address::generate(&env);
     let registry = Address::generate(&env);
 
-    let lending_addr = env.register(MockLending, ());
-    let lending_client = MockLendingClient::new(&env, &lending_addr);
-
     let invalid_config = SafeOracleConfig {
         max_deviation_bps: 0, // disables the deviation guardrail — invalid
         ..SafeOracleConfig::default()
     };
 
-    let result = lending_client.try_initialize(&admin, &oracle, &registry, &invalid_config);
-    assert_eq!(
-        result,
-        Err(Ok(MockLendingError::InvalidConfig)),
-        "init must surface InvalidConfig when validate() rejects the config"
-    );
+    // CAP-0058: `__constructor` runs during register. validate() returns
+    // `Err(InvalidConfig)`, which traps the registration. Reaching the
+    // assignment line below would be a regression — the test would then
+    // fail because no panic occurred.
+    let _addr = env.register(MockLending, (admin, oracle, registry, invalid_config));
 }

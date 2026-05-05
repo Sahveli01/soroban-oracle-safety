@@ -214,29 +214,33 @@ impl<'a> TestEnv<'a> {
         };
         secondary_reflector_client.config(&secondary_cfg);
 
-        // Register `LiquidityRegistry` and prime it with an admin and a single
-        // whitelisted attester. Order matters: this must be live before
-        // `MockLending::initialize` runs so lending can be wired to the real
-        // registry instance below.
-        let registry = env.register(LiquidityRegistry, ());
-        let registry_client = LiquidityRegistryClient::new(&env, &registry);
+        // Register `LiquidityRegistry` with admin via the CAP-0058
+        // constructor (Hardening Phase debt #10), then prime the
+        // attester whitelist. Order matters: registry must be live
+        // before `MockLending`'s constructor runs so lending can wire
+        // to the real registry address.
         let admin = Address::generate(&env);
         let attester = Address::generate(&env);
-        registry_client.initialize(&admin);
+        let registry = env.register(LiquidityRegistry, (admin.clone(),));
+        let registry_client = LiquidityRegistryClient::new(&env, &registry);
         registry_client.add_attester(&attester);
 
-        // Register mock Lending and initialize it against the real
-        // `LiquidityRegistry` registered above. Phase 4.5 swap: prior to
-        // Phase 4, lending was initialized with its own address as a registry
-        // placeholder (Layer 2 was stubbed, so the placeholder was never
-        // dereferenced). With `check_liquidity` and `check_thin_sampling`
-        // shipping in Phases 4.1/4.2, the lending → safe_oracle →
-        // LiquidityRegistry cross-contract path is now exercised end-to-end
-        // whenever a test calls `lending_client.borrow(..., Asset::Stellar(_), _)`.
-        let lending_address = env.register(MockLending, ());
-        let lending_client = MockLendingClient::new(&env, &lending_address);
+        // Register mock Lending against the real `LiquidityRegistry`
+        // registered above, again via CAP-0058 constructor. Phase 4.5
+        // wired the registry address through here so the lending →
+        // safe_oracle → LiquidityRegistry cross-contract path is
+        // exercised end-to-end for `Asset::Stellar` borrow paths.
         let lending_admin = Address::generate(&env);
-        lending_client.initialize(&lending_admin, &reflector_address, &registry, &config);
+        let lending_address = env.register(
+            MockLending,
+            (
+                lending_admin,
+                reflector_address.clone(),
+                registry.clone(),
+                config.clone(),
+            ),
+        );
+        let lending_client = MockLendingClient::new(&env, &lending_address);
 
         // Pre-5.2: register the OracleHost harness LAST so the deterministic
         // address sequence of pre-existing contracts (reflector, secondary,

@@ -38,6 +38,11 @@ pub enum MockLendingError {
     /// caller sees the same granular reason safe-oracle reported.
     ExternalContractFailure = 8,
     NotInitialized = 100,
+    /// Retained for audit-trail continuity; no longer reachable from
+    /// any contract entry point after Hardening 6B's CAP-0058
+    /// `__constructor` migration (debt #10) — constructors cannot be
+    /// invoked twice, so the previous re-init guard was removed.
+    #[allow(dead_code)]
     AlreadyInitialized = 101,
     /// Returned by `initialize` when `SafeOracleConfig::validate()` rejects
     /// the supplied config (Hardening Phase debt #2). Surfaces every
@@ -181,35 +186,36 @@ pub struct MockLending;
 
 #[contractimpl]
 impl MockLending {
-    /// Initialize the mock lending contract.
+    /// Initialize the mock lending contract — CAP-0058 `__constructor`.
     ///
-    /// Reinitialization is rejected to prevent admin-override attacks: once
-    /// `Admin` is in instance storage, a second call returns
-    /// `AlreadyInitialized` instead of silently overwriting the oracle,
-    /// registry, or config addresses. Pattern mirrors `LiquidityRegistry`
-    /// (Phase 3.1) and is mandatory for all `initialize()` functions in this
-    /// project (see CLAUDE.md).
+    /// # Hardening Phase debt #10 (CAP-0058 migration)
+    ///
+    /// Replaces the previous `pub fn initialize(...)` two-step deploy +
+    /// init flow with the atomic CAP-0058 constructor pattern. Init args
+    /// are now passed at deploy time (`env.register(MockLending, (admin,
+    /// oracle, registry, config))`); the constructor runs as part of the
+    /// same host invocation, eliminating the deploy/init race window
+    /// where an attacker could sandwich operations between the two.
+    ///
+    /// The previous `if has(Admin) -> AlreadyInitialized` re-init guard is
+    /// gone — a CAP-0058 constructor cannot be invoked twice on the same
+    /// contract. The `MockLendingError::AlreadyInitialized` variant is
+    /// retained for audit-history continuity but is no longer reachable
+    /// from this contract.
     ///
     /// # Config validation (Hardening Phase debt #2)
     ///
-    /// `config.validate()` runs before any storage write. A misconfigured
-    /// deploy (e.g., `max_deviation_bps = 0`, which would silently disable
-    /// the deviation guardrail) is rejected with `InvalidConfig` instead of
-    /// being persisted. Validation runs as the last gate before storage:
-    /// after the `AlreadyInitialized` check (only fresh deploys validate)
-    /// and after `admin.require_auth()` (signature verification is the
-    /// caller-side prerequisite for any state change).
-    pub fn initialize(
+    /// `config.validate()` still runs before any storage write. With the
+    /// constructor model an `InvalidConfig` Err traps the registration
+    /// itself (the contract is never created), so misconfigured deploys
+    /// fail visibly at the host level rather than landing storage.
+    pub fn __constructor(
         env: Env,
         admin: Address,
         oracle: Address,
         liquidity_registry: Address,
         config: SafeOracleConfig,
     ) -> Result<(), MockLendingError> {
-        if env.storage().instance().has(&DataKey::Admin) {
-            return Err(MockLendingError::AlreadyInitialized);
-        }
-
         admin.require_auth();
 
         // Hardening debt #2: reject misconfigured deploys before persisting
