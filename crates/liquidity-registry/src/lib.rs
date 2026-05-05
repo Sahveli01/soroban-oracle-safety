@@ -22,7 +22,24 @@ pub enum LiquidityRegistryError {
     InvalidSnapshot = 6,
     AttesterAlreadyWhitelisted = 7,
     StaleSnapshot = 8,
+    /// Snapshot rejected because `timestamp > ledger_now +
+    /// MAX_TIMESTAMP_SKEW_SECONDS`. Hardening Phase debt #5: a compromised
+    /// attester writing `timestamp = u64::MAX` would otherwise permanently
+    /// block all future snapshots (every later write is then stale relative
+    /// to the poisoned `existing.timestamp`). The skew tolerance allows
+    /// honest attester clock drift.
+    FutureTimestamp = 9,
 }
+
+/// Maximum allowed clock skew between an attester's wall-clock time and
+/// the on-chain ledger time when accepting a snapshot. A snapshot whose
+/// `timestamp` exceeds `ledger_now + MAX_TIMESTAMP_SKEW_SECONDS` is
+/// rejected as `FutureTimestamp` (Hardening Phase debt #5).
+///
+/// 300 seconds matches Reflector's mainnet resolution and the safe-oracle
+/// `max_staleness_seconds` default — the same "this is how out of sync
+/// honest feeds can plausibly be" budget applies to attesters.
+const MAX_TIMESTAMP_SKEW_SECONDS: u64 = 300;
 
 /// On-chain SDEX trade attestation snapshot for a single asset.
 ///
@@ -201,7 +218,15 @@ impl LiquidityRegistry {
     ///    underflow `check_liquidity`'s comparisons), and the `attester` field
     ///    on the snapshot must equal the calling attester (prevents one
     ///    whitelisted attester from forging another's signed attestation).
-    /// 5. Replay protection — strict greater-than on the previous timestamp
+    /// 5. **Future-timestamp upper bound (Hardening Phase debt #5)** —
+    ///    `snapshot.timestamp > ledger_now + MAX_TIMESTAMP_SKEW_SECONDS`
+    ///    rejected as `FutureTimestamp`. Without this bound a compromised
+    ///    attester could write `timestamp = u64::MAX`, permanently locking
+    ///    out every subsequent write (each later one would compare against
+    ///    the poisoned `existing.timestamp` and fail step 6 with
+    ///    `StaleSnapshot`). The 300s skew matches honest attester clock
+    ///    drift and Reflector's mainnet resolution.
+    /// 6. Replay protection — strict greater-than on the previous timestamp
     ///    rejects both stale resubmissions and equal-timestamp double-writes.
     ///
     /// Snapshots are stored in `persistent` storage keyed by asset; production
@@ -227,6 +252,15 @@ impl LiquidityRegistry {
         }
         if snapshot.attester != attester {
             return Err(LiquidityRegistryError::InvalidSnapshot);
+        }
+
+        // Hardening Phase debt #5: reject far-future timestamps.
+        // `saturating_add` clamps at `u64::MAX` so a `now` very close to
+        // the upper bound cannot cause a subtle wraparound.
+        let now = env.ledger().timestamp();
+        let max_acceptable = now.saturating_add(MAX_TIMESTAMP_SKEW_SECONDS);
+        if snapshot.timestamp > max_acceptable {
+            return Err(LiquidityRegistryError::FutureTimestamp);
         }
 
         let snapshot_key = DataKey::Snapshot(snapshot.asset.clone());
@@ -284,11 +318,25 @@ impl LiquidityRegistry {
 #[cfg(test)]
 mod test {
     use super::*;
-    use soroban_sdk::testutils::Address as _;
+    use soroban_sdk::testutils::{Address as _, Ledger as _};
 
     fn setup() -> (Env, LiquidityRegistryClient<'static>, Address) {
         let env = Env::default();
         env.mock_all_auths();
+
+        // Bump the ledger baseline well above the hard-coded snapshot
+        // timestamps used by the rest of this test module (1_000_000 and
+        // 2_000_000). Hardening Phase debt #5 rejects
+        // `snapshot.timestamp > ledger_now + 300`; without this bump,
+        // every fixture in this module would fail with `FutureTimestamp`
+        // because the default `Env::default()` ledger time is 0.
+        // 100_000_000 is comfortably past every test fixture, so all
+        // existing timestamps fall in the "past" relative to ledger now —
+        // they exercise replay protection (their original intent) without
+        // triggering the new future-timestamp guard.
+        env.ledger().with_mut(|li| {
+            li.timestamp = 100_000_000;
+        });
 
         let contract_id = env.register(LiquidityRegistry, ());
         let client = LiquidityRegistryClient::new(&env, &contract_id);
@@ -761,5 +809,91 @@ mod test {
             result.is_none(),
             "uninitialized contract must return None for read"
         );
+    }
+
+    // ===== Hardening Phase debt #5: future-timestamp DoS protection =====
+
+    /// `snapshot.timestamp > now + MAX_TIMESTAMP_SKEW_SECONDS` must be
+    /// rejected with `FutureTimestamp`. Without this guard a compromised
+    /// attester could pin every future write into `StaleSnapshot` by
+    /// landing a single far-future timestamp first.
+    #[test]
+    fn test_write_snapshot_rejects_far_future_timestamp() {
+        let (env, client, _admin) = setup();
+        let attester = Address::generate(&env);
+        client.add_attester(&attester);
+
+        let asset = Address::generate(&env);
+        // setup() pinned `ledger_now` at 100_000_000; skew is 300, so
+        // anything past `100_000_300` must be rejected. Pick a value
+        // 10_000s past the skew window.
+        let far_future = env.ledger().timestamp() + 10_000;
+        let snapshot = LiquiditySnapshot {
+            asset: asset.clone(),
+            volume_30m_usd: 1_000_000_000,
+            unique_trades_1h: 42,
+            timestamp: far_future,
+            attester: attester.clone(),
+        };
+
+        let result = client.try_write_snapshot(&attester, &snapshot);
+        assert_eq!(
+            result,
+            Err(Ok(LiquidityRegistryError::FutureTimestamp)),
+            "far-future timestamp must be rejected (Hardening debt #5)"
+        );
+    }
+
+    /// Direct DoS attack: attester writes `timestamp = u64::MAX`. The
+    /// `saturating_add` inside the guard clamps cleanly so the comparison
+    /// fires regardless of how close `now` is to `u64::MAX`.
+    #[test]
+    fn test_write_snapshot_rejects_u64_max_timestamp() {
+        let (env, client, _admin) = setup();
+        let attester = Address::generate(&env);
+        client.add_attester(&attester);
+
+        let asset = Address::generate(&env);
+        let snapshot = LiquiditySnapshot {
+            asset: asset.clone(),
+            volume_30m_usd: 1_000_000_000,
+            unique_trades_1h: 42,
+            timestamp: u64::MAX,
+            attester: attester.clone(),
+        };
+
+        let result = client.try_write_snapshot(&attester, &snapshot);
+        assert_eq!(
+            result,
+            Err(Ok(LiquidityRegistryError::FutureTimestamp)),
+            "u64::MAX timestamp must be rejected — direct DoS vector"
+        );
+    }
+
+    /// Regression guard: clock-drift within `MAX_TIMESTAMP_SKEW_SECONDS`
+    /// is accepted. Honest attesters running slightly ahead of the
+    /// validator-consensus clock must not be locked out.
+    #[test]
+    fn test_write_snapshot_accepts_within_skew_tolerance() {
+        let (env, client, _admin) = setup();
+        let attester = Address::generate(&env);
+        client.add_attester(&attester);
+
+        let asset = Address::generate(&env);
+        // 100s in the future — well within the 300s skew tolerance.
+        let slightly_future = env.ledger().timestamp() + 100;
+        let snapshot = LiquiditySnapshot {
+            asset: asset.clone(),
+            volume_30m_usd: 1_000_000_000,
+            unique_trades_1h: 42,
+            timestamp: slightly_future,
+            attester: attester.clone(),
+        };
+
+        // No `try_*`: a panic here would surface the guard misfiring.
+        client.write_snapshot(&attester, &snapshot);
+
+        let read_back = client.get_snapshot(&asset).unwrap();
+        assert_eq!(read_back.timestamp, slightly_future);
     }
 }

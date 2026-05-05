@@ -582,13 +582,17 @@ fn check_staleness(
 ///   because the secondary feed has not seen it yet.
 /// - Secondary returns a non-positive price → `CrossSourceMismatch`. A live
 ///   feed reporting zero/negative is a manipulation signal, not a data gap.
+/// - Secondary returns a stale price (older than `config.max_staleness_seconds`,
+///   the same threshold the primary's freshness check uses) → `Ok(())`. A
+///   stale value is "no fresh evidence"; comparing primary against an old
+///   secondary would generate false-positive halts whenever the secondary
+///   updates lag behind primary. Hardening 3B debt #3 added this skip;
+///   pre-3B behavior collapsed stale secondary into the BPS comparison
+///   below.
 /// - BPS deviation beyond threshold → `CrossSourceMismatch`.
 ///
 /// Primary is the BPS reference (`|primary - secondary| * 10_000 / primary`)
 /// because primary is the value the lending contract actually consumes.
-/// Secondary staleness is intentionally not checked here — the Hardening
-/// Phase (debt #3) revisits whether stale secondaries should silently
-/// disable cross-check or hard-fail.
 fn check_cross_source(
     env: &Env,
     asset: &Asset,
@@ -612,6 +616,23 @@ fn check_cross_source(
 
     if secondary_price.price <= 0 {
         return Err(OracleSafetyViolation::CrossSourceMismatch);
+    }
+
+    // Hardening Phase debt #3: skip when the secondary feed is stale. A
+    // stale value is not fresh evidence of disagreement; treating it as a
+    // mismatch would generate false-positive halts whenever the secondary
+    // updates lag behind primary. Uses the same `max_staleness_seconds`
+    // threshold as primary's `check_staleness` — the integrator's freshness
+    // expectation is uniform across both feeds.
+    //
+    // `saturating_sub` handles future-dated secondary timestamps (clock
+    // skew) without panicking: future values yield `secondary_age = 0`,
+    // which falls through to the BPS comparison rather than hitting the
+    // skip path. The BPS check itself is the safety net for that anomaly.
+    let now = env.ledger().timestamp();
+    let secondary_age = now.saturating_sub(secondary_price.timestamp);
+    if secondary_age > config.max_staleness_seconds as u64 {
+        return Ok(());
     }
 
     let abs_diff = (current.price - secondary_price.price).abs();

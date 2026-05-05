@@ -8,7 +8,7 @@
 //! Integration tests in `tests/` see `safe-oracle` as a single normal dependency,
 //! which matches `test-utils`' view — types unify, and the cycle disappears.
 
-use safe_oracle::{Asset, OracleSafetyViolation};
+use safe_oracle::{Asset, OracleSafetyViolation, SafeOracleConfig};
 use soroban_sdk::{testutils::Ledger as _, Symbol};
 use test_utils::TestEnv;
 
@@ -381,4 +381,73 @@ fn test_cross_source_fails_when_secondary_price_is_zero() {
     let result = test_env.lastprice(&asset, &config);
 
     assert_eq!(result, Err(OracleSafetyViolation::CrossSourceMismatch));
+}
+
+// ===== Hardening Phase debt #3: Secondary oracle staleness skip =====
+
+/// Stale secondary feed → cross-source check silently skipped. The
+/// secondary's old reading is "no fresh evidence" rather than "evidence of
+/// mismatch", consistent with the `None` and "secondary returned `None`"
+/// skip paths.
+///
+/// Behavior change from pre-Hardening: pre-3B this scenario would have
+/// computed the BPS divergence against the stale secondary value and
+/// produced a false-positive `CrossSourceMismatch`. Post-3B the stale
+/// branch short-circuits to `Ok(())`.
+#[test]
+fn test_cross_source_stale_secondary_silently_skipped() {
+    let test_env = TestEnv::new();
+    let asset = Asset::Other(Symbol::new(&test_env.env, "USDC"));
+
+    // TestEnv baseline `now = 100_000`. Primary fresh (50s old).
+    test_env.set_oracle_price(&asset, TestEnv::ONE_DOLLAR, 99_900);
+    test_env.set_oracle_price(&asset, TestEnv::ONE_DOLLAR, 99_950);
+
+    // Secondary timestamp 99_000 → 1000 seconds old, well past default
+    // `max_staleness_seconds = 300`. Price wildly diverges from primary
+    // (100x) so the BPS check WOULD fire if cross-source ran.
+    test_env.set_secondary_oracle_price(&asset, TestEnv::ONE_DOLLAR * 100, 99_000);
+
+    let config = SafeOracleConfig {
+        secondary_oracle: Some(test_env.secondary_reflector_address.clone()),
+        ..SafeOracleConfig::default()
+    };
+
+    let result = test_env.lastprice(&asset, &config);
+
+    assert!(
+        result.is_ok(),
+        "stale secondary must be silently skipped — not treated as mismatch evidence: {:?}",
+        result
+    );
+}
+
+/// Regression guard: a *fresh* secondary with large divergence still
+/// produces `CrossSourceMismatch`. Pins that the staleness skip does NOT
+/// disable cross-source checking entirely — only the stale-secondary
+/// branch short-circuits.
+#[test]
+fn test_cross_source_fresh_secondary_disagreement_still_caught() {
+    let test_env = TestEnv::new();
+    let asset = Asset::Other(Symbol::new(&test_env.env, "USDC"));
+
+    test_env.set_oracle_price(&asset, TestEnv::ONE_DOLLAR, 99_900);
+    test_env.set_oracle_price(&asset, TestEnv::ONE_DOLLAR, 99_950);
+
+    // Secondary fresh (matches primary's 99_950 timestamp = 50s old) but
+    // diverges 100x. BPS check must fire.
+    test_env.set_secondary_oracle_price(&asset, TestEnv::ONE_DOLLAR * 100, 99_950);
+
+    let config = SafeOracleConfig {
+        secondary_oracle: Some(test_env.secondary_reflector_address.clone()),
+        ..SafeOracleConfig::default()
+    };
+
+    let result = test_env.lastprice(&asset, &config);
+
+    assert_eq!(
+        result,
+        Err(OracleSafetyViolation::CrossSourceMismatch),
+        "fresh secondary with major divergence must still produce CrossSourceMismatch"
+    );
 }
