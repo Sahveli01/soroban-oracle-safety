@@ -124,6 +124,47 @@ pub struct TestEnv<'a> {
 }
 
 impl<'a> TestEnv<'a> {
+    /// One USD in 14-decimal Reflector precision (matches the precision
+    /// returned by `Reflector.lastprice()` on mainnet — `decimals=14`).
+    /// Equivalent to `100_000_000_000_000_i128` (1e14). Multiply by integer
+    /// dollar factors for higher prices (e.g. `100 * Self::ONE_DOLLAR` for $100).
+    ///
+    /// Hardening Phase debt #15: previously duplicated as a top-level `const`
+    /// in 8 test files; consolidated here so the precision convention has a
+    /// single source of truth.
+    pub const ONE_DOLLAR: i128 = 100_000_000_000_000;
+
+    /// Default healthy 30-minute USD volume, comfortably above the
+    /// `SafeOracleConfig::default()` threshold of
+    /// `min_liquidity_usd = 100_000_000_000` ($10,000). Stored in 7-decimal
+    /// USD (Stellar stroop convention), so this value (`500_000_000_000`)
+    /// corresponds to $50,000.
+    ///
+    /// Used by tests that need a passing Layer 2 liquidity check without the
+    /// volume being the variable under test.
+    pub const HEALTHY_VOLUME_USD: i128 = 500_000_000_000;
+
+    /// Primes the Reflector feed for `asset` with two consecutive same-priced
+    /// records at `ONE_DOLLAR` (timestamps 99_900 and 99_950) so Layer 1
+    /// guardrails pass deterministically:
+    /// - deviation: 0 BPS between the two records.
+    /// - staleness: newest timestamp is 50s before the `TestEnv` baseline
+    ///   of 100_000.
+    /// - cross-source: untouched (caller decides whether to wire a secondary).
+    ///
+    /// Tests that need to isolate a *later* guardrail call this and then
+    /// inject the failing input on top. Layer 2 priming (registry snapshot)
+    /// is left to the caller via `write_snapshot_now` because the desired
+    /// volume / trade-count varies per scenario.
+    ///
+    /// Hardening Phase debt #15: previously duplicated verbatim in 4 test
+    /// files (`full_flow.rs`, `layer2_liquidity.rs`, `layer2_thin_sampling.rs`,
+    /// `e2e_attack_scenarios.rs`); consolidated here.
+    pub fn prime_layer1(&self, asset: &Asset) {
+        self.set_oracle_price(asset, Self::ONE_DOLLAR, 99_900);
+        self.set_oracle_price(asset, Self::ONE_DOLLAR, 99_950);
+    }
+
     /// Creates a fresh test environment with default `SafeOracleConfig`
     /// (circuit breaker disabled — Phase 1-4 default).
     ///

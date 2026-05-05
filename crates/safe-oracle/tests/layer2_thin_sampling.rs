@@ -17,22 +17,6 @@ use safe_oracle::{Asset, OracleSafetyViolation, SafeOracleConfig};
 use soroban_sdk::{testutils::Address as _, Address, Symbol};
 use test_utils::TestEnv;
 
-/// 14-decimal Reflector price helper: dollars → ×10^14.
-const ONE_DOLLAR: i128 = 100_000_000_000_000;
-
-/// 7-decimal USD volume that comfortably clears the $10,000 default
-/// `min_liquidity_usd` so this file can isolate thin-sampling failures
-/// without crossing wires with `check_liquidity`.
-const HEALTHY_VOLUME_USD: i128 = 500_000_000_000;
-
-/// Two same-priced Reflector records make Layer 1 (deviation + staleness,
-/// secondary off by default) deterministic. Each test then varies only the
-/// Layer 2 inputs.
-fn prime_layer1(test_env: &TestEnv, asset: &Asset) {
-    test_env.set_oracle_price(asset, ONE_DOLLAR, 99_900);
-    test_env.set_oracle_price(asset, ONE_DOLLAR, 99_950);
-}
-
 /// YieldBlox-replica from the Layer 2 sampling angle: the attacker's
 /// manipulated trade was effectively the *only* trade in the pricing
 /// window. Volume in this fixture clears `min_liquidity_usd`, so the
@@ -46,10 +30,10 @@ fn test_check_thin_sampling_blocks_yieldblox_single_trade() {
     let asset_address = Address::generate(&test_env.env);
     let asset = Asset::Stellar(asset_address.clone());
 
-    prime_layer1(&test_env, &asset);
+    test_env.prime_layer1(&asset);
 
     // Healthy volume but only the attacker's single trade in the past hour.
-    test_env.write_snapshot_now(&asset_address, HEALTHY_VOLUME_USD, 1_u32);
+    test_env.write_snapshot_now(&asset_address, TestEnv::HEALTHY_VOLUME_USD, 1_u32);
 
     let result = test_env.lastprice(&asset, &SafeOracleConfig::default());
 
@@ -70,8 +54,8 @@ fn test_check_thin_sampling_passes_with_active_market() {
     let asset_address = Address::generate(&test_env.env);
     let asset = Asset::Stellar(asset_address.clone());
 
-    prime_layer1(&test_env, &asset);
-    test_env.write_snapshot_now(&asset_address, HEALTHY_VOLUME_USD, 10_u32);
+    test_env.prime_layer1(&asset);
+    test_env.write_snapshot_now(&asset_address, TestEnv::HEALTHY_VOLUME_USD, 10_u32);
 
     let result = test_env.lastprice(&asset, &SafeOracleConfig::default());
 
@@ -94,10 +78,10 @@ fn test_check_thin_sampling_passes_at_threshold() {
     let asset_address = Address::generate(&test_env.env);
     let asset = Asset::Stellar(asset_address.clone());
 
-    prime_layer1(&test_env, &asset);
+    test_env.prime_layer1(&asset);
 
     // Default `min_trade_count_1h` is 5; pass exactly that.
-    test_env.write_snapshot_now(&asset_address, HEALTHY_VOLUME_USD, 5_u32);
+    test_env.write_snapshot_now(&asset_address, TestEnv::HEALTHY_VOLUME_USD, 5_u32);
 
     let result = test_env.lastprice(&asset, &SafeOracleConfig::default());
 
@@ -118,7 +102,7 @@ fn test_check_thin_sampling_skips_for_asset_other() {
     let test_env = TestEnv::new();
     let asset = Asset::Other(Symbol::new(&test_env.env, "BTC"));
 
-    prime_layer1(&test_env, &asset);
+    test_env.prime_layer1(&asset);
     // No snapshot — skip path means the registry is never consulted.
 
     let result = test_env.lastprice(&asset, &SafeOracleConfig::default());
@@ -142,7 +126,7 @@ fn test_layer2_check_order_liquidity_before_thin_sampling() {
     let asset_address = Address::generate(&test_env.env);
     let asset = Asset::Stellar(asset_address.clone());
 
-    prime_layer1(&test_env, &asset);
+    test_env.prime_layer1(&asset);
 
     // Both thresholds violated.
     test_env.write_snapshot_now(&asset_address, 5_i128, 1_u32);

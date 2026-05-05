@@ -47,9 +47,6 @@ fn test_lastprice_returns_stale_data_when_reflector_has_no_price() {
     assert_eq!(result, Err(OracleSafetyViolation::StaleData));
 }
 
-/// 14-decimal helper: dollars → Reflector-scale price (×10^14).
-const ONE_DOLLAR: i128 = 100_000_000_000_000;
-
 /// 5% change stays under `relaxed_config` (max=5000 BPS) → Ok.
 #[test]
 fn test_deviation_passes_with_small_change() {
@@ -57,8 +54,8 @@ fn test_deviation_passes_with_small_change() {
     let asset = Asset::Other(Symbol::new(&test_env.env, "USDC"));
 
     // $1.00 → $1.05 (5 % change = 500 BPS)
-    test_env.set_oracle_price(&asset, ONE_DOLLAR, 1000);
-    test_env.set_oracle_price(&asset, ONE_DOLLAR + ONE_DOLLAR / 20, 1300);
+    test_env.set_oracle_price(&asset, TestEnv::ONE_DOLLAR, 1000);
+    test_env.set_oracle_price(&asset, TestEnv::ONE_DOLLAR + TestEnv::ONE_DOLLAR / 20, 1300);
 
     let config = TestEnv::relaxed_config(); // max_deviation_bps = 5000
     let result = test_env.lastprice(&asset, &config);
@@ -77,8 +74,8 @@ fn test_deviation_fails_at_threshold_breach() {
     let asset = Asset::Other(Symbol::new(&test_env.env, "ETH"));
 
     // $100 → $125 (25 % change = 2500 BPS)
-    test_env.set_oracle_price(&asset, 100 * ONE_DOLLAR, 1000);
-    test_env.set_oracle_price(&asset, 125 * ONE_DOLLAR, 1300);
+    test_env.set_oracle_price(&asset, 100 * TestEnv::ONE_DOLLAR, 1000);
+    test_env.set_oracle_price(&asset, 125 * TestEnv::ONE_DOLLAR, 1300);
 
     let config = TestEnv::strict_config(); // max_deviation_bps = 2000
     let result = test_env.lastprice(&asset, &config);
@@ -100,8 +97,8 @@ fn test_deviation_passes_at_exact_threshold() {
     });
 
     // $100 → $120 (exactly 2000 BPS)
-    test_env.set_oracle_price(&asset, 100 * ONE_DOLLAR, 1000);
-    test_env.set_oracle_price(&asset, 120 * ONE_DOLLAR, 1300);
+    test_env.set_oracle_price(&asset, 100 * TestEnv::ONE_DOLLAR, 1000);
+    test_env.set_oracle_price(&asset, 120 * TestEnv::ONE_DOLLAR, 1300);
 
     let config = TestEnv::strict_config(); // max_deviation_bps = 2000
     let result = test_env.lastprice(&asset, &config);
@@ -122,8 +119,8 @@ fn test_deviation_yieldblox_attack_simulation() {
     let asset = Asset::Other(Symbol::new(&test_env.env, "USTRY"));
 
     // Baseline: $1.05 — then the attacker pumps it to $106 via a ~$5 SDEX trade.
-    test_env.set_oracle_price(&asset, ONE_DOLLAR + ONE_DOLLAR / 20, 1000);
-    test_env.set_oracle_price(&asset, 106 * ONE_DOLLAR, 1300);
+    test_env.set_oracle_price(&asset, TestEnv::ONE_DOLLAR + TestEnv::ONE_DOLLAR / 20, 1000);
+    test_env.set_oracle_price(&asset, 106 * TestEnv::ONE_DOLLAR, 1300);
 
     let config = TestEnv::strict_config();
     let result = test_env.lastprice(&asset, &config);
@@ -142,7 +139,7 @@ fn test_deviation_fails_when_only_one_price_in_history() {
     let test_env = TestEnv::new();
     let asset = Asset::Other(Symbol::new(&test_env.env, "USDC"));
 
-    test_env.set_oracle_price(&asset, ONE_DOLLAR, 1000);
+    test_env.set_oracle_price(&asset, TestEnv::ONE_DOLLAR, 1000);
     // intentionally only one price — deviation needs two
 
     let config = TestEnv::relaxed_config();
@@ -160,7 +157,7 @@ fn test_deviation_fails_when_previous_price_is_zero() {
     let asset = Asset::Other(Symbol::new(&test_env.env, "WEIRD"));
 
     test_env.set_oracle_price(&asset, 0, 1000); // zero baseline (manipulation signal)
-    test_env.set_oracle_price(&asset, ONE_DOLLAR, 1300);
+    test_env.set_oracle_price(&asset, TestEnv::ONE_DOLLAR, 1300);
 
     let config = TestEnv::relaxed_config();
     let result = test_env.lastprice(&asset, &config);
@@ -178,8 +175,8 @@ fn test_staleness_passes_when_data_is_fresh() {
         li.timestamp = 5000;
     });
 
-    test_env.set_oracle_price(&asset, ONE_DOLLAR, 4800); // 200s old
-    test_env.set_oracle_price(&asset, ONE_DOLLAR, 4900); // 100s old (current)
+    test_env.set_oracle_price(&asset, TestEnv::ONE_DOLLAR, 4800); // 200s old
+    test_env.set_oracle_price(&asset, TestEnv::ONE_DOLLAR, 4900); // 100s old (current)
 
     let config = TestEnv::relaxed_config();
     let result = test_env.lastprice(&asset, &config);
@@ -201,8 +198,8 @@ fn test_staleness_fails_when_data_too_old() {
         li.timestamp = 5000;
     });
 
-    test_env.set_oracle_price(&asset, ONE_DOLLAR * 100, 800); // 4200s old
-    test_env.set_oracle_price(&asset, ONE_DOLLAR * 100, 1000); // 4000s old (current)
+    test_env.set_oracle_price(&asset, TestEnv::ONE_DOLLAR * 100, 800); // 4200s old
+    test_env.set_oracle_price(&asset, TestEnv::ONE_DOLLAR * 100, 1000); // 4000s old (current)
 
     let config = TestEnv::strict_config(); // max_staleness_seconds = 300
     let result = test_env.lastprice(&asset, &config);
@@ -221,8 +218,8 @@ fn test_staleness_fails_with_future_timestamp() {
         li.timestamp = 5000;
     });
 
-    test_env.set_oracle_price(&asset, ONE_DOLLAR, 5500); // previous record (also future)
-    test_env.set_oracle_price(&asset, ONE_DOLLAR, 6000); // future (current)
+    test_env.set_oracle_price(&asset, TestEnv::ONE_DOLLAR, 5500); // previous record (also future)
+    test_env.set_oracle_price(&asset, TestEnv::ONE_DOLLAR, 6000); // future (current)
 
     let config = TestEnv::relaxed_config();
     let result = test_env.lastprice(&asset, &config);
@@ -242,8 +239,8 @@ fn test_staleness_passes_at_exact_threshold() {
         li.timestamp = 5000;
     });
 
-    test_env.set_oracle_price(&asset, ONE_DOLLAR, 4500); // 500s old
-    test_env.set_oracle_price(&asset, ONE_DOLLAR, 4700); // exactly 300s old
+    test_env.set_oracle_price(&asset, TestEnv::ONE_DOLLAR, 4500); // 500s old
+    test_env.set_oracle_price(&asset, TestEnv::ONE_DOLLAR, 4700); // exactly 300s old
 
     let config = TestEnv::strict_config(); // max_staleness_seconds = 300
     let result = test_env.lastprice(&asset, &config);
@@ -262,8 +259,8 @@ fn test_cross_source_skipped_when_secondary_is_none() {
     let test_env = TestEnv::new();
     let asset = Asset::Other(Symbol::new(&test_env.env, "USDC"));
 
-    test_env.set_oracle_price(&asset, ONE_DOLLAR, 99_900);
-    test_env.set_oracle_price(&asset, ONE_DOLLAR, 99_950);
+    test_env.set_oracle_price(&asset, TestEnv::ONE_DOLLAR, 99_900);
+    test_env.set_oracle_price(&asset, TestEnv::ONE_DOLLAR, 99_950);
 
     let mut config = TestEnv::relaxed_config();
     config.secondary_oracle = None;
@@ -283,9 +280,9 @@ fn test_cross_source_passes_with_matching_prices() {
     let test_env = TestEnv::new();
     let asset = Asset::Other(Symbol::new(&test_env.env, "USDC"));
 
-    test_env.set_oracle_price(&asset, ONE_DOLLAR, 99_900);
-    test_env.set_oracle_price(&asset, ONE_DOLLAR, 99_950);
-    test_env.set_secondary_oracle_price(&asset, ONE_DOLLAR, 99_950);
+    test_env.set_oracle_price(&asset, TestEnv::ONE_DOLLAR, 99_900);
+    test_env.set_oracle_price(&asset, TestEnv::ONE_DOLLAR, 99_950);
+    test_env.set_secondary_oracle_price(&asset, TestEnv::ONE_DOLLAR, 99_950);
 
     let mut config = TestEnv::relaxed_config();
     config.secondary_oracle = Some(test_env.secondary_reflector_address.clone());
@@ -305,9 +302,9 @@ fn test_cross_source_passes_with_small_difference() {
     let test_env = TestEnv::new();
     let asset = Asset::Other(Symbol::new(&test_env.env, "ETH"));
 
-    test_env.set_oracle_price(&asset, ONE_DOLLAR, 99_900);
-    test_env.set_oracle_price(&asset, ONE_DOLLAR, 99_950); // primary $1.00
-    test_env.set_secondary_oracle_price(&asset, ONE_DOLLAR * 103 / 100, 99_950); // secondary $1.03
+    test_env.set_oracle_price(&asset, TestEnv::ONE_DOLLAR, 99_900);
+    test_env.set_oracle_price(&asset, TestEnv::ONE_DOLLAR, 99_950); // primary $1.00
+    test_env.set_secondary_oracle_price(&asset, TestEnv::ONE_DOLLAR * 103 / 100, 99_950); // secondary $1.03
 
     let mut config = TestEnv::relaxed_config(); // max_cross_source_bps = 2000
     config.secondary_oracle = Some(test_env.secondary_reflector_address.clone());
@@ -333,9 +330,9 @@ fn test_cross_source_fails_with_excessive_difference() {
         li.timestamp = 100_000;
     });
 
-    test_env.set_oracle_price(&asset, ONE_DOLLAR, 99_900);
-    test_env.set_oracle_price(&asset, ONE_DOLLAR, 99_950);
-    test_env.set_secondary_oracle_price(&asset, ONE_DOLLAR * 107 / 100, 99_950); // secondary $1.07
+    test_env.set_oracle_price(&asset, TestEnv::ONE_DOLLAR, 99_900);
+    test_env.set_oracle_price(&asset, TestEnv::ONE_DOLLAR, 99_950);
+    test_env.set_secondary_oracle_price(&asset, TestEnv::ONE_DOLLAR * 107 / 100, 99_950); // secondary $1.07
 
     let mut config = TestEnv::strict_config(); // max_cross_source_bps = 500
     config.secondary_oracle = Some(test_env.secondary_reflector_address.clone());
@@ -351,8 +348,8 @@ fn test_cross_source_skipped_when_secondary_returns_none() {
     let test_env = TestEnv::new();
     let asset = Asset::Other(Symbol::new(&test_env.env, "RARE"));
 
-    test_env.set_oracle_price(&asset, ONE_DOLLAR, 99_900);
-    test_env.set_oracle_price(&asset, ONE_DOLLAR, 99_950);
+    test_env.set_oracle_price(&asset, TestEnv::ONE_DOLLAR, 99_900);
+    test_env.set_oracle_price(&asset, TestEnv::ONE_DOLLAR, 99_950);
     // secondary intentionally has no price for this asset
 
     let mut config = TestEnv::relaxed_config();
@@ -374,8 +371,8 @@ fn test_cross_source_fails_when_secondary_price_is_zero() {
     let test_env = TestEnv::new();
     let asset = Asset::Other(Symbol::new(&test_env.env, "WEIRD"));
 
-    test_env.set_oracle_price(&asset, ONE_DOLLAR, 99_900);
-    test_env.set_oracle_price(&asset, ONE_DOLLAR, 99_950);
+    test_env.set_oracle_price(&asset, TestEnv::ONE_DOLLAR, 99_900);
+    test_env.set_oracle_price(&asset, TestEnv::ONE_DOLLAR, 99_950);
     test_env.set_secondary_oracle_price(&asset, 0, 99_950); // zero = manipulation, not gap
 
     let mut config = TestEnv::relaxed_config();

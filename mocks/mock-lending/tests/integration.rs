@@ -42,13 +42,6 @@ fn test_initialize_prevents_reinitialization() {
     );
 }
 
-/// 14-decimal helper: dollars → Reflector-scale price (×10^14).
-const ONE_DOLLAR: i128 = 100_000_000_000_000;
-
-/// 7-decimal USD volume that comfortably clears the $10,000 default
-/// `min_liquidity_usd` for Phase 4.5 Layer 2 happy-path tests.
-const HEALTHY_VOLUME_USD: i128 = 500_000_000_000;
-
 /// `TestEnv::new()` initializes the lending contract in Phase 2.7; verify
 /// that the expected fields landed in storage.
 #[test]
@@ -113,8 +106,8 @@ fn test_borrow_emits_event() {
     let asset = Asset::Other(Symbol::new(&test_env.env, "XLM"));
 
     // Inject valid oracle data so Layer 1 lets the borrow through.
-    test_env.set_oracle_price(&asset, ONE_DOLLAR, 99_900);
-    test_env.set_oracle_price(&asset, ONE_DOLLAR, 99_950);
+    test_env.set_oracle_price(&asset, TestEnv::ONE_DOLLAR, 99_900);
+    test_env.set_oracle_price(&asset, TestEnv::ONE_DOLLAR, 99_950);
 
     test_env.lending_client.borrow(&caller, &asset, &1000);
 
@@ -128,8 +121,8 @@ fn test_borrow_succeeds_with_valid_oracle_data() {
     let user = Address::generate(&test_env.env);
     let asset = Asset::Other(Symbol::new(&test_env.env, "USDC"));
 
-    test_env.set_oracle_price(&asset, ONE_DOLLAR, 99_900);
-    test_env.set_oracle_price(&asset, ONE_DOLLAR, 99_950);
+    test_env.set_oracle_price(&asset, TestEnv::ONE_DOLLAR, 99_900);
+    test_env.set_oracle_price(&asset, TestEnv::ONE_DOLLAR, 99_950);
 
     let result = test_env
         .lending_client
@@ -177,8 +170,8 @@ fn test_borrow_fails_when_oracle_data_stale() {
     // baseline=100_000; ts=50_000/50_300 → ~49_700s elapsed (default max=300)
     // prices identical → 0 BPS deviation, so deviation guardrail passes
     // and the pipeline actually reaches staleness.
-    test_env.set_oracle_price(&asset, ONE_DOLLAR, 50_000);
-    test_env.set_oracle_price(&asset, ONE_DOLLAR, 50_300);
+    test_env.set_oracle_price(&asset, TestEnv::ONE_DOLLAR, 50_000);
+    test_env.set_oracle_price(&asset, TestEnv::ONE_DOLLAR, 50_300);
 
     let result = test_env
         .lending_client
@@ -214,9 +207,9 @@ fn test_borrow_happy_path_passes_all_guardrails() {
     let asset_address = Address::generate(&test_env.env);
     let asset = Asset::Stellar(asset_address.clone());
 
-    test_env.set_oracle_price(&asset, ONE_DOLLAR, 99_900);
-    test_env.set_oracle_price(&asset, ONE_DOLLAR, 99_950);
-    test_env.write_snapshot_now(&asset_address, HEALTHY_VOLUME_USD, 10_u32);
+    test_env.set_oracle_price(&asset, TestEnv::ONE_DOLLAR, 99_900);
+    test_env.set_oracle_price(&asset, TestEnv::ONE_DOLLAR, 99_950);
+    test_env.write_snapshot_now(&asset_address, TestEnv::HEALTHY_VOLUME_USD, 10_u32);
 
     let user = Address::generate(&test_env.env);
     let result = test_env
@@ -242,11 +235,11 @@ fn test_borrow_blocks_yieldblox_classic_via_layer1() {
     let asset_address = Address::generate(&test_env.env);
     let asset = Asset::Stellar(asset_address.clone());
 
-    test_env.set_oracle_price(&asset, ONE_DOLLAR, 99_900);
-    test_env.set_oracle_price(&asset, ONE_DOLLAR * 100, 99_950);
+    test_env.set_oracle_price(&asset, TestEnv::ONE_DOLLAR, 99_900);
+    test_env.set_oracle_price(&asset, TestEnv::ONE_DOLLAR * 100, 99_950);
 
     // Healthy snapshot proves Layer 1 surfaces before Layer 2 is consulted.
-    test_env.write_snapshot_now(&asset_address, HEALTHY_VOLUME_USD, 10_u32);
+    test_env.write_snapshot_now(&asset_address, TestEnv::HEALTHY_VOLUME_USD, 10_u32);
 
     let user = Address::generate(&test_env.env);
     let result = test_env
@@ -276,8 +269,8 @@ fn test_borrow_blocks_yieldblox_sophisticated_via_layer2() {
     let asset_address = Address::generate(&test_env.env);
     let asset = Asset::Stellar(asset_address.clone());
 
-    let previous_price = ONE_DOLLAR;
-    let current_price = ONE_DOLLAR + (ONE_DOLLAR / 20); // 5% spike
+    let previous_price = TestEnv::ONE_DOLLAR;
+    let current_price = TestEnv::ONE_DOLLAR + (TestEnv::ONE_DOLLAR / 20); // 5% spike
     test_env.set_oracle_price(&asset, previous_price, 99_900);
     test_env.set_oracle_price(&asset, current_price, 99_950);
 
@@ -309,12 +302,12 @@ fn test_borrow_blocks_stale_oracle_on_stellar_asset() {
     let asset_address = Address::generate(&test_env.env);
     let asset = Asset::Stellar(asset_address.clone());
 
-    test_env.write_snapshot_now(&asset_address, HEALTHY_VOLUME_USD, 10_u32);
+    test_env.write_snapshot_now(&asset_address, TestEnv::HEALTHY_VOLUME_USD, 10_u32);
 
     let now = test_env.env.ledger().timestamp();
     let stale_ts = now.saturating_sub(3600);
-    test_env.set_oracle_price(&asset, ONE_DOLLAR, stale_ts.saturating_sub(100));
-    test_env.set_oracle_price(&asset, ONE_DOLLAR, stale_ts);
+    test_env.set_oracle_price(&asset, TestEnv::ONE_DOLLAR, stale_ts.saturating_sub(100));
+    test_env.set_oracle_price(&asset, TestEnv::ONE_DOLLAR, stale_ts);
 
     let user = Address::generate(&test_env.env);
     let result = test_env
@@ -343,12 +336,17 @@ fn test_borrow_blocks_stale_snapshot() {
     let asset_address = Address::generate(&test_env.env);
     let asset = Asset::Stellar(asset_address.clone());
 
-    test_env.set_oracle_price(&asset, ONE_DOLLAR, 99_900);
-    test_env.set_oracle_price(&asset, ONE_DOLLAR, 99_950);
+    test_env.set_oracle_price(&asset, TestEnv::ONE_DOLLAR, 99_900);
+    test_env.set_oracle_price(&asset, TestEnv::ONE_DOLLAR, 99_950);
 
     let now = test_env.env.ledger().timestamp();
     let stale_ts = now.saturating_sub(3600);
-    test_env.write_snapshot(&asset_address, HEALTHY_VOLUME_USD, 10_u32, stale_ts);
+    test_env.write_snapshot(
+        &asset_address,
+        TestEnv::HEALTHY_VOLUME_USD,
+        10_u32,
+        stale_ts,
+    );
 
     let user = Address::generate(&test_env.env);
     let result = test_env
@@ -386,9 +384,9 @@ fn test_borrow_circuit_breaker_opens_after_first_violation() {
     let asset_address = Address::generate(&test_env.env);
     let asset = Asset::Stellar(asset_address.clone());
 
-    test_env.set_oracle_price(&asset, ONE_DOLLAR, 99_900);
-    test_env.set_oracle_price(&asset, ONE_DOLLAR * 100, 99_950);
-    test_env.write_snapshot_now(&asset_address, HEALTHY_VOLUME_USD, 10_u32);
+    test_env.set_oracle_price(&asset, TestEnv::ONE_DOLLAR, 99_900);
+    test_env.set_oracle_price(&asset, TestEnv::ONE_DOLLAR * 100, 99_950);
+    test_env.write_snapshot_now(&asset_address, TestEnv::HEALTHY_VOLUME_USD, 10_u32);
 
     let user = Address::generate(&test_env.env);
 
@@ -424,9 +422,9 @@ fn test_borrow_default_config_does_not_open_breaker() {
     let asset_address = Address::generate(&test_env.env);
     let asset = Asset::Stellar(asset_address.clone());
 
-    test_env.set_oracle_price(&asset, ONE_DOLLAR, 99_900);
-    test_env.set_oracle_price(&asset, ONE_DOLLAR * 100, 99_950);
-    test_env.write_snapshot_now(&asset_address, HEALTHY_VOLUME_USD, 10_u32);
+    test_env.set_oracle_price(&asset, TestEnv::ONE_DOLLAR, 99_900);
+    test_env.set_oracle_price(&asset, TestEnv::ONE_DOLLAR * 100, 99_950);
+    test_env.write_snapshot_now(&asset_address, TestEnv::HEALTHY_VOLUME_USD, 10_u32);
 
     let user = Address::generate(&test_env.env);
 
@@ -454,9 +452,9 @@ fn test_borrow_breaker_auto_recovers_after_halt_window() {
     let asset_address = Address::generate(&test_env.env);
     let asset = Asset::Stellar(asset_address.clone());
 
-    test_env.set_oracle_price(&asset, ONE_DOLLAR, 99_900);
-    test_env.set_oracle_price(&asset, ONE_DOLLAR * 100, 99_950);
-    test_env.write_snapshot_now(&asset_address, HEALTHY_VOLUME_USD, 10_u32);
+    test_env.set_oracle_price(&asset, TestEnv::ONE_DOLLAR, 99_900);
+    test_env.set_oracle_price(&asset, TestEnv::ONE_DOLLAR * 100, 99_950);
+    test_env.write_snapshot_now(&asset_address, TestEnv::HEALTHY_VOLUME_USD, 10_u32);
 
     let user = Address::generate(&test_env.env);
     let initial_seq = test_env.env.ledger().sequence();
@@ -507,14 +505,14 @@ fn test_borrow_breaker_isolation_between_assets() {
     let asset_b = Asset::Stellar(asset_b_addr.clone());
 
     // asset_a: violation
-    test_env.set_oracle_price(&asset_a, ONE_DOLLAR, 99_900);
-    test_env.set_oracle_price(&asset_a, ONE_DOLLAR * 100, 99_950);
-    test_env.write_snapshot_now(&asset_a_addr, HEALTHY_VOLUME_USD, 10_u32);
+    test_env.set_oracle_price(&asset_a, TestEnv::ONE_DOLLAR, 99_900);
+    test_env.set_oracle_price(&asset_a, TestEnv::ONE_DOLLAR * 100, 99_950);
+    test_env.write_snapshot_now(&asset_a_addr, TestEnv::HEALTHY_VOLUME_USD, 10_u32);
 
     // asset_b: healthy
-    test_env.set_oracle_price(&asset_b, ONE_DOLLAR, 99_900);
-    test_env.set_oracle_price(&asset_b, ONE_DOLLAR, 99_950);
-    test_env.write_snapshot_now(&asset_b_addr, HEALTHY_VOLUME_USD, 10_u32);
+    test_env.set_oracle_price(&asset_b, TestEnv::ONE_DOLLAR, 99_900);
+    test_env.set_oracle_price(&asset_b, TestEnv::ONE_DOLLAR, 99_950);
+    test_env.write_snapshot_now(&asset_b_addr, TestEnv::HEALTHY_VOLUME_USD, 10_u32);
 
     let user = Address::generate(&test_env.env);
 
@@ -554,9 +552,9 @@ fn test_borrow_halted_asset_still_allows_deposit() {
     let asset_address = Address::generate(&test_env.env);
     let asset = Asset::Stellar(asset_address.clone());
 
-    test_env.set_oracle_price(&asset, ONE_DOLLAR, 99_900);
-    test_env.set_oracle_price(&asset, ONE_DOLLAR * 100, 99_950);
-    test_env.write_snapshot_now(&asset_address, HEALTHY_VOLUME_USD, 10_u32);
+    test_env.set_oracle_price(&asset, TestEnv::ONE_DOLLAR, 99_900);
+    test_env.set_oracle_price(&asset, TestEnv::ONE_DOLLAR * 100, 99_950);
+    test_env.write_snapshot_now(&asset_address, TestEnv::HEALTHY_VOLUME_USD, 10_u32);
 
     let user = Address::generate(&test_env.env);
 
@@ -584,6 +582,219 @@ fn test_borrow_halted_asset_still_allows_deposit() {
         deposit_result.is_ok(),
         "deposit must succeed during borrow halt — circuit breaker only \
          affects price-dependent operations: got {:?}",
+        deposit_result
+    );
+}
+
+// ===== Hardening Phase debt #19: Asset::Other CB e2e =====
+//
+// Phase 5.4 v2 added 5 e2e circuit-breaker tests through `borrow()`, all
+// against `Asset::Stellar`. This block mirrors those scenarios with
+// `Asset::Other` so off-chain Reflector feeds (CEX-priced assets like BTC,
+// ETH, SOL — no SDEX presence) get the same coverage. Layer 2 is
+// structurally skipped for `Asset::Other` (no `LiquidityRegistry`
+// snapshot path), so each scenario triggers a Layer 1 violation
+// (`ExcessiveDeviation`) to drive the breaker.
+
+/// Asset::Other counterpart of `test_borrow_circuit_breaker_opens_after_first_violation`.
+/// Pins that auto-halt commits via `borrow()` for off-chain feeds too.
+#[test]
+fn test_borrow_circuit_breaker_opens_after_first_violation_other() {
+    let test_env = TestEnv::with_circuit_breaker_enabled();
+    let asset = Asset::Other(Symbol::new(&test_env.env, "BTC"));
+
+    // Layer 1 violation: 100x spike between consecutive Reflector ticks.
+    // Asset::Other skips Layer 2 entirely.
+    test_env.set_oracle_price(&asset, TestEnv::ONE_DOLLAR, 99_900);
+    test_env.set_oracle_price(&asset, TestEnv::ONE_DOLLAR * 100, 99_950);
+
+    let user = Address::generate(&test_env.env);
+
+    let result1 = test_env
+        .lending_client
+        .try_borrow(&user, &asset, &1_000_i128);
+    assert_eq!(
+        result1,
+        Ok(Ok(BorrowOutcome::Failed(
+            MockLendingError::ExcessiveDeviation as u32
+        ))),
+        "first borrow surfaces guardrail violation for Asset::Other"
+    );
+
+    let result2 = test_env
+        .lending_client
+        .try_borrow(&user, &asset, &1_000_i128);
+    assert_eq!(
+        result2,
+        Ok(Ok(BorrowOutcome::Failed(
+            MockLendingError::CircuitBreakerOpen as u32
+        ))),
+        "second borrow hits open breaker — auto-halt committed for Asset::Other"
+    );
+}
+
+/// Asset::Other counterpart of `test_borrow_default_config_does_not_open_breaker`.
+/// Default config (`circuit_breaker_enabled = false`) preserves Phase 1-4
+/// behavior on the off-chain feed path: repeated violations never open the
+/// breaker.
+#[test]
+fn test_borrow_default_config_does_not_open_breaker_other() {
+    let test_env = TestEnv::new();
+    let asset = Asset::Other(Symbol::new(&test_env.env, "ETH"));
+
+    test_env.set_oracle_price(&asset, TestEnv::ONE_DOLLAR, 99_900);
+    test_env.set_oracle_price(&asset, TestEnv::ONE_DOLLAR * 100, 99_950);
+
+    let user = Address::generate(&test_env.env);
+
+    for i in 0..5 {
+        let result = test_env
+            .lending_client
+            .try_borrow(&user, &asset, &1_000_i128);
+        assert_eq!(
+            result,
+            Ok(Ok(BorrowOutcome::Failed(
+                MockLendingError::ExcessiveDeviation as u32
+            ))),
+            "Asset::Other call {} — same violation, no breaker open (default disabled)",
+            i + 1
+        );
+    }
+}
+
+/// Asset::Other counterpart of `test_borrow_breaker_auto_recovers_after_halt_window`.
+/// The halt expires; the next call auto-closes and re-runs the chain — the
+/// underlying violation re-surfaces, proving the breaker buys a cool-down
+/// rather than papering over a still-broken oracle.
+#[test]
+fn test_borrow_breaker_auto_recovers_after_halt_window_other() {
+    let test_env = TestEnv::with_circuit_breaker_enabled_and_halt_ledgers(10);
+    let asset = Asset::Other(Symbol::new(&test_env.env, "SOL"));
+
+    test_env.set_oracle_price(&asset, TestEnv::ONE_DOLLAR, 99_900);
+    test_env.set_oracle_price(&asset, TestEnv::ONE_DOLLAR * 100, 99_950);
+
+    let user = Address::generate(&test_env.env);
+    let initial_seq = test_env.env.ledger().sequence();
+
+    // Open breaker.
+    let _ = test_env
+        .lending_client
+        .try_borrow(&user, &asset, &1_000_i128);
+
+    // During halt window: short-circuit.
+    let result_during = test_env
+        .lending_client
+        .try_borrow(&user, &asset, &1_000_i128);
+    assert_eq!(
+        result_during,
+        Ok(Ok(BorrowOutcome::Failed(
+            MockLendingError::CircuitBreakerOpen as u32
+        ))),
+        "Asset::Other halt window: short-circuit"
+    );
+
+    // Advance past halt window.
+    test_env.env.ledger().with_mut(|li| {
+        li.sequence_number = initial_seq + 11;
+    });
+
+    let result_after = test_env
+        .lending_client
+        .try_borrow(&user, &asset, &1_000_i128);
+    assert_eq!(
+        result_after,
+        Ok(Ok(BorrowOutcome::Failed(
+            MockLendingError::ExcessiveDeviation as u32
+        ))),
+        "Asset::Other auto-recovery: underlying violation re-surfaces"
+    );
+}
+
+/// Asset::Other counterpart of `test_borrow_breaker_isolation_between_assets`.
+/// Two off-chain feeds: a halt on one must not bleed into the other. The
+/// `CBStorageKey::OtherAsset(Symbol)` partitioning makes this isolation a
+/// type-system property; this test pins it through the borrow path.
+#[test]
+fn test_borrow_breaker_isolation_between_other_assets() {
+    let test_env = TestEnv::with_circuit_breaker_enabled();
+    let asset_btc = Asset::Other(Symbol::new(&test_env.env, "BTC"));
+    let asset_eth = Asset::Other(Symbol::new(&test_env.env, "ETH"));
+
+    // BTC: violation on the next read.
+    test_env.set_oracle_price(&asset_btc, TestEnv::ONE_DOLLAR, 99_900);
+    test_env.set_oracle_price(&asset_btc, TestEnv::ONE_DOLLAR * 100, 99_950);
+
+    // ETH: stable, all guardrails pass.
+    test_env.set_oracle_price(&asset_eth, TestEnv::ONE_DOLLAR, 99_900);
+    test_env.set_oracle_price(&asset_eth, TestEnv::ONE_DOLLAR, 99_950);
+
+    let user = Address::generate(&test_env.env);
+
+    // Trigger BTC halt.
+    let _ = test_env
+        .lending_client
+        .try_borrow(&user, &asset_btc, &1_000_i128);
+
+    let result_btc = test_env
+        .lending_client
+        .try_borrow(&user, &asset_btc, &1_000_i128);
+    assert_eq!(
+        result_btc,
+        Ok(Ok(BorrowOutcome::Failed(
+            MockLendingError::CircuitBreakerOpen as u32
+        ))),
+        "BTC (Asset::Other) borrow halted"
+    );
+
+    let result_eth = test_env
+        .lending_client
+        .try_borrow(&user, &asset_eth, &1_000_i128);
+    assert_eq!(
+        result_eth,
+        Ok(Ok(BorrowOutcome::Ok)),
+        "ETH (Asset::Other) borrow succeeds despite BTC halt — separate storage path"
+    );
+}
+
+/// Asset::Other counterpart of `test_borrow_halted_asset_still_allows_deposit`.
+/// Separation of concerns: the breaker affects only oracle-dependent
+/// operations. Deposits on a halted Asset::Other must still succeed —
+/// otherwise the breaker traps user funds and turns a defensive measure
+/// into a denial-of-service.
+#[test]
+fn test_borrow_halted_other_asset_still_allows_deposit() {
+    let test_env = TestEnv::with_circuit_breaker_enabled();
+    let asset = Asset::Other(Symbol::new(&test_env.env, "BTC"));
+
+    test_env.set_oracle_price(&asset, TestEnv::ONE_DOLLAR, 99_900);
+    test_env.set_oracle_price(&asset, TestEnv::ONE_DOLLAR * 100, 99_950);
+
+    let user = Address::generate(&test_env.env);
+
+    // Trigger halt.
+    let _ = test_env
+        .lending_client
+        .try_borrow(&user, &asset, &1_000_i128);
+
+    let borrow_result = test_env
+        .lending_client
+        .try_borrow(&user, &asset, &1_000_i128);
+    assert_eq!(
+        borrow_result,
+        Ok(Ok(BorrowOutcome::Failed(
+            MockLendingError::CircuitBreakerOpen as u32
+        ))),
+        "Asset::Other borrow must be halted to set up the test premise"
+    );
+
+    // Deposit does not consult the oracle — must succeed even on halted asset.
+    let deposit_result = test_env
+        .lending_client
+        .try_deposit(&user, &asset, &500_i128);
+    assert!(
+        deposit_result.is_ok(),
+        "Asset::Other deposit must succeed during borrow halt: got {:?}",
         deposit_result
     );
 }

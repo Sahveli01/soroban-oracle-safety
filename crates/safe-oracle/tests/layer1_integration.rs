@@ -11,9 +11,6 @@ use safe_oracle::{Asset, OracleSafetyViolation, SafeOracleConfig};
 use soroban_sdk::Symbol;
 use test_utils::TestEnv;
 
-/// 14-decimal helper: dollars → Reflector-scale price (×10^14).
-const ONE_DOLLAR: i128 = 100_000_000_000_000;
-
 /// All Layer 1 guardrails (deviation, staleness, cross-source) pass → Ok.
 /// The returned price must reflect the newest entry.
 #[test]
@@ -21,9 +18,9 @@ fn test_layer1_happy_path_all_guardrails_pass() {
     let test_env = TestEnv::new();
     let asset = Asset::Other(Symbol::new(&test_env.env, "USDC"));
 
-    test_env.set_oracle_price(&asset, ONE_DOLLAR, 99_900);
-    test_env.set_oracle_price(&asset, ONE_DOLLAR, 99_950);
-    test_env.set_secondary_oracle_price(&asset, ONE_DOLLAR, 99_950);
+    test_env.set_oracle_price(&asset, TestEnv::ONE_DOLLAR, 99_900);
+    test_env.set_oracle_price(&asset, TestEnv::ONE_DOLLAR, 99_950);
+    test_env.set_secondary_oracle_price(&asset, TestEnv::ONE_DOLLAR, 99_950);
 
     let mut config = TestEnv::relaxed_config();
     config.secondary_oracle = Some(test_env.secondary_reflector_address.clone());
@@ -36,7 +33,7 @@ fn test_layer1_happy_path_all_guardrails_pass() {
         result
     );
     let price = result.unwrap();
-    assert_eq!(price.price, ONE_DOLLAR);
+    assert_eq!(price.price, TestEnv::ONE_DOLLAR);
     assert_eq!(price.timestamp, 99_950);
 }
 
@@ -51,8 +48,8 @@ fn test_layer1_execution_order_deviation_before_staleness() {
     // ts=50_000/50_300 → ~50_000s elapsed (strict max_staleness=300 → stale)
     // prices: $100 → $200 = 10_000 BPS deviation (strict max=2000 → excessive)
     // Both Layer 1 checks would fire; deviation must surface first.
-    test_env.set_oracle_price(&asset, 100 * ONE_DOLLAR, 50_000);
-    test_env.set_oracle_price(&asset, 200 * ONE_DOLLAR, 50_300);
+    test_env.set_oracle_price(&asset, 100 * TestEnv::ONE_DOLLAR, 50_000);
+    test_env.set_oracle_price(&asset, 200 * TestEnv::ONE_DOLLAR, 50_300);
 
     let config = TestEnv::strict_config();
 
@@ -74,8 +71,12 @@ fn test_layer1_execution_order_staleness_after_deviation_pass() {
 
     // ts=50_000/50_300 → ~49_700s elapsed (strict max_staleness=300 → stale)
     // 1% deviation = 100 BPS (strict max=2000 → pass)
-    test_env.set_oracle_price(&asset, ONE_DOLLAR, 50_000);
-    test_env.set_oracle_price(&asset, ONE_DOLLAR + ONE_DOLLAR / 100, 50_300);
+    test_env.set_oracle_price(&asset, TestEnv::ONE_DOLLAR, 50_000);
+    test_env.set_oracle_price(
+        &asset,
+        TestEnv::ONE_DOLLAR + TestEnv::ONE_DOLLAR / 100,
+        50_300,
+    );
 
     let config = TestEnv::strict_config();
 
@@ -96,10 +97,10 @@ fn test_layer1_execution_order_cross_source_after_staleness_pass() {
     let asset = Asset::Other(Symbol::new(&test_env.env, "BTC"));
 
     // Fresh (50s elapsed ≤ 300), 0 BPS deviation (≤ 2000)
-    test_env.set_oracle_price(&asset, ONE_DOLLAR, 99_900);
-    test_env.set_oracle_price(&asset, ONE_DOLLAR, 99_950);
+    test_env.set_oracle_price(&asset, TestEnv::ONE_DOLLAR, 99_900);
+    test_env.set_oracle_price(&asset, TestEnv::ONE_DOLLAR, 99_950);
     // Secondary $1.10 = 1000 BPS cross-source delta (strict max=500 → mismatch)
-    test_env.set_secondary_oracle_price(&asset, ONE_DOLLAR * 110 / 100, 99_950);
+    test_env.set_secondary_oracle_price(&asset, TestEnv::ONE_DOLLAR * 110 / 100, 99_950);
 
     let mut config = TestEnv::strict_config();
     config.secondary_oracle = Some(test_env.secondary_reflector_address.clone());
@@ -123,8 +124,12 @@ fn test_layer1_with_default_config_passes_normal_scenario() {
 
     // baseline=100_000; ts=99_750/99_850 → 250/150s elapsed (default max=300 → ok)
     // 1% deviation = 100 BPS (default max=2000 → ok)
-    test_env.set_oracle_price(&asset, ONE_DOLLAR, 99_750);
-    test_env.set_oracle_price(&asset, ONE_DOLLAR + ONE_DOLLAR / 100, 99_850);
+    test_env.set_oracle_price(&asset, TestEnv::ONE_DOLLAR, 99_750);
+    test_env.set_oracle_price(
+        &asset,
+        TestEnv::ONE_DOLLAR + TestEnv::ONE_DOLLAR / 100,
+        99_850,
+    );
 
     // Default: secondary_oracle = None → cross-source skip
     let config = SafeOracleConfig::default();

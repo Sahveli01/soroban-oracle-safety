@@ -20,23 +20,6 @@ use safe_oracle::{Asset, OracleSafetyViolation, SafeOracleConfig};
 use soroban_sdk::{testutils::Address as _, Address};
 use test_utils::TestEnv;
 
-/// 14-decimal Reflector price helper: dollars → ×10^14.
-const ONE_DOLLAR: i128 = 100_000_000_000_000;
-
-/// 7-decimal USD volume that comfortably clears the $10,000 default
-/// `min_liquidity_usd` so liquidity-passing scenarios isolate the failure
-/// they actually want to demonstrate.
-const HEALTHY_VOLUME_USD: i128 = 500_000_000_000;
-
-/// Two same-priced Reflector records make Layer 1 deterministic so each
-/// scenario can isolate the guardrail it targets. Identical pricing keeps
-/// deviation at 0 BPS; the 99_950 newest timestamp sits 50s before the
-/// `TestEnv` baseline of 100_000 so staleness clears the 300s default.
-fn prime_layer1(test_env: &TestEnv, asset: &Asset) {
-    test_env.set_oracle_price(asset, ONE_DOLLAR, 99_900);
-    test_env.set_oracle_price(asset, ONE_DOLLAR, 99_950);
-}
-
 /// Scenario 1: Normal borrow — happy path.
 ///
 /// All five guardrails pass under healthy market conditions: stable price,
@@ -50,14 +33,15 @@ fn scenario_1_normal_borrow_happy_path() {
     let asset_address = Address::generate(&test_env.env);
     let asset = Asset::Stellar(asset_address.clone());
 
-    prime_layer1(&test_env, &asset);
-    test_env.write_snapshot_now(&asset_address, HEALTHY_VOLUME_USD, 10_u32);
+    test_env.prime_layer1(&asset);
+    test_env.write_snapshot_now(&asset_address, TestEnv::HEALTHY_VOLUME_USD, 10_u32);
 
     let result = test_env.lastprice(&asset, &SafeOracleConfig::default());
 
     let price = result.expect("happy path must return Ok");
     assert_eq!(
-        price.price, ONE_DOLLAR,
+        price.price,
+        TestEnv::ONE_DOLLAR,
         "returned price must match Reflector current"
     );
 }
@@ -81,12 +65,12 @@ fn scenario_2_yieldblox_classic_blocked_by_layer1() {
     let asset = Asset::Stellar(asset_address.clone());
 
     // YieldBlox-shape spike: $1 → $100 between consecutive Reflector ticks.
-    test_env.set_oracle_price(&asset, ONE_DOLLAR, 99_900);
-    test_env.set_oracle_price(&asset, ONE_DOLLAR * 100, 99_950);
+    test_env.set_oracle_price(&asset, TestEnv::ONE_DOLLAR, 99_900);
+    test_env.set_oracle_price(&asset, TestEnv::ONE_DOLLAR * 100, 99_950);
 
     // Healthy snapshot proves Layer 1 surfaces the violation before Layer 2
     // is even consulted.
-    test_env.write_snapshot_now(&asset_address, HEALTHY_VOLUME_USD, 10_u32);
+    test_env.write_snapshot_now(&asset_address, TestEnv::HEALTHY_VOLUME_USD, 10_u32);
 
     let result = test_env.lastprice(&asset, &SafeOracleConfig::default());
 
@@ -117,8 +101,8 @@ fn scenario_3_yieldblox_sophisticated_blocked_by_layer2() {
     let asset = Asset::Stellar(asset_address.clone());
 
     // 5% spike: above retail noise, below Layer 1's 20% / 2000 BPS default.
-    let previous_price = ONE_DOLLAR;
-    let current_price = ONE_DOLLAR + (ONE_DOLLAR / 20);
+    let previous_price = TestEnv::ONE_DOLLAR;
+    let current_price = TestEnv::ONE_DOLLAR + (TestEnv::ONE_DOLLAR / 20);
     test_env.set_oracle_price(&asset, previous_price, 99_900);
     test_env.set_oracle_price(&asset, current_price, 99_950);
 
@@ -156,7 +140,7 @@ fn scenario_4_liquidity_manipulation_drained_orderbook() {
     let asset_address = Address::generate(&test_env.env);
     let asset = Asset::Stellar(asset_address.clone());
 
-    prime_layer1(&test_env, &asset);
+    test_env.prime_layer1(&asset);
 
     // Trade count is healthy on purpose — the asymmetry between
     // sub-threshold volume and adequate trade count isolates
@@ -186,8 +170,8 @@ fn scenario_5_thin_sampling_single_trade() {
     let asset_address = Address::generate(&test_env.env);
     let asset = Asset::Stellar(asset_address.clone());
 
-    prime_layer1(&test_env, &asset);
-    test_env.write_snapshot_now(&asset_address, HEALTHY_VOLUME_USD, 1_u32);
+    test_env.prime_layer1(&asset);
+    test_env.write_snapshot_now(&asset_address, TestEnv::HEALTHY_VOLUME_USD, 1_u32);
 
     let result = test_env.lastprice(&asset, &SafeOracleConfig::default());
 
@@ -212,12 +196,12 @@ fn scenario_6_stale_oracle_no_recent_updates() {
     let asset_address = Address::generate(&test_env.env);
     let asset = Asset::Stellar(asset_address.clone());
 
-    test_env.write_snapshot_now(&asset_address, HEALTHY_VOLUME_USD, 10_u32);
+    test_env.write_snapshot_now(&asset_address, TestEnv::HEALTHY_VOLUME_USD, 10_u32);
 
     let now = test_env.env.ledger().timestamp();
     let stale_ts = now.saturating_sub(3600);
-    test_env.set_oracle_price(&asset, ONE_DOLLAR, stale_ts.saturating_sub(100));
-    test_env.set_oracle_price(&asset, ONE_DOLLAR, stale_ts);
+    test_env.set_oracle_price(&asset, TestEnv::ONE_DOLLAR, stale_ts.saturating_sub(100));
+    test_env.set_oracle_price(&asset, TestEnv::ONE_DOLLAR, stale_ts);
 
     let result = test_env.lastprice(&asset, &SafeOracleConfig::default());
 
@@ -244,12 +228,17 @@ fn scenario_7_stale_snapshot_attester_offline() {
     let asset_address = Address::generate(&test_env.env);
     let asset = Asset::Stellar(asset_address.clone());
 
-    prime_layer1(&test_env, &asset);
+    test_env.prime_layer1(&asset);
 
     // Snapshot is 1 hour old; default `max_snapshot_age_seconds` is 300.
     let now = test_env.env.ledger().timestamp();
     let stale_ts = now.saturating_sub(3600);
-    test_env.write_snapshot(&asset_address, HEALTHY_VOLUME_USD, 10_u32, stale_ts);
+    test_env.write_snapshot(
+        &asset_address,
+        TestEnv::HEALTHY_VOLUME_USD,
+        10_u32,
+        stale_ts,
+    );
 
     let result = test_env.lastprice(&asset, &SafeOracleConfig::default());
 

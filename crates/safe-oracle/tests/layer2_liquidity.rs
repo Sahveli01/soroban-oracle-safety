@@ -16,22 +16,6 @@ use safe_oracle::{Asset, OracleSafetyViolation, SafeOracleConfig};
 use soroban_sdk::{testutils::Address as _, Address, Symbol};
 use test_utils::TestEnv;
 
-/// 14-decimal Reflector price helper: dollars → ×10^14.
-const ONE_DOLLAR: i128 = 100_000_000_000_000;
-
-/// 7-decimal USD volume: $50,000, well above the $10,000 default threshold
-/// (`SafeOracleConfig::min_liquidity_usd = 100_000_000_000`) — used by tests
-/// that want Layer 2 to pass and isolate a different fault.
-const HEALTHY_VOLUME_USD: i128 = 500_000_000_000;
-
-/// Inject two same-priced Reflector records so Layer 1 (deviation +
-/// staleness, with `secondary_oracle = None`) passes deterministically and
-/// each test can isolate a Layer 2 outcome.
-fn prime_layer1(test_env: &TestEnv, asset: &Asset) {
-    test_env.set_oracle_price(asset, ONE_DOLLAR, 99_900);
-    test_env.set_oracle_price(asset, ONE_DOLLAR, 99_950);
-}
-
 /// YieldBlox-replica: Reflector reports a normal-looking price but the SDEX
 /// order book has been drained (a $5 trade was enough to move the feed). The
 /// 30-minute volume in the attested snapshot reflects that emptiness, and
@@ -46,7 +30,7 @@ fn test_check_liquidity_blocks_yieldblox_thin_liquidity() {
     let asset_address = Address::generate(&test_env.env);
     let asset = Asset::Stellar(asset_address.clone());
 
-    prime_layer1(&test_env, &asset);
+    test_env.prime_layer1(&asset);
 
     // YieldBlox-state: market maker withdrew, 30m volume effectively $0
     // (5 stroops = $0.0000005 in 7-decimal). Above 0 so the registry's own
@@ -72,8 +56,8 @@ fn test_check_liquidity_passes_with_sufficient_volume() {
     let asset_address = Address::generate(&test_env.env);
     let asset = Asset::Stellar(asset_address.clone());
 
-    prime_layer1(&test_env, &asset);
-    test_env.write_snapshot_now(&asset_address, HEALTHY_VOLUME_USD, 10_u32);
+    test_env.prime_layer1(&asset);
+    test_env.write_snapshot_now(&asset_address, TestEnv::HEALTHY_VOLUME_USD, 10_u32);
 
     let result = test_env.lastprice(&asset, &SafeOracleConfig::default());
 
@@ -94,12 +78,17 @@ fn test_check_liquidity_blocks_stale_snapshot() {
     let asset_address = Address::generate(&test_env.env);
     let asset = Asset::Stellar(asset_address.clone());
 
-    prime_layer1(&test_env, &asset);
+    test_env.prime_layer1(&asset);
 
     // Baseline ledger timestamp is 100_000 (TestEnv::new). Stamp the snapshot
     // 1h before that — well past the default 300s freshness window.
     let stale_ts = test_env.env.ledger().timestamp().saturating_sub(3_600);
-    test_env.write_snapshot(&asset_address, HEALTHY_VOLUME_USD, 10_u32, stale_ts);
+    test_env.write_snapshot(
+        &asset_address,
+        TestEnv::HEALTHY_VOLUME_USD,
+        10_u32,
+        stale_ts,
+    );
 
     let result = test_env.lastprice(&asset, &SafeOracleConfig::default());
 
@@ -121,7 +110,7 @@ fn test_check_liquidity_blocks_missing_snapshot() {
     let asset_address = Address::generate(&test_env.env);
     let asset = Asset::Stellar(asset_address.clone());
 
-    prime_layer1(&test_env, &asset);
+    test_env.prime_layer1(&asset);
     // No write_snapshot — registry returns None.
 
     let result = test_env.lastprice(&asset, &SafeOracleConfig::default());
@@ -143,7 +132,7 @@ fn test_check_liquidity_skips_for_asset_other() {
     let test_env = TestEnv::new();
     let asset = Asset::Other(Symbol::new(&test_env.env, "BTC"));
 
-    prime_layer1(&test_env, &asset);
+    test_env.prime_layer1(&asset);
     // Intentionally no snapshot — skip path means the registry is never asked.
 
     let result = test_env.lastprice(&asset, &SafeOracleConfig::default());

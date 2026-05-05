@@ -20,23 +20,6 @@ use safe_oracle::{Asset, OracleSafetyViolation, SafeOracleConfig};
 use soroban_sdk::{testutils::Address as _, Address};
 use test_utils::TestEnv;
 
-/// 14-decimal Reflector price helper: dollars → ×10^14.
-const ONE_DOLLAR: i128 = 100_000_000_000_000;
-
-/// 7-decimal USD volume that comfortably clears the $10,000 default
-/// `min_liquidity_usd`, used by tests that need Layer 2 to pass so a Layer 1
-/// failure can surface uncontested.
-const HEALTHY_VOLUME_USD: i128 = 500_000_000_000;
-
-/// Two same-priced Reflector records make Layer 1 deterministic when a test
-/// only wants to exercise a *later* guardrail. Identical pricing keeps
-/// deviation at 0 BPS; the 99_950 newest timestamp sits 50s before the
-/// `TestEnv` baseline of 100_000 so staleness clears the 300s default.
-fn prime_layer1(test_env: &TestEnv, asset: &Asset) {
-    test_env.set_oracle_price(asset, ONE_DOLLAR, 99_900);
-    test_env.set_oracle_price(asset, ONE_DOLLAR, 99_950);
-}
-
 /// Layer 1 internal order: deviation runs before staleness. A scenario that
 /// trips *both* must surface `ExcessiveDeviation`. Pinning this stops a future
 /// reorder from silently swapping the surfaced error — important for incident
@@ -48,13 +31,13 @@ fn test_full_flow_deviation_caught_before_staleness() {
     let asset = Asset::Stellar(asset_address.clone());
 
     // Layer 2 would pass if reached; this test isolates Layer 1 ordering.
-    test_env.write_snapshot_now(&asset_address, HEALTHY_VOLUME_USD, 10_u32);
+    test_env.write_snapshot_now(&asset_address, TestEnv::HEALTHY_VOLUME_USD, 10_u32);
 
     // Two failures live on the same Reflector reads:
     //   - 9900% jump from $1 → $100  → check_deviation fails (default 2000 BPS)
     //   - newest timestamp 5000s old → check_staleness fails (default 300s)
-    test_env.set_oracle_price(&asset, ONE_DOLLAR, 94_950);
-    test_env.set_oracle_price(&asset, ONE_DOLLAR * 100, 95_000);
+    test_env.set_oracle_price(&asset, TestEnv::ONE_DOLLAR, 94_950);
+    test_env.set_oracle_price(&asset, TestEnv::ONE_DOLLAR * 100, 95_000);
 
     let result = test_env.lastprice(&asset, &SafeOracleConfig::default());
 
@@ -76,15 +59,15 @@ fn test_full_flow_staleness_caught_before_cross_source() {
     let asset_address = Address::generate(&test_env.env);
     let asset = Asset::Stellar(asset_address.clone());
 
-    test_env.write_snapshot_now(&asset_address, HEALTHY_VOLUME_USD, 10_u32);
+    test_env.write_snapshot_now(&asset_address, TestEnv::HEALTHY_VOLUME_USD, 10_u32);
 
     // Same price → deviation = 0; both timestamps are 3600s old → staleness fails.
     let old_ts = test_env.env.ledger().timestamp().saturating_sub(3600);
-    test_env.set_oracle_price(&asset, ONE_DOLLAR, old_ts.saturating_sub(50));
-    test_env.set_oracle_price(&asset, ONE_DOLLAR, old_ts);
+    test_env.set_oracle_price(&asset, TestEnv::ONE_DOLLAR, old_ts.saturating_sub(50));
+    test_env.set_oracle_price(&asset, TestEnv::ONE_DOLLAR, old_ts);
 
     // Secondary disagrees by 50× — cross-source would fire if reached.
-    test_env.set_secondary_oracle_price(&asset, ONE_DOLLAR * 50, old_ts);
+    test_env.set_secondary_oracle_price(&asset, TestEnv::ONE_DOLLAR * 50, old_ts);
 
     let config = SafeOracleConfig {
         secondary_oracle: Some(test_env.secondary_reflector_address.clone()),
@@ -111,7 +94,7 @@ fn test_full_flow_layer1_pass_then_layer2_blocks() {
     let asset_address = Address::generate(&test_env.env);
     let asset = Asset::Stellar(asset_address.clone());
 
-    prime_layer1(&test_env, &asset);
+    test_env.prime_layer1(&asset);
 
     // Volume of 5 (7-decimal) is $0.0000005 — far below the default
     // `min_liquidity_usd` of $10,000.
@@ -136,14 +119,15 @@ fn test_full_flow_all_guardrails_pass() {
     let asset_address = Address::generate(&test_env.env);
     let asset = Asset::Stellar(asset_address.clone());
 
-    prime_layer1(&test_env, &asset);
-    test_env.write_snapshot_now(&asset_address, HEALTHY_VOLUME_USD, 10_u32);
+    test_env.prime_layer1(&asset);
+    test_env.write_snapshot_now(&asset_address, TestEnv::HEALTHY_VOLUME_USD, 10_u32);
 
     let result = test_env.lastprice(&asset, &SafeOracleConfig::default());
 
     let price = result.expect("all healthy conditions must pass");
     assert_eq!(
-        price.price, ONE_DOLLAR,
+        price.price,
+        TestEnv::ONE_DOLLAR,
         "must return the current Reflector price"
     );
     assert_eq!(
@@ -162,11 +146,11 @@ fn test_full_flow_cross_source_skipped_without_secondary() {
     let asset_address = Address::generate(&test_env.env);
     let asset = Asset::Stellar(asset_address.clone());
 
-    prime_layer1(&test_env, &asset);
-    test_env.write_snapshot_now(&asset_address, HEALTHY_VOLUME_USD, 10_u32);
+    test_env.prime_layer1(&asset);
+    test_env.write_snapshot_now(&asset_address, TestEnv::HEALTHY_VOLUME_USD, 10_u32);
 
     // Mismatched secondary: would trip CrossSourceMismatch if cross-source ran.
-    test_env.set_secondary_oracle_price(&asset, ONE_DOLLAR * 50, 99_950);
+    test_env.set_secondary_oracle_price(&asset, TestEnv::ONE_DOLLAR * 50, 99_950);
 
     let config = SafeOracleConfig {
         secondary_oracle: None,

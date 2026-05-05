@@ -22,14 +22,6 @@ use soroban_sdk::{
 };
 use test_utils::TestEnv;
 
-/// 14-decimal Reflector price helper: dollars → ×10^14.
-const ONE_DOLLAR: i128 = 100_000_000_000_000;
-
-/// 7-decimal USD volume that comfortably clears the $10,000 default
-/// `min_liquidity_usd` so liquidity-passing scenarios isolate the failure
-/// they actually want to demonstrate.
-const HEALTHY_VOLUME_USD: i128 = 500_000_000_000;
-
 // Phase 5.1 unit tests exercise the state machine through `TestEnv::test_host_client`,
 // the harness moved into `test-utils` in Phase 5.5 (previously inline here).
 
@@ -209,9 +201,9 @@ fn test_auto_halt_opens_breaker_after_first_violation() {
     let asset = Asset::Stellar(asset_address.clone());
 
     // Layer 1 trip: 100× spike between consecutive Reflector ticks.
-    test_env.set_oracle_price(&asset, ONE_DOLLAR, 99_900);
-    test_env.set_oracle_price(&asset, ONE_DOLLAR * 100, 99_950);
-    test_env.write_snapshot_now(&asset_address, HEALTHY_VOLUME_USD, 10_u32);
+    test_env.set_oracle_price(&asset, TestEnv::ONE_DOLLAR, 99_900);
+    test_env.set_oracle_price(&asset, TestEnv::ONE_DOLLAR * 100, 99_950);
+    test_env.write_snapshot_now(&asset_address, TestEnv::HEALTHY_VOLUME_USD, 10_u32);
 
     let config = SafeOracleConfig {
         circuit_breaker_enabled: true,
@@ -244,9 +236,9 @@ fn test_auto_halt_disabled_by_default_preserves_phase_1_4_behavior() {
     let asset_address = Address::generate(&test_env.env);
     let asset = Asset::Stellar(asset_address.clone());
 
-    test_env.set_oracle_price(&asset, ONE_DOLLAR, 99_900);
-    test_env.set_oracle_price(&asset, ONE_DOLLAR * 100, 99_950);
-    test_env.write_snapshot_now(&asset_address, HEALTHY_VOLUME_USD, 10_u32);
+    test_env.set_oracle_price(&asset, TestEnv::ONE_DOLLAR, 99_900);
+    test_env.set_oracle_price(&asset, TestEnv::ONE_DOLLAR * 100, 99_950);
+    test_env.write_snapshot_now(&asset_address, TestEnv::HEALTHY_VOLUME_USD, 10_u32);
 
     let config = SafeOracleConfig::default();
     assert!(
@@ -278,9 +270,9 @@ fn test_auto_halt_breaker_recovers_after_halt_window() {
     let asset_address = Address::generate(&test_env.env);
     let asset = Asset::Stellar(asset_address.clone());
 
-    test_env.set_oracle_price(&asset, ONE_DOLLAR, 99_900);
-    test_env.set_oracle_price(&asset, ONE_DOLLAR * 100, 99_950);
-    test_env.write_snapshot_now(&asset_address, HEALTHY_VOLUME_USD, 10_u32);
+    test_env.set_oracle_price(&asset, TestEnv::ONE_DOLLAR, 99_900);
+    test_env.set_oracle_price(&asset, TestEnv::ONE_DOLLAR * 100, 99_950);
+    test_env.write_snapshot_now(&asset_address, TestEnv::HEALTHY_VOLUME_USD, 10_u32);
 
     // Short halt window so the test can advance the ledger past it cheaply.
     let config = SafeOracleConfig {
@@ -340,14 +332,14 @@ fn test_breaker_isolation_between_assets_via_lastprice() {
     let asset_b = Asset::Stellar(asset_b_addr.clone());
 
     // asset_a: 100× spike → guardrail violation
-    test_env.set_oracle_price(&asset_a, ONE_DOLLAR, 99_900);
-    test_env.set_oracle_price(&asset_a, ONE_DOLLAR * 100, 99_950);
-    test_env.write_snapshot_now(&asset_a_addr, HEALTHY_VOLUME_USD, 10_u32);
+    test_env.set_oracle_price(&asset_a, TestEnv::ONE_DOLLAR, 99_900);
+    test_env.set_oracle_price(&asset_a, TestEnv::ONE_DOLLAR * 100, 99_950);
+    test_env.write_snapshot_now(&asset_a_addr, TestEnv::HEALTHY_VOLUME_USD, 10_u32);
 
     // asset_b: stable, all guardrails pass
-    test_env.set_oracle_price(&asset_b, ONE_DOLLAR, 99_900);
-    test_env.set_oracle_price(&asset_b, ONE_DOLLAR, 99_950);
-    test_env.write_snapshot_now(&asset_b_addr, HEALTHY_VOLUME_USD, 10_u32);
+    test_env.set_oracle_price(&asset_b, TestEnv::ONE_DOLLAR, 99_900);
+    test_env.set_oracle_price(&asset_b, TestEnv::ONE_DOLLAR, 99_950);
+    test_env.write_snapshot_now(&asset_b_addr, TestEnv::HEALTHY_VOLUME_USD, 10_u32);
 
     let config = SafeOracleConfig {
         circuit_breaker_enabled: true,
@@ -382,9 +374,9 @@ fn test_breaker_halt_persists_over_multiple_calls() {
     let asset_address = Address::generate(&test_env.env);
     let asset = Asset::Stellar(asset_address.clone());
 
-    test_env.set_oracle_price(&asset, ONE_DOLLAR, 99_900);
-    test_env.set_oracle_price(&asset, ONE_DOLLAR * 100, 99_950);
-    test_env.write_snapshot_now(&asset_address, HEALTHY_VOLUME_USD, 10_u32);
+    test_env.set_oracle_price(&asset, TestEnv::ONE_DOLLAR, 99_900);
+    test_env.set_oracle_price(&asset, TestEnv::ONE_DOLLAR * 100, 99_950);
+    test_env.write_snapshot_now(&asset_address, TestEnv::HEALTHY_VOLUME_USD, 10_u32);
 
     let config = SafeOracleConfig {
         circuit_breaker_enabled: true,
@@ -416,9 +408,9 @@ fn test_breaker_auto_recovers_at_exact_halt_until_ledger() {
     let asset_address = Address::generate(&test_env.env);
     let asset = Asset::Stellar(asset_address.clone());
 
-    test_env.set_oracle_price(&asset, ONE_DOLLAR, 99_900);
-    test_env.set_oracle_price(&asset, ONE_DOLLAR * 100, 99_950);
-    test_env.write_snapshot_now(&asset_address, HEALTHY_VOLUME_USD, 10_u32);
+    test_env.set_oracle_price(&asset, TestEnv::ONE_DOLLAR, 99_900);
+    test_env.set_oracle_price(&asset, TestEnv::ONE_DOLLAR * 100, 99_950);
+    test_env.write_snapshot_now(&asset_address, TestEnv::HEALTHY_VOLUME_USD, 10_u32);
 
     let config = SafeOracleConfig {
         circuit_breaker_enabled: true,
@@ -471,9 +463,9 @@ fn test_breaker_opens_for_diverse_violation_types() {
         // Stable price but timestamps 1h old → staleness fires.
         let now = test_env.env.ledger().timestamp();
         let stale_ts = now.saturating_sub(3_600);
-        test_env.set_oracle_price(&asset, ONE_DOLLAR, stale_ts.saturating_sub(100));
-        test_env.set_oracle_price(&asset, ONE_DOLLAR, stale_ts);
-        test_env.write_snapshot_now(&asset_address, HEALTHY_VOLUME_USD, 10_u32);
+        test_env.set_oracle_price(&asset, TestEnv::ONE_DOLLAR, stale_ts.saturating_sub(100));
+        test_env.set_oracle_price(&asset, TestEnv::ONE_DOLLAR, stale_ts);
+        test_env.write_snapshot_now(&asset_address, TestEnv::HEALTHY_VOLUME_USD, 10_u32);
 
         let config = SafeOracleConfig {
             circuit_breaker_enabled: true,
@@ -498,8 +490,8 @@ fn test_breaker_opens_for_diverse_violation_types() {
         let asset = Asset::Stellar(asset_address.clone());
 
         // Healthy price, drained orderbook (volume = 5 stroops).
-        test_env.set_oracle_price(&asset, ONE_DOLLAR, 99_900);
-        test_env.set_oracle_price(&asset, ONE_DOLLAR, 99_950);
+        test_env.set_oracle_price(&asset, TestEnv::ONE_DOLLAR, 99_900);
+        test_env.set_oracle_price(&asset, TestEnv::ONE_DOLLAR, 99_950);
         test_env.write_snapshot_now(&asset_address, 5_i128, 10_u32);
 
         let config = SafeOracleConfig {
@@ -531,9 +523,9 @@ fn test_breaker_reopens_after_recovery_on_new_violation() {
     let asset_address = Address::generate(&test_env.env);
     let asset = Asset::Stellar(asset_address.clone());
 
-    test_env.set_oracle_price(&asset, ONE_DOLLAR, 99_900);
-    test_env.set_oracle_price(&asset, ONE_DOLLAR * 100, 99_950);
-    test_env.write_snapshot_now(&asset_address, HEALTHY_VOLUME_USD, 10_u32);
+    test_env.set_oracle_price(&asset, TestEnv::ONE_DOLLAR, 99_900);
+    test_env.set_oracle_price(&asset, TestEnv::ONE_DOLLAR * 100, 99_950);
+    test_env.write_snapshot_now(&asset_address, TestEnv::HEALTHY_VOLUME_USD, 10_u32);
 
     let config = SafeOracleConfig {
         circuit_breaker_enabled: true,
@@ -603,9 +595,9 @@ fn test_manual_close_resets_open_breaker_state() {
     let asset_address = Address::generate(&test_env.env);
     let asset = Asset::Stellar(asset_address.clone());
 
-    test_env.set_oracle_price(&asset, ONE_DOLLAR, 99_900);
-    test_env.set_oracle_price(&asset, ONE_DOLLAR * 100, 99_950);
-    test_env.write_snapshot_now(&asset_address, HEALTHY_VOLUME_USD, 10_u32);
+    test_env.set_oracle_price(&asset, TestEnv::ONE_DOLLAR, 99_900);
+    test_env.set_oracle_price(&asset, TestEnv::ONE_DOLLAR * 100, 99_950);
+    test_env.write_snapshot_now(&asset_address, TestEnv::HEALTHY_VOLUME_USD, 10_u32);
 
     let config = SafeOracleConfig {
         circuit_breaker_enabled: true,
