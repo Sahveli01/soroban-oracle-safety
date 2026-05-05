@@ -22,6 +22,14 @@ deployment/secrets/
 *.log
 logs/
 
+# Property-based test auto-generated snapshots.
+# Each `proptest!` case produces one Soroban test_snapshot file (default
+# 256 cases per test). Unlike the deterministic fixed-fixture snapshots
+# elsewhere in the repo, these are not regression-detection artifacts —
+# random inputs imply non-reproducible filenames across runs. Excluded
+# to keep the repo lean (12 property tests x 256 cases = ~3000 files).
+crates/safe-oracle/test_snapshots/prop_*.json
+
 # OS
 Thumbs.db
 desktop.ini
