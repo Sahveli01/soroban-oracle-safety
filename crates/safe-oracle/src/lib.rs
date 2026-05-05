@@ -8,6 +8,20 @@ mod registry_client;
 pub use reflector_client::ReflectorClient;
 pub use registry_client::{LiquidityRegistryClient, LiquiditySnapshot};
 
+/// Maximum allowed circuit breaker halt duration in ledgers.
+///
+/// Equals approximately 1 week at Stellar's ~5-second ledger close cadence
+/// (604_800 seconds / 5 ≈ 120_960 ledgers). Beyond this duration, governance
+/// should manually open or close the breaker rather than rely on auto-recovery
+/// — week-long halts are an operational decision, not a config default.
+///
+/// # AR.H L1 closure
+///
+/// Added after AR.H surfaced that an unbounded `circuit_breaker_halt_ledgers`
+/// (u32::MAX ≈ 6.8 years) makes a misconfigured deploy unrecoverable without
+/// governance intervention. `validate()` rejects values above this bound.
+pub const MAX_CIRCUIT_BREAKER_HALT_LEDGERS: u32 = 120_960;
+
 /// Reasons a guardrail has rejected a price; the `Err` payload of every
 /// safe_oracle public API.
 ///
@@ -303,18 +317,29 @@ pub enum ConfigError {
     /// from Hardening Closure (Debt #22).
     InvalidLiquidityThreshold,
 
-    /// `secondary_oracle` is `Some(_)` but `max_cross_source_bps > 10_000`.
-    /// The cross-source guardrail is configured but its threshold is
-    /// nonsensical. When `secondary_oracle = None` the value of
-    /// `max_cross_source_bps` is irrelevant (cross-source is skipped
-    /// entirely), so this check is conditional.
+    /// `max_cross_source_bps` is `0` (requires impossible primary/secondary
+    /// price equality) or `> 10_000` (semantically nonsensical, > 100% deviation)
+    /// when `secondary_oracle` is configured. Validation skipped if secondary
+    /// is `None` (field is dormant).
+    ///
+    /// # AR.H L2 closure
+    ///
+    /// Validation rule was tightened from `> 10_000` only to `== 0 || > 10_000`
+    /// after AR.H surfaced the silent-footgun case where a zero threshold
+    /// produces always-fires CrossSourceMismatch on every borrow.
     InvalidCrossSourceBps,
 
-    /// `circuit_breaker_enabled = true` but `circuit_breaker_halt_ledgers
-    /// == 0`. A degenerate halt window: the breaker would fire and
-    /// immediately auto-recover on the same call, providing no actual
-    /// halt. When the breaker is disabled, the halt-ledgers field is
-    /// dormant, so this check is conditional.
+    /// `circuit_breaker_halt_ledgers` is `0` (degenerate halt window — the
+    /// breaker would fire and immediately auto-recover, providing no actual
+    /// halt) or `> MAX_CIRCUIT_BREAKER_HALT_LEDGERS` (~1 week, beyond the
+    /// reasonable auto-recovery window) when `circuit_breaker_enabled` is
+    /// `true`. Validation skipped if breaker is disabled (field is dormant).
+    ///
+    /// # AR.H L1 closure
+    ///
+    /// Upper bound added after AR.H surfaced that `u32::MAX` (~6.8 years
+    /// at Stellar's ledger cadence) makes a misconfigured deploy
+    /// effectively-permanently halted without governance intervention.
     InvalidHaltLedgers,
 
     /// `min_trade_count_1h` is 0 — disables thin-sampling check entirely
@@ -362,11 +387,12 @@ impl SafeOracleConfig {
     /// - [`ConfigError::InvalidStalenessSeconds`] — `max_staleness_seconds
     ///   == 0` or `> 86_400`.
     /// - [`ConfigError::InvalidLiquidityThreshold`] — `min_liquidity_usd
-    ///   < 0`.
+    ///   <= 0` (AR.H M1).
     /// - [`ConfigError::InvalidCrossSourceBps`] — secondary configured
-    ///   but `max_cross_source_bps > 10_000`.
+    ///   and `max_cross_source_bps == 0` or `> 10_000` (AR.H L2).
     /// - [`ConfigError::InvalidHaltLedgers`] — `circuit_breaker_enabled`
-    ///   and `circuit_breaker_halt_ledgers == 0`.
+    ///   and `circuit_breaker_halt_ledgers == 0` or
+    ///   `> MAX_CIRCUIT_BREAKER_HALT_LEDGERS` (AR.H L1).
     /// - [`ConfigError::InvalidTradeCountThreshold`] — `min_trade_count_1h
     ///   == 0` (Hardening Closure / Debt #22).
     /// - [`ConfigError::InvalidSnapshotAge`] — `max_snapshot_age_seconds
@@ -399,11 +425,26 @@ impl SafeOracleConfig {
             return Err(ConfigError::InvalidLiquidityThreshold);
         }
 
-        if self.secondary_oracle.is_some() && self.max_cross_source_bps > 10_000 {
+        // AR.H L2 fix: also reject == 0 when secondary is configured. A zero
+        // cross-source threshold requires perfect primary/secondary price
+        // equality, which is operationally impossible — every borrow would
+        // fire CrossSourceMismatch. Same silent-footgun shape as M1
+        // (min_liquidity_usd == 0) and Hardening Closure / Debt #22.
+        if self.secondary_oracle.is_some()
+            && (self.max_cross_source_bps == 0 || self.max_cross_source_bps > 10_000)
+        {
             return Err(ConfigError::InvalidCrossSourceBps);
         }
 
-        if self.circuit_breaker_enabled && self.circuit_breaker_halt_ledgers == 0 {
+        // AR.H L1 fix: cap halt_ledgers at MAX_CIRCUIT_BREAKER_HALT_LEDGERS to
+        // prevent misconfigured deploys from creating an effectively-permanent
+        // halt that only governance intervention can clear. u32::MAX is ~6.8
+        // years at Stellar's ledger cadence; the cap (~1 week) is the longest
+        // reasonable auto-recovery window.
+        if self.circuit_breaker_enabled
+            && (self.circuit_breaker_halt_ledgers == 0
+                || self.circuit_breaker_halt_ledgers > MAX_CIRCUIT_BREAKER_HALT_LEDGERS)
+        {
             return Err(ConfigError::InvalidHaltLedgers);
         }
 

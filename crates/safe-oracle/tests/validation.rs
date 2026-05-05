@@ -242,3 +242,72 @@ fn test_validate_zero_liquidity_threshold_rejected() {
         "zero min_liquidity_usd silently disables the Layer 2 liquidity check — must be rejected"
     );
 }
+
+// ===== AR.H L1: Halt Ledgers Upper Bound =====
+//
+// SafeOracleConfig::validate() rejects circuit_breaker_halt_ledgers values
+// beyond MAX_CIRCUIT_BREAKER_HALT_LEDGERS (~1 week). Without this guard,
+// a misconfigured deploy with u32::MAX (~6.8 years) becomes effectively
+// unrecoverable without governance.
+
+#[test]
+fn test_validate_excessive_halt_ledgers_rejected() {
+    let config = SafeOracleConfig {
+        circuit_breaker_enabled: true,
+        circuit_breaker_halt_ledgers: u32::MAX,
+        ..SafeOracleConfig::default()
+    };
+    assert_eq!(
+        config.validate(),
+        Err(ConfigError::InvalidHaltLedgers),
+        "u32::MAX halt_ledgers (~6.8 years) must be rejected"
+    );
+}
+
+#[test]
+fn test_validate_halt_ledgers_at_max_passes() {
+    // Boundary regression: exactly MAX_CIRCUIT_BREAKER_HALT_LEDGERS is valid.
+    let config = SafeOracleConfig {
+        circuit_breaker_enabled: true,
+        circuit_breaker_halt_ledgers: safe_oracle::MAX_CIRCUIT_BREAKER_HALT_LEDGERS,
+        ..SafeOracleConfig::default()
+    };
+    assert!(
+        config.validate().is_ok(),
+        "halt_ledgers at exactly MAX_CIRCUIT_BREAKER_HALT_LEDGERS must be valid"
+    );
+}
+
+// ===== AR.H L2: Cross-Source BPS Zero =====
+//
+// SafeOracleConfig::validate() rejects max_cross_source_bps == 0 when
+// secondary is configured. Zero requires impossible perfect equality.
+
+#[test]
+fn test_validate_zero_cross_source_bps_rejected_when_secondary_configured() {
+    let env = Env::default();
+    let config = SafeOracleConfig {
+        secondary_oracle: Some(Address::generate(&env)),
+        max_cross_source_bps: 0,
+        ..SafeOracleConfig::default()
+    };
+    assert_eq!(
+        config.validate(),
+        Err(ConfigError::InvalidCrossSourceBps),
+        "zero max_cross_source_bps with secondary configured = always-fires CrossSourceMismatch — must be rejected"
+    );
+}
+
+#[test]
+fn test_validate_zero_cross_source_bps_skipped_when_no_secondary() {
+    // Conditional regression: if secondary is None, max_cross_source_bps is dormant.
+    let config = SafeOracleConfig {
+        secondary_oracle: None,
+        max_cross_source_bps: 0, // dormant
+        ..SafeOracleConfig::default()
+    };
+    assert!(
+        config.validate().is_ok(),
+        "max_cross_source_bps validation skipped when secondary_oracle is None"
+    );
+}
