@@ -249,6 +249,17 @@ pub struct SafeOracleConfig {
     pub max_snapshot_age_seconds: u64,
     pub min_liquidity_usd: i128,
     pub min_trade_count_1h: u32,
+    /// Optional secondary oracle for cross-source price verification.
+    /// `None` skips the cross-source guardrail entirely (single-source mode);
+    /// `Some(addr)` activates `check_cross_source` against the configured
+    /// `max_cross_source_bps` threshold.
+    ///
+    /// **Integrator warning (AR.H M2):** the secondary must report prices in
+    /// the same decimal precision as the primary (Reflector mainnet = 14
+    /// decimals). A decimals-mismatched secondary produces always-fires
+    /// `CrossSourceMismatch` because BPS arithmetic is unscaled `i128` math.
+    /// See `check_cross_source` doc-comment for full rationale and the
+    /// Phase 7 reconciliation plan.
     pub secondary_oracle: Option<Address>,
     pub circuit_breaker_enabled: bool,
     pub circuit_breaker_halt_ledgers: u32,
@@ -675,6 +686,34 @@ fn fetch_reflector_prices(
 /// - `checked_mul(10_000)` catches the rare overflow where
 ///   `abs_diff * 10_000` would exceed `i128::MAX`; treating overflow as
 ///   deviation is the safe default.
+///
+/// # Liveness limitation — previous-price staleness (AR.H M3)
+///
+/// **The `previous` price's timestamp is not freshness-checked.** Only
+/// `current.timestamp` is validated by `check_staleness`. The `previous`
+/// price comes from `prices.get(1)` of the same `records=2` Reflector
+/// call, but Reflector retains historical records — during a real-world
+/// data gap (RPC outage, oracle network downtime, asset just listed),
+/// `previous` may be hours/days/weeks old.
+///
+/// **Operational consequence:** legitimate post-gap market drift is
+/// computed against an arbitrarily ancient denominator, producing
+/// false-positive `ExcessiveDeviation` halts. With
+/// `circuit_breaker_enabled = true`, every recovery re-trips the
+/// breaker until Reflector accumulates a fresh second record.
+///
+/// **This is a liveness issue, not a safety issue** — the failure
+/// favors fail-closed (legitimate borrows blocked, no funds at risk).
+/// Integrators relying on continuous availability through Reflector
+/// outages should:
+/// - Set `circuit_breaker_enabled = false` and rely on per-call
+///   `ExcessiveDeviation` reporting (governance can investigate),
+/// - Or accept gap-induced halts as part of their safety budget.
+///
+/// Phase 7 will add a configurable `previous_max_staleness_seconds`
+/// (or reuse `max_staleness_seconds * K` for some K=2..5) so post-gap
+/// movement is correctly classified as `StaleData` rather than
+/// `ExcessiveDeviation`.
 fn check_deviation_from_pair(
     current: &PriceData,
     previous: &PriceData,
@@ -758,6 +797,30 @@ fn check_staleness(
 ///
 /// Primary is the BPS reference (`|primary - secondary| * 10_000 / primary`)
 /// because primary is the value the lending contract actually consumes.
+///
+/// # Integrator warning — decimals reconciliation (AR.H M2)
+///
+/// **The library compares `current.price` and `secondary_price.price` as
+/// raw `i128` values without decimals reconciliation.** Reflector mainnet
+/// uses `decimals = 14`; if the integrator wires a secondary oracle that
+/// reports prices in a different decimal precision (e.g., DIA at 8 or
+/// Pyth at varying precision), the BPS calculation is meaningless:
+///
+/// - With `circuit_breaker_enabled = true`: a decimals-mismatched
+///   secondary produces an immediate auto-halt that cannot recover
+///   (every recovery re-triggers `CrossSourceMismatch`).
+/// - With `circuit_breaker_enabled = false`: every borrow surfaces
+///   `CrossSourceMismatch`, operationally broken but recoverable by
+///   removing the secondary from config.
+///
+/// **Integrator responsibility:** verify that the secondary oracle reports
+/// in the same decimal precision as the primary. The cross-source
+/// guardrail is currently safe to use only with same-precision pairs.
+///
+/// Phase 7 will add a one-time `decimals()` call at first read to verify
+/// primary/secondary precision agreement, with `CrossSourceMismatch` (or
+/// a new error variant) returned if they disagree. Until then, this is
+/// an integrator-side configuration concern.
 fn check_cross_source(
     env: &Env,
     asset: &Asset,

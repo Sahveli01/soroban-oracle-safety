@@ -342,6 +342,31 @@ impl MockLending {
     /// Test-only: invoke `safe_oracle::circuit_breaker::check_circuit_breaker`
     /// in `MockLending`'s contract context. Reads the same `instance()`
     /// storage that `lastprice`'s auto-halt writes commit to.
+    ///
+    /// # Production safety — downstream integrator warning (AR.H L3)
+    ///
+    /// **These cfg-gated methods (`run_check`, `run_open`, `run_close`)
+    /// bypass admin authorization by design.** They exist to support
+    /// unified-storage testing of the auto-halt + manual-close path
+    /// (Hardening Phase debt #18+#20). The cfg gate ensures they are
+    /// excluded from production WASM builds:
+    ///
+    /// ```toml
+    /// [features]
+    /// testutils = []  # NEVER enable in production builds
+    /// ```
+    ///
+    /// **A downstream integrator who forks this contract and enables
+    /// `testutils` for their test pipeline must verify that their mainnet
+    /// build configuration explicitly excludes the feature.** Shipping a
+    /// cdylib with `testutils` enabled would expose `run_check` /
+    /// `run_open` / `run_close` as un-authorized contract entry points —
+    /// effectively ceding admin override of the circuit breaker to any
+    /// caller.
+    ///
+    /// Phase 7 may relocate these primitives to a separate sibling crate
+    /// (e.g., `mock-lending-testutils`) to eliminate the cfg-flag footgun
+    /// at the build-system level.
     #[cfg(any(test, feature = "testutils"))]
     pub fn run_check(env: Env, asset: Asset) -> Result<(), OracleSafetyViolation> {
         safe_oracle::circuit_breaker::check_circuit_breaker(&env, &asset)
@@ -351,6 +376,9 @@ impl MockLending {
     /// in `MockLending`'s contract context. Mirrors what `lastprice`'s
     /// auto-halt does, exposed here so tests can drive the open/close
     /// state machine without going through a guardrail violation.
+    ///
+    /// See `run_check` doc-comment for the AR.H L3 production-safety
+    /// warning that applies to all three cfg-gated primitives.
     #[cfg(any(test, feature = "testutils"))]
     pub fn run_open(env: Env, asset: Asset, duration: u32) {
         safe_oracle::circuit_breaker::open_circuit_breaker(&env, &asset, duration);
@@ -360,6 +388,9 @@ impl MockLending {
     /// in `MockLending`'s contract context. Resets state set by either
     /// `run_open` or by `lastprice`'s auto-halt — the unification this
     /// whole block exists to enable.
+    ///
+    /// See `run_check` doc-comment for the AR.H L3 production-safety
+    /// warning that applies to all three cfg-gated primitives.
     #[cfg(any(test, feature = "testutils"))]
     pub fn run_close(env: Env, asset: Asset) {
         safe_oracle::circuit_breaker::close_circuit_breaker(&env, &asset);

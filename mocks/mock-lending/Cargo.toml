@@ -17,6 +17,14 @@ default = []
 # primitives through the same contract instance that hosts `borrow()`.
 # Production WASM builds do not enable this feature.
 # Hardening Phase debt #18+#20 — see lib.rs for full rationale.
+#
+# Downstream integrator warning (AR.H L3): if you fork this contract and
+# enable `testutils` for your test pipeline, ensure your mainnet build
+# configuration explicitly excludes this feature. Shipping a cdylib with
+# `testutils` enabled exposes run_check/run_open/run_close as un-authorized
+# entry points — effectively ceding admin override of the circuit breaker
+# to any caller. Phase 7 may relocate these primitives to a separate
+# sibling crate to eliminate the cfg-flag footgun at the build-system level.
 testutils = []
 
 [dependencies]
