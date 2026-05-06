@@ -1,3 +1,10 @@
+// Phase 6.2-6.7 progressively populate this binary crate's modules with
+// public items (Config, HorizonClient, Signer, RegistryWriter, ...) that
+// the tests exercise but `main()` does not yet wire up. Without this
+// allow, clippy reports dead-code errors during the build phase. To be
+// removed in Phase 6.8 when the main poll loop wires every module.
+#![allow(dead_code)]
+
 //! oracle-watch — off-chain Stellar SDEX liquidity watcher.
 //!
 //! Polls Horizon for trade data, aggregates volume and trade counts,
