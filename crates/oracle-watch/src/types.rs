@@ -107,4 +107,101 @@ pub struct AggregatedSnapshot {
     pub computed_at: u64,
 }
 
-// TODO Phase 6.4: LiquiditySnapshotPayload struct (signing input)
+/// Payload that gets signed by oracle-watch and (in spec) verified
+/// on-chain. The byte serialization is deterministic — same struct →
+/// same bytes → same signature, regardless of platform endianness or
+/// Rust version.
+///
+/// # On-chain status (Phase 6 design note)
+///
+/// The current `LiquidityRegistry` contract does **not** verify this
+/// signature on-chain. Per Phase 3.3, write_snapshot uses Stellar's
+/// `require_auth_for_args` to authenticate the attester via the
+/// Stellar keypair signing the submit transaction. The ed25519
+/// signature here is **redundant** with require_auth in the present
+/// design.
+///
+/// Why we still produce it:
+/// - Spec compliance — spec Bölüm 5 calls for ed25519 attestation
+/// - Forward compat — future SDK or contract revisions may verify
+///   it directly without round-tripping through Stellar transaction auth
+/// - Off-chain audit — alternative auditors can independently verify
+///   the attester signed each snapshot
+/// - Defense-in-depth — if Stellar transaction auth is ever bypassed
+///   (extremely unlikely), the ed25519 signature is a second factor
+///
+/// # Serialization format
+///
+/// Concatenated big-endian bytes in fixed field order:
+///
+/// ```text
+/// asset_code_len (u8) || asset_code (utf8) ||
+/// asset_issuer_len (u8) || asset_issuer (utf8) ||
+/// volume_30m_usd_i128 (16 bytes, big-endian, two's complement) ||
+/// unique_trades_1h (4 bytes, big-endian) ||
+/// timestamp (8 bytes, big-endian)
+/// ```
+///
+/// The length prefixes prevent ambiguity when concatenating string fields.
+/// Fixed integer widths and big-endian ordering ensure cross-platform
+/// determinism.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LiquiditySnapshotPayload {
+    pub asset_code: String,
+    pub asset_issuer: String,
+    pub volume_30m_usd_i128: i128,
+    pub unique_trades_1h: u32,
+    pub timestamp: u64,
+}
+
+impl LiquiditySnapshotPayload {
+    /// Builds the canonical byte representation for signing.
+    ///
+    /// Length-prefixed UTF-8 strings, big-endian fixed-width integers.
+    /// Asset string lengths are bounded at u8::MAX (255 bytes) — typical
+    /// asset codes are 1-12 bytes, issuers are 56-byte Stellar addresses,
+    /// well within the cap.
+    ///
+    /// Returns `None` if either string exceeds 255 bytes (defensive;
+    /// production assets never trigger this).
+    pub fn to_signing_bytes(&self) -> Option<Vec<u8>> {
+        let code_bytes = self.asset_code.as_bytes();
+        let issuer_bytes = self.asset_issuer.as_bytes();
+
+        if code_bytes.len() > u8::MAX as usize || issuer_bytes.len() > u8::MAX as usize {
+            return None;
+        }
+
+        let mut buf =
+            Vec::with_capacity(1 + code_bytes.len() + 1 + issuer_bytes.len() + 16 + 4 + 8);
+
+        buf.push(code_bytes.len() as u8);
+        buf.extend_from_slice(code_bytes);
+
+        buf.push(issuer_bytes.len() as u8);
+        buf.extend_from_slice(issuer_bytes);
+
+        buf.extend_from_slice(&self.volume_30m_usd_i128.to_be_bytes());
+        buf.extend_from_slice(&self.unique_trades_1h.to_be_bytes());
+        buf.extend_from_slice(&self.timestamp.to_be_bytes());
+
+        Some(buf)
+    }
+}
+
+impl From<&AggregatedSnapshot> for LiquiditySnapshotPayload {
+    /// Converts an `AggregatedSnapshot` into a signable payload.
+    ///
+    /// The `computed_at` field of `AggregatedSnapshot` becomes `timestamp`
+    /// in the payload. Both represent oracle-watch wall-clock time, not
+    /// ledger time.
+    fn from(snap: &AggregatedSnapshot) -> Self {
+        Self {
+            asset_code: snap.asset_code.clone(),
+            asset_issuer: snap.asset_issuer.clone(),
+            volume_30m_usd_i128: snap.volume_30m_usd_i128,
+            unique_trades_1h: snap.unique_trades_1h,
+            timestamp: snap.computed_at,
+        }
+    }
+}
