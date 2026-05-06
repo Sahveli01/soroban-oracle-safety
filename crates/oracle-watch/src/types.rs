@@ -63,5 +63,48 @@ pub struct PriceRatio {
     pub d: i64,
 }
 
-// TODO Phase 6.3: AggregatedSnapshot struct (volume_30m_usd_i128, unique_trades_1h, computed_at)
+/// Aggregated trade statistics for a single asset over a time window.
+///
+/// Output of the [`crate::aggregator::aggregate_trades`] function. Mirrors
+/// the on-chain `LiquiditySnapshot` shape (volume + trade count + timestamp)
+/// but uses `i128` stroops for the volume field per Stellar 7-decimal
+/// convention.
+///
+/// # Spec reference
+///
+/// See spec Bölüm 5 — oracle-watch İşlev A.
+///
+/// - `volume_30m_usd_i128`: 30-minute USD volume sum × 10^7 (stroop unit)
+/// - `unique_trades_1h`: distinct `source_account` count over 1-hour
+///   window, with $10 minimum-trade-value spam filter
+/// - `computed_at`: Unix timestamp when this snapshot was computed
+///   (oracle-watch wall clock, not ledger time)
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AggregatedSnapshot {
+    /// Asset code (e.g., "USDC", "XLM"). Used for downstream
+    /// `LiquidityRegistry::write_snapshot` payload identification.
+    pub asset_code: String,
+
+    /// Asset issuer (Stellar address or `"native"` for XLM).
+    pub asset_issuer: String,
+
+    /// 30-minute USD volume × 10^7 (stroop convention).
+    ///
+    /// `i128` matches the on-chain `LiquiditySnapshot.volume_30m_usd` type
+    /// for direct write-through without conversion.
+    pub volume_30m_usd_i128: i128,
+
+    /// 1-hour unique trade count per spec's Trade Sayım Tanımı.
+    ///
+    /// Counts distinct `source_account` values that contributed at least
+    /// one trade with USD value ≥ `MIN_TRADE_USD_VALUE` ($10) within the
+    /// 1-hour window. Multiple trades from the same `source_account` count
+    /// once.
+    pub unique_trades_1h: u32,
+
+    /// Unix timestamp (seconds) when this snapshot was computed.
+    /// Set by `aggregate_trades` from `std::time::SystemTime::now()`.
+    pub computed_at: u64,
+}
+
 // TODO Phase 6.4: LiquiditySnapshotPayload struct (signing input)
