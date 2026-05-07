@@ -26,6 +26,11 @@ use serde::Deserialize;
 /// counter side. `source_account` is taken from `base_account` (the
 /// account whose offer was active and matched). For SDEX-style trades
 /// this aligns with "the trader who initiated the matching offer".
+// Fields are populated by serde from Horizon JSON; the aggregator only
+// consumes a subset directly, but downstream Phase 8 work (dedup by id,
+// time-window filtering by ledger_close_time) needs the rest. The
+// dead_code lint cannot see serde's field reads.
+#[allow(dead_code)]
 #[derive(Debug, Clone, Deserialize)]
 pub struct TradeRecord {
     /// Trade identifier (Horizon's `id` field). Used for deduplication
@@ -57,6 +62,7 @@ pub struct TradeRecord {
 /// Horizon's wire format for `price_r`. Aggregator may convert to f64
 /// for USD valuation, but the rational form is preserved here for any
 /// future precision-sensitive consumer.
+#[allow(dead_code)] // serde-populated; consumed by Phase 8 precision-sensitive paths.
 #[derive(Debug, Clone, Copy, Deserialize)]
 pub struct PriceRatio {
     pub n: i64,

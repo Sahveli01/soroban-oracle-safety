@@ -114,6 +114,11 @@ impl Signer {
 
     /// Returns the verifying key for direct use with ed25519-dalek's
     /// `Verifier` trait (e.g., in tests).
+    ///
+    /// Test-only alternative to [`Signer::public_key_bytes`] — main loop
+    /// uses the byte form for logging/registration; verification flows
+    /// (currently in unit tests, Phase 8 cross-verification) use this.
+    #[allow(dead_code)]
     pub fn verifying_key(&self) -> VerifyingKey {
         self.keypair.verifying_key()
     }

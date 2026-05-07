@@ -41,15 +41,22 @@ use stellar_xdr::curr::{
 };
 
 /// Errors that can occur during registry writing.
+///
+/// `Sign` and `Rpc` variants are reserved for Phase 8 (transaction-envelope
+/// signing path and live RPC submission) — `submit_transaction_stub` already
+/// constructs `Rpc` from network errors, but the stub is unwired in the main
+/// loop. The dead-code allow on the variants documents that boundary.
 #[derive(Debug)]
 pub enum WriterError {
     /// XDR encoding failed (struct construction or serialization).
     Xdr(String),
 
     /// Transaction signing failed (ed25519 error).
+    #[allow(dead_code)]
     Sign(String),
 
     /// RPC client error (network, parsing, server response).
+    #[allow(dead_code)]
     Rpc(String),
 
     /// Asset code length is invalid (1-12 characters required).
@@ -81,7 +88,10 @@ pub struct RegistryWriter {
     network_passphrase: String,
     /// Stellar transaction-signing keypair (NOT the off-chain payload signer).
     /// This is the attester's Stellar account, authorized in
-    /// `LiquidityRegistry::initialize`.
+    /// `LiquidityRegistry::initialize`. Held for Phase 8 transaction-envelope
+    /// signing — Phase 6.5/6.8 only build the invoke args; full envelope
+    /// signing requires sequence-number fetch + fee tuning that are deferred.
+    #[allow(dead_code)]
     signing_key_hex: String,
 }
 
@@ -168,7 +178,9 @@ impl RegistryWriter {
     /// All four are implemented at a structural level here. Real-network
     /// integration is Phase 8 — testnet account funding, sequence
     /// management, and fee tuning are out of scope for the SCF Build
-    /// submission.
+    /// submission. Phase 6.8 main loop calls `build_invoke_args` only;
+    /// this method is exercised by unit tests until Phase 8 wiring.
+    #[allow(dead_code)]
     pub async fn submit_transaction_stub(
         &self,
         envelope_xdr: String,

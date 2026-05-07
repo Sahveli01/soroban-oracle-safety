@@ -20,6 +20,8 @@ use std::env;
 /// | `ORACLE_WATCH_SIGNING_SECRET_KEY` | yes | — | Ed25519 secret key (hex, 64 chars) |
 /// | `ORACLE_WATCH_WATCHED_ASSETS` | yes | — | Comma-separated `code:issuer` pairs |
 /// | `ORACLE_WATCH_MAX_SNAPSHOT_AGE_SECONDS` | no | `300` | Snapshot freshness threshold |
+/// | `ORACLE_WATCH_USDC_PRICE_USD` | no | `1.0` | USD value of 1 unit of counter asset |
+/// | `ORACLE_WATCH_NETWORK_PASSPHRASE` | no | testnet | Stellar network passphrase |
 ///
 /// # Watched asset format
 ///
@@ -34,6 +36,20 @@ pub struct Config {
     pub signing_secret_key: String,
     pub watched_assets: Vec<WatchedAsset>,
     pub max_snapshot_age_seconds: u64,
+
+    /// USD value of 1 unit of the counter asset for volume aggregation.
+    ///
+    /// **Phase 6.8 placeholder.** Currently a single static value applied
+    /// to all watched pairs. Phase 8 will replace this with a real-time
+    /// price feed (likely Reflector itself, with circular-dependency
+    /// safeguards) per-asset. Default `1.0` is correct for USDC pairs and
+    /// approximate for stablecoin-denominated pairs.
+    pub usdc_price_usd: f64,
+
+    /// Stellar network passphrase, wired to `RegistryWriter` for transaction
+    /// signing. Defaults to testnet; mainnet operators must override via
+    /// `ORACLE_WATCH_NETWORK_PASSPHRASE`.
+    pub network_passphrase: String,
 }
 
 /// A single asset watched by oracle-watch.
@@ -61,6 +77,9 @@ pub enum ConfigError {
 
     /// `ORACLE_WATCH_WATCHED_ASSETS` is empty or has malformed `code:issuer` pairs.
     InvalidWatchedAssets(String),
+
+    /// `ORACLE_WATCH_USDC_PRICE_USD` could not be parsed as f64.
+    InvalidUsdcPrice(String),
 }
 
 impl std::fmt::Display for ConfigError {
@@ -75,6 +94,9 @@ impl std::fmt::Display for ConfigError {
             }
             ConfigError::InvalidWatchedAssets(s) => {
                 write!(f, "invalid ORACLE_WATCH_WATCHED_ASSETS: {s}")
+            }
+            ConfigError::InvalidUsdcPrice(s) => {
+                write!(f, "invalid ORACLE_WATCH_USDC_PRICE_USD: {s}")
             }
         }
     }
@@ -114,6 +136,14 @@ impl Config {
             .parse::<u64>()
             .map_err(|e| ConfigError::InvalidSnapshotAge(e.to_string()))?;
 
+        let usdc_price_usd = env::var("ORACLE_WATCH_USDC_PRICE_USD")
+            .unwrap_or_else(|_| "1.0".to_string())
+            .parse::<f64>()
+            .map_err(|e| ConfigError::InvalidUsdcPrice(e.to_string()))?;
+
+        let network_passphrase = env::var("ORACLE_WATCH_NETWORK_PASSPHRASE")
+            .unwrap_or_else(|_| "Test SDF Network ; September 2015".to_string());
+
         Ok(Config {
             horizon_url,
             soroban_rpc_url,
@@ -122,6 +152,8 @@ impl Config {
             signing_secret_key,
             watched_assets,
             max_snapshot_age_seconds,
+            usdc_price_usd,
+            network_passphrase,
         })
     }
 }

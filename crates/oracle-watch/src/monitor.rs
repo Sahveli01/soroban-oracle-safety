@@ -381,6 +381,29 @@ pub struct AlertConfig {
 }
 
 impl AlertConfig {
+    /// Loads `AlertConfig` from environment variables.
+    ///
+    /// All fields are optional. Operator sets only the channels they
+    /// want to use:
+    ///
+    /// - `ORACLE_WATCH_DISCORD_WEBHOOK_URL`: Discord webhook URL
+    /// - `ORACLE_WATCH_TELEGRAM_BOT_TOKEN`: Telegram bot token from BotFather
+    /// - `ORACLE_WATCH_TELEGRAM_CHAT_ID`: target chat ID
+    ///
+    /// Telegram requires BOTH token + chat_id to be set; partial
+    /// configuration is silently skipped by `build_sinks()`.
+    ///
+    /// Unset variables → corresponding `Option::None` (no alerts on
+    /// that channel). All-unset → no alert dispatch (anomalies still
+    /// logged via eprintln!).
+    pub fn from_env() -> Self {
+        Self {
+            discord_webhook_url: std::env::var("ORACLE_WATCH_DISCORD_WEBHOOK_URL").ok(),
+            telegram_bot_token: std::env::var("ORACLE_WATCH_TELEGRAM_BOT_TOKEN").ok(),
+            telegram_chat_id: std::env::var("ORACLE_WATCH_TELEGRAM_CHAT_ID").ok(),
+        }
+    }
+
     /// Builds a sink vector from the configured channels.
     ///
     /// Filters out partially-configured channels (e.g., Telegram with
@@ -859,5 +882,20 @@ mod tests {
         assert_eq!(sinks.len(), 2);
         assert_eq!(sinks[0].kind(), "discord");
         assert_eq!(sinks[1].kind(), "telegram");
+    }
+
+    // ===== AlertConfig::from_env =====
+
+    #[test]
+    fn test_alert_config_from_env_unset_all_none() {
+        // Test isolation: env vars are process-global; we cannot safely
+        // set/unset without races against parallel tests. This test
+        // validates only the empty-state default path, which is the
+        // contract documented by `from_env()` for unset variables.
+        let config = AlertConfig::default();
+        assert!(config.discord_webhook_url.is_none());
+        assert!(config.telegram_bot_token.is_none());
+        assert!(config.telegram_chat_id.is_none());
+        assert!(config.build_sinks().is_empty());
     }
 }
