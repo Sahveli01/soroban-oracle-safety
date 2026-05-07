@@ -213,6 +213,197 @@ fn stroops_to_usd(stroops: i128) -> f64 {
 // (Currently informational; Phase 7+ may use this to refine thresholds.)
 const _MIN_TRADE_VALUE_DOC_REF: f64 = MIN_TRADE_USD_VALUE;
 
+// ============================================================================
+// Phase 6.7: Alert Dispatch — Trait-based sink architecture
+// ============================================================================
+//
+// Detection (Phase 6.6) and dispatch (this section) are separated. Detection
+// is pure synchronous logic; dispatch is async I/O routed through pluggable
+// sinks. New alert channels (PagerDuty, Slack, email) can be added in Phase
+// 8 by implementing the `WebhookSink` trait — no changes required to this
+// dispatcher or to the detector.
+
+use async_trait::async_trait;
+
+/// A pluggable alert sink.
+///
+/// Implementors handle the network mechanics for posting an alert message
+/// to a specific channel (Discord, Telegram, PagerDuty, etc.).
+///
+/// # Best-effort contract
+///
+/// Implementors MUST NOT panic on transient failures (network errors,
+/// 4xx/5xx responses, malformed responses). They return a `Result<(),
+/// DispatchError>` so the dispatcher can log per-sink failures while
+/// continuing to other sinks.
+///
+/// # Example: adding a new sink in Phase 8
+///
+/// ```ignore
+/// pub struct SlackSink { webhook_url: String }
+///
+/// #[async_trait]
+/// impl WebhookSink for SlackSink {
+///     fn kind(&self) -> &'static str { "slack" }
+///     async fn send(&self, msg: &str) -> Result<(), DispatchError> {
+///         // POST to webhook_url with Slack JSON body shape
+///         Ok(())
+///     }
+/// }
+/// ```
+///
+/// No changes required to `dispatch_alerts` or any existing sink — the
+/// trait makes the dispatcher's loop polymorphic.
+#[async_trait]
+pub trait WebhookSink: Send + Sync {
+    /// Short human-readable name (e.g., "discord", "telegram").
+    /// Used in log messages when dispatch fails.
+    fn kind(&self) -> &'static str;
+
+    /// Sends a single formatted message to this sink.
+    ///
+    /// Implementors should handle their channel's specific protocol
+    /// (Discord JSON shape, Telegram URL parameters, etc.) internally.
+    /// The dispatcher passes the same message string to all sinks.
+    async fn send(&self, message: &str) -> Result<(), DispatchError>;
+}
+
+/// Errors that a `WebhookSink` may return.
+///
+/// Wrapped as a single string variant — sinks differ widely in their
+/// failure modes (HTTP errors, JSON shape errors, rate limits) and the
+/// dispatcher only needs the human-readable description for logging.
+#[derive(Debug)]
+pub struct DispatchError(pub String);
+
+impl std::fmt::Display for DispatchError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
+impl std::error::Error for DispatchError {}
+
+/// Dispatches alerts for detected anomalies to all configured sinks.
+///
+/// # Behavior
+///
+/// - **Empty `anomalies`** → no-op, returns immediately.
+/// - **Empty `sinks`** → no-op, returns immediately (anomalies still
+///   logged by detector via eprintln!).
+/// - **Per-sink failure** → logged via eprintln!, does NOT prevent
+///   other sinks from being attempted.
+/// - **Sequential dispatch** for simplicity. Anomalies are infrequent
+///   (rate limit pressure low); concurrent dispatch is Phase 8 if real
+///   throughput becomes an issue.
+///
+/// # Why this returns ()
+///
+/// Alert dispatch is best-effort. The main poll loop must continue
+/// regardless of sink availability. Returning errors would invite
+/// callers to bubble them up and accidentally take the service offline
+/// if Discord rate-limits us. Failures are logged for operator awareness;
+/// functional correctness does not depend on them.
+pub async fn dispatch_alerts(anomalies: &[Anomaly], sinks: &[Box<dyn WebhookSink>]) {
+    if anomalies.is_empty() || sinks.is_empty() {
+        return;
+    }
+
+    let message = format_alert_message(anomalies);
+
+    for sink in sinks {
+        match sink.send(&message).await {
+            Ok(()) => {}
+            Err(e) => eprintln!("ORACLE-WATCH ALERT: {} dispatch failed: {e}", sink.kind()),
+        }
+    }
+}
+
+/// Formats anomalies for sink consumption.
+///
+/// Single text body shared across all sinks. Per-sink protocol details
+/// (Discord JSON envelope, Telegram URL params) are added by individual
+/// `WebhookSink` implementors when they wrap this string.
+pub(crate) fn format_alert_message(anomalies: &[Anomaly]) -> String {
+    let mut out = String::from("Oracle-Watch Alert\n");
+    for a in anomalies {
+        out.push_str(&format!("- {}\n", format_anomaly_line(a)));
+    }
+    out
+}
+
+/// Single-line human-readable anomaly description.
+pub(crate) fn format_anomaly_line(anomaly: &Anomaly) -> String {
+    match anomaly {
+        Anomaly::ExcessivePriceChange {
+            asset_code,
+            asset_issuer,
+            prev_price,
+            curr_price,
+            change_bps,
+            threshold_bps,
+        } => format!(
+            "ExcessivePriceChange [{asset_code}/{asset_issuer}]: {prev_price} -> {curr_price} \
+             ({change_bps} BPS, threshold {threshold_bps})"
+        ),
+        Anomaly::InsufficientLiquidity {
+            asset_code,
+            asset_issuer,
+            volume_usd,
+            threshold_usd,
+        } => format!(
+            "InsufficientLiquidity [{asset_code}/{asset_issuer}]: \
+             ${volume_usd:.2} (threshold ${threshold_usd:.2})"
+        ),
+        Anomaly::ThinSampling {
+            asset_code,
+            asset_issuer,
+            trade_count,
+            threshold_count,
+        } => format!(
+            "ThinSampling [{asset_code}/{asset_issuer}]: \
+             {trade_count} trades (threshold {threshold_count})"
+        ),
+    }
+}
+
+/// Operator configuration for alert sinks.
+///
+/// Loaded from environment in Phase 6.8 (main loop wiring). Each field
+/// is independently optional — None disables that channel. The
+/// `build_sinks()` factory translates this configuration into a
+/// `Vec<Box<dyn WebhookSink>>` ready for `dispatch_alerts`.
+#[derive(Debug, Clone, Default)]
+pub struct AlertConfig {
+    pub discord_webhook_url: Option<String>,
+    pub telegram_bot_token: Option<String>,
+    pub telegram_chat_id: Option<String>,
+}
+
+impl AlertConfig {
+    /// Builds a sink vector from the configured channels.
+    ///
+    /// Filters out partially-configured channels (e.g., Telegram with
+    /// only token but no chat_id is silently skipped — both fields
+    /// required).
+    pub fn build_sinks(&self) -> Vec<Box<dyn WebhookSink>> {
+        let mut sinks: Vec<Box<dyn WebhookSink>> = Vec::new();
+
+        if let Some(url) = &self.discord_webhook_url {
+            sinks.push(Box::new(crate::discord_sink::DiscordSink::new(url.clone())));
+        }
+
+        if let (Some(token), Some(chat_id)) = (&self.telegram_bot_token, &self.telegram_chat_id) {
+            sinks.push(Box::new(crate::telegram_sink::TelegramSink::new(
+                token.clone(),
+                chat_id.clone(),
+            )));
+        }
+
+        sinks
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -463,5 +654,210 @@ mod tests {
         let anomalies = detector.check(&prev, &curr, 1.0, 1.06); // 6% > 5%
 
         assert_eq!(anomalies.len(), 3);
+    }
+
+    // ===========================================================================
+    // Phase 6.7 — Dispatcher tests with MockSink
+    // ===========================================================================
+
+    use std::sync::{Arc, Mutex};
+
+    /// In-memory mock sink for testing dispatcher behavior independently
+    /// of any real network sink.
+    struct MockSink {
+        kind_name: &'static str,
+        received: Arc<Mutex<Vec<String>>>,
+        should_fail: bool,
+    }
+
+    impl MockSink {
+        fn new(kind_name: &'static str, should_fail: bool) -> (Self, Arc<Mutex<Vec<String>>>) {
+            let received = Arc::new(Mutex::new(Vec::new()));
+            let sink = MockSink {
+                kind_name,
+                received: received.clone(),
+                should_fail,
+            };
+            (sink, received)
+        }
+    }
+
+    #[async_trait]
+    impl WebhookSink for MockSink {
+        fn kind(&self) -> &'static str {
+            self.kind_name
+        }
+
+        async fn send(&self, message: &str) -> Result<(), DispatchError> {
+            self.received.lock().unwrap().push(message.to_string());
+            if self.should_fail {
+                Err(DispatchError("mock failure".to_string()))
+            } else {
+                Ok(())
+            }
+        }
+    }
+
+    fn sample_anomaly_for_dispatch() -> Anomaly {
+        Anomaly::ExcessivePriceChange {
+            asset_code: "USDC".to_string(),
+            asset_issuer: "GA5ZSEJ".to_string(),
+            prev_price: 1.0,
+            curr_price: 1.5,
+            change_bps: 5000,
+            threshold_bps: 2000,
+        }
+    }
+
+    // ===== format_alert_message / format_anomaly_line =====
+
+    #[test]
+    fn test_format_anomaly_line_contains_asset_and_values() {
+        let line = format_anomaly_line(&sample_anomaly_for_dispatch());
+        assert!(line.contains("ExcessivePriceChange"));
+        assert!(line.contains("USDC"));
+        assert!(line.contains("5000"));
+        assert!(line.contains("2000"));
+    }
+
+    #[test]
+    fn test_format_alert_message_header_and_anomalies() {
+        let msg = format_alert_message(&[sample_anomaly_for_dispatch()]);
+        assert!(msg.contains("Oracle-Watch Alert"));
+        assert!(msg.contains("ExcessivePriceChange"));
+    }
+
+    // ===== dispatch_alerts =====
+
+    #[tokio::test]
+    async fn test_dispatch_empty_anomalies_noop() {
+        let (sink, received) = MockSink::new("mock", false);
+        let sinks: Vec<Box<dyn WebhookSink>> = vec![Box::new(sink)];
+
+        dispatch_alerts(&[], &sinks).await;
+        assert!(received.lock().unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_dispatch_empty_sinks_noop() {
+        let sinks: Vec<Box<dyn WebhookSink>> = Vec::new();
+        // Must not panic with no sinks
+        dispatch_alerts(&[sample_anomaly_for_dispatch()], &sinks).await;
+    }
+
+    #[tokio::test]
+    async fn test_dispatch_single_sink_receives_message() {
+        let (sink, received) = MockSink::new("mock", false);
+        let sinks: Vec<Box<dyn WebhookSink>> = vec![Box::new(sink)];
+
+        dispatch_alerts(&[sample_anomaly_for_dispatch()], &sinks).await;
+        let received = received.lock().unwrap();
+        assert_eq!(received.len(), 1);
+        assert!(received[0].contains("ExcessivePriceChange"));
+    }
+
+    #[tokio::test]
+    async fn test_dispatch_failing_sink_does_not_panic() {
+        let (sink, _received) = MockSink::new("mock", true);
+        let sinks: Vec<Box<dyn WebhookSink>> = vec![Box::new(sink)];
+
+        // Sink returns Err; dispatcher must absorb without panicking
+        dispatch_alerts(&[sample_anomaly_for_dispatch()], &sinks).await;
+    }
+
+    #[tokio::test]
+    async fn test_dispatch_failing_sink_does_not_block_subsequent() {
+        // Independence guarantee: 1 fails, 2 succeeds → 2 still receives
+        let (failing, _r1) = MockSink::new("failing", true);
+        let (succeeding, r2) = MockSink::new("succeeding", false);
+        let sinks: Vec<Box<dyn WebhookSink>> = vec![Box::new(failing), Box::new(succeeding)];
+
+        dispatch_alerts(&[sample_anomaly_for_dispatch()], &sinks).await;
+
+        let received2 = r2.lock().unwrap();
+        assert_eq!(
+            received2.len(),
+            1,
+            "succeeding sink must receive despite failing first sink"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_dispatch_multiple_anomalies_single_message() {
+        let (sink, received) = MockSink::new("mock", false);
+        let sinks: Vec<Box<dyn WebhookSink>> = vec![Box::new(sink)];
+        let anomalies = vec![
+            sample_anomaly_for_dispatch(),
+            Anomaly::ThinSampling {
+                asset_code: "USDC".to_string(),
+                asset_issuer: "GA5ZSEJ".to_string(),
+                trade_count: 1,
+                threshold_count: 5,
+            },
+        ];
+
+        dispatch_alerts(&anomalies, &sinks).await;
+        let received = received.lock().unwrap();
+        // Single message sent containing both anomaly descriptions
+        assert_eq!(received.len(), 1);
+        assert!(received[0].contains("ExcessivePriceChange"));
+        assert!(received[0].contains("ThinSampling"));
+    }
+
+    // ===== AlertConfig::build_sinks =====
+
+    #[test]
+    fn test_build_sinks_all_none_empty() {
+        let config = AlertConfig::default();
+        let sinks = config.build_sinks();
+        assert!(sinks.is_empty());
+    }
+
+    #[test]
+    fn test_build_sinks_discord_only() {
+        let config = AlertConfig {
+            discord_webhook_url: Some("https://example.test/webhook".to_string()),
+            ..AlertConfig::default()
+        };
+        let sinks = config.build_sinks();
+        assert_eq!(sinks.len(), 1);
+        assert_eq!(sinks[0].kind(), "discord");
+    }
+
+    #[test]
+    fn test_build_sinks_telegram_only_full_config() {
+        let config = AlertConfig {
+            telegram_bot_token: Some("token".to_string()),
+            telegram_chat_id: Some("12345".to_string()),
+            ..AlertConfig::default()
+        };
+        let sinks = config.build_sinks();
+        assert_eq!(sinks.len(), 1);
+        assert_eq!(sinks[0].kind(), "telegram");
+    }
+
+    #[test]
+    fn test_build_sinks_telegram_partial_skipped() {
+        // Only token, no chat_id → Telegram skipped
+        let config = AlertConfig {
+            telegram_bot_token: Some("token".to_string()),
+            telegram_chat_id: None,
+            ..AlertConfig::default()
+        };
+        let sinks = config.build_sinks();
+        assert!(sinks.is_empty());
+    }
+
+    #[test]
+    fn test_build_sinks_both_channels() {
+        let config = AlertConfig {
+            discord_webhook_url: Some("https://example.test/d".to_string()),
+            telegram_bot_token: Some("token".to_string()),
+            telegram_chat_id: Some("12345".to_string()),
+        };
+        let sinks = config.build_sinks();
+        assert_eq!(sinks.len(), 2);
+        assert_eq!(sinks[0].kind(), "discord");
+        assert_eq!(sinks[1].kind(), "telegram");
     }
 }

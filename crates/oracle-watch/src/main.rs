@@ -24,10 +24,12 @@
 
 mod aggregator;
 mod config;
+mod discord_sink;
 mod horizon_client;
 mod monitor;
 mod registry_writer;
 mod signer;
+mod telegram_sink;
 mod types;
 
 #[tokio::main]

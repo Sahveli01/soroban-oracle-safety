@@ -27,6 +27,7 @@ serde_json = "1"
 ed25519-dalek = "2"
 hex = "0.4"
 proptest = { version = "1", default-features = false, features = ["std"] }
+async-trait = "0.1"
 
 # Phase 6.5: stellar-xdr 25.0 — Protocol 25 XDR types.
 # Pinned to "25.0" (semver, resolves to 25.0.0). Phase 6.0 originally
