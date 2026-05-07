@@ -28,6 +28,18 @@ ed25519-dalek = "2"
 hex = "0.4"
 proptest = { version = "1", default-features = false, features = ["std"] }
 
+# Phase 6.5: stellar-xdr 25.0 — Protocol 25 XDR types.
+# Pinned to "25.0" (semver, resolves to 25.0.0). Phase 6.0 originally
+# claimed 25.0.1 but Phase 6.5 empirical discovery confirmed only 25.0.0
+# is published; soroban-sdk 25.3.1 already pulls 25.0.0 as a transitive
+# dep, so deduplication is automatic.
+#
+# stellar-rpc-client deliberately NOT added: only RC versions are
+# available and they target Protocol 26. This module uses raw reqwest
+# for the JSON-RPC sendTransaction call (subprocess remains forbidden
+# per mottomuz).
+stellar-xdr = { version = "25.0", features = ["serde", "curr"] }
+
 [profile.release]
 opt-level = "z"
 overflow-checks = true

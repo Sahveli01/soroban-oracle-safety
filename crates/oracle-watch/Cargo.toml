@@ -14,6 +14,7 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 ed25519-dalek = { workspace = true }
 hex = { workspace = true }
+stellar-xdr = { workspace = true }
 
 [dev-dependencies]
 mockito = "1.7"
