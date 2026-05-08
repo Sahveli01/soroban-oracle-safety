@@ -14,9 +14,12 @@ target/
 .env.*
 !.env.example
 
-# Stellar deployment artifacts (Phase 8'de kullanılacak)
+# Stellar deployment artifacts + keypair files
 deployment/secrets/
 *.key
+**/secrets/
+**/*.secret
+.stellar/
 
 # Logs
 *.log

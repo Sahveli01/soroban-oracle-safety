@@ -1,0 +1,36 @@
+{
+  "phase": "7.4 — identities established, contracts not yet deployed",
+  "network": {
+    "name": "testnet",
+    "passphrase": "Test SDF Network ; September 2015",
+    "horizon_url": "https://horizon-testnet.stellar.org",
+    "soroban_rpc_url": "https://soroban-testnet.stellar.org",
+    "explorer_base": "https://stellar.expert/explorer/testnet",
+    "protocol_version": 26
+  },
+  "identities": {
+    "deployer": {
+      "public_key": "GCDVCIWJ7EJCDKSV6DLCOZKOJU54EYWZUSPOB4G6OD5GWIUMUANEMZ2S",
+      "role": "Contract deployment + admin operations",
+      "funded_via": "Friendbot (10000 XLM)",
+      "explorer": "https://stellar.expert/explorer/testnet/account/GCDVCIWJ7EJCDKSV6DLCOZKOJU54EYWZUSPOB4G6OD5GWIUMUANEMZ2S"
+    },
+    "oracle_watch_attester": {
+      "public_key": "GA5ZA5DMMB7QZ2IQLPT3Q76VIOG66FGIOFKARTC6V2IWBGMR46GEDTVF",
+      "role": "LiquidityRegistry snapshot attestation + transaction signing",
+      "funded_via": "Friendbot (10000 XLM)",
+      "explorer": "https://stellar.expert/explorer/testnet/account/GA5ZA5DMMB7QZ2IQLPT3Q76VIOG66FGIOFKARTC6V2IWBGMR46GEDTVF"
+    }
+  },
+  "contracts": {
+    "_comment": "Populated in Phase 7.5 after WASM build + deployment"
+  },
+  "deployment_history": [
+    {
+      "phase": "7.4",
+      "action": "Identities created and funded via Friendbot",
+      "deployer_address": "GCDVCIWJ7EJCDKSV6DLCOZKOJU54EYWZUSPOB4G6OD5GWIUMUANEMZ2S",
+      "attester_address": "GA5ZA5DMMB7QZ2IQLPT3Q76VIOG66FGIOFKARTC6V2IWBGMR46GEDTVF"
+    }
+  ]
+}
