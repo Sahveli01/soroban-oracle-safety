@@ -1,5 +1,5 @@
 {
-  "phase": "7.5 — 3 contracts deployed, attester whitelist pending (Phase 7.6)",
+  "phase": "7.6 — contracts initialized, ready for oracle-watch run (Phase 7.7)",
   "network": {
     "name": "testnet",
     "passphrase": "Test SDF Network ; September 2015",
@@ -27,18 +27,43 @@
       "contract_id": "CCDWMKL54WC3525IJA2UNRCRLTIROHWVVPK3MBU2YO4EMASLRB6WWGND",
       "wasm_hash": "1608aff608a93a1131748ef3fa34829a1b70c71938d8b10af9a7d2ae40639489",
       "deploy_tx": "3db5217675ac7c4fe2122128c217c97ad0f09e75c23e1663e0844093596e8d92",
+      "initialized": true,
+      "init_action": "add_attester(oracle-watch-attester) via deployer admin",
+      "init_tx": "84ca3431936228d6148ea7c250294a923707c32355fd9611bca0d739e4dae660",
+      "whitelisted_attesters": [
+        "GA5ZA5DMMB7QZ2IQLPT3Q76VIOG66FGIOFKARTC6V2IWBGMR46GEDTVF"
+      ],
+      "verified": "is_attester(attester) = true",
       "explorer": "https://stellar.expert/explorer/testnet/contract/CCDWMKL54WC3525IJA2UNRCRLTIROHWVVPK3MBU2YO4EMASLRB6WWGND"
     },
     "mock_reflector": {
       "contract_id": "CBUPTLPDDNCB2OHTGTHD3DKHLGSZUDUMINU5OKU4CG5ZRHW5T7ATPHO7",
       "wasm_hash": "b38afefbdfdae595f44177c6e376bcf7b4eadfea3bbb4f1cba4ecdb685e3d98f",
       "deploy_tx": "f524098d41a3972a6c9a4e9088d0b7d10415782900dc3741d18d4bb7fff51e11",
+      "initialized": true,
+      "init_action": "config(decimals=14, resolution=300) at deploy, set_price XLM+USDC at 7.6",
+      "init_txs": {
+        "set_price_xlm": "756fbfc44d57db04f9bbb61cb8517771f7eebd89e57c0173eadb36ab94eaffb4",
+        "set_price_usdc": "3cfa1ab53bda5ca53041e13d447c7f76516744c38823fe244e1035805e84a779"
+      },
+      "initial_prices": {
+        "XLM": "10000000000000 stroops (0.10 USD, 14-decimal precision)",
+        "USDC": "100000000000000 stroops (1.00 USD, 14-decimal precision)"
+      },
+      "price_timestamp": 1778244060,
+      "verified": "lastprice(XLM) = {price:10000000000000, timestamp:1778244060}, lastprice(USDC) = {price:100000000000000, timestamp:1778244060}",
       "explorer": "https://stellar.expert/explorer/testnet/contract/CBUPTLPDDNCB2OHTGTHD3DKHLGSZUDUMINU5OKU4CG5ZRHW5T7ATPHO7"
     },
     "mock_lending": {
       "contract_id": "CBXSYSZKW5K66PBVZ5QFH73XT4DWX6JLPDZWHIZUZDHHH454NBSRNSAY",
       "wasm_hash": "2ee1b761a2eab1fcdd5813c06e51dc8578bbb82e27b5444c93fc466db5fbd041",
       "deploy_tx": "9c8b48b29ec72f1e09c032ec870358212f28e7c6da27c8814fa554a50145b1bc",
+      "initialized": true,
+      "init_action": "__constructor at deploy-time (Phase 7.5) — no separate initialize call needed",
+      "init_tx": "9c8b48b29ec72f1e09c032ec870358212f28e7c6da27c8814fa554a50145b1bc",
+      "wired_oracle": "CBUPTLPDDNCB2OHTGTHD3DKHLGSZUDUMINU5OKU4CG5ZRHW5T7ATPHO7",
+      "wired_registry": "CCDWMKL54WC3525IJA2UNRCRLTIROHWVVPK3MBU2YO4EMASLRB6WWGND",
+      "config_note": "Lenient testnet SafeOracleConfig: max_deviation_bps=9999, max_staleness_seconds=86400, min_liquidity_usd=1, min_trade_count_1h=1. No public getter — verified via borrow in Phase 7.8.",
       "explorer": "https://stellar.expert/explorer/testnet/contract/CBXSYSZKW5K66PBVZ5QFH73XT4DWX6JLPDZWHIZUZDHHH454NBSRNSAY"
     }
   },
@@ -55,8 +80,16 @@
       "deployer_address": "GCDVCIWJ7EJCDKSV6DLCOZKOJU54EYWZUSPOB4G6OD5GWIUMUANEMZ2S",
       "liquidity_registry": "CCDWMKL54WC3525IJA2UNRCRLTIROHWVVPK3MBU2YO4EMASLRB6WWGND",
       "mock_reflector": "CBUPTLPDDNCB2OHTGTHD3DKHLGSZUDUMINU5OKU4CG5ZRHW5T7ATPHO7",
-      "mock_lending": "CBXSYSZKW5K66PBVZ5QFH73XT4DWX6JLPDZWHIZUZDHHH454NBSRNSAY",
-      "note": "mock-lending config: lenient testnet thresholds (max_deviation_bps=9999, min_liquidity_usd=1, min_trade_count_1h=1). Phase 7.6 adds attester + initializes registry."
+      "mock_lending": "CBXSYSZKW5K66PBVZ5QFH73XT4DWX6JLPDZWHIZUZDHHH454NBSRNSAY"
+    },
+    {
+      "phase": "7.6",
+      "action": "Contract initialization",
+      "registry_add_attester_tx": "84ca3431936228d6148ea7c250294a923707c32355fd9611bca0d739e4dae660",
+      "reflector_set_price_xlm_tx": "756fbfc44d57db04f9bbb61cb8517771f7eebd89e57c0173eadb36ab94eaffb4",
+      "reflector_set_price_usdc_tx": "3cfa1ab53bda5ca53041e13d447c7f76516744c38823fe244e1035805e84a779",
+      "lending_initialized": "constructor-time (Phase 7.5 deploy_tx)",
+      "note": "All 3 contracts operational. oracle-watch-attester whitelisted. Mock prices set at 14-decimal Reflector precision."
     }
   ]
 }
