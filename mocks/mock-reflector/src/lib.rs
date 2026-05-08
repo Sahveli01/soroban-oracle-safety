@@ -38,6 +38,16 @@ enum DataKey {
     PriceHistory(Asset),
 }
 
+/// Phase 7.1: TTL extension constants for price persistence.
+///
+/// Mirrors the production-style sizing applied in `liquidity-registry`
+/// (see that crate's `SNAPSHOT_TTL_*` doc-comment for the rationale).
+/// The mock's `set_price` is called by tests at arbitrary cadence, so
+/// reusing the same 24h baseline keeps mock and real contracts behaviorally
+/// equivalent under deploy-style harnesses.
+const PRICE_TTL_MIN: u32 = 100;
+const PRICE_TTL_EXTEND: u32 = 17_280;
+
 #[contract]
 pub struct MockReflector;
 
@@ -65,8 +75,16 @@ impl MockReflector {
     }
 
     pub fn lastprice(env: Env, asset: Asset) -> Option<PriceData> {
-        env.storage().persistent().get(&DataKey::Price(asset))
-        // TODO: extend_ttl in production
+        let price_key = DataKey::Price(asset);
+        let price: Option<PriceData> = env.storage().persistent().get(&price_key);
+        if price.is_some() {
+            // Phase 7.1: defensive extend on read — keeps the entry alive
+            // even when set_price is infrequent (test fixture mode).
+            env.storage()
+                .persistent()
+                .extend_ttl(&price_key, PRICE_TTL_MIN, PRICE_TTL_EXTEND);
+        }
+        price
     }
 
     /// Returns up to `records` most recent prices for `asset`, newest first.
@@ -74,6 +92,12 @@ impl MockReflector {
     pub fn lastprices(env: Env, asset: Asset, records: u32) -> Option<Vec<PriceData>> {
         let history_key = DataKey::PriceHistory(asset);
         let history: Option<Vec<PriceData>> = env.storage().persistent().get(&history_key);
+        if history.is_some() {
+            // Phase 7.1: defensive extend on read for the history vector.
+            env.storage()
+                .persistent()
+                .extend_ttl(&history_key, PRICE_TTL_MIN, PRICE_TTL_EXTEND);
+        }
 
         match history {
             None => None,
@@ -91,7 +115,6 @@ impl MockReflector {
                 Some(result)
             }
         }
-        // TODO: extend_ttl in production
     }
 
     /// TEST-ONLY: Mock-specific function for injecting prices in tests.
@@ -100,9 +123,8 @@ impl MockReflector {
     /// This mock does not enforce that invariant — tests can inject future timestamps if needed.
     pub fn set_price(env: Env, asset: Asset, price: i128, timestamp: u64) {
         let data = PriceData { price, timestamp };
-        env.storage()
-            .persistent()
-            .set(&DataKey::Price(asset.clone()), &data);
+        let price_key = DataKey::Price(asset.clone());
+        env.storage().persistent().set(&price_key, &data);
 
         let history_key = DataKey::PriceHistory(asset);
         let mut history: Vec<PriceData> = env
@@ -112,7 +134,13 @@ impl MockReflector {
             .unwrap_or_else(|| Vec::new(&env));
         history.push_back(data);
         env.storage().persistent().set(&history_key, &history);
-        // TODO: extend_ttl in production
+        // Phase 7.1: extend TTL on both Price and PriceHistory entries.
+        env.storage()
+            .persistent()
+            .extend_ttl(&price_key, PRICE_TTL_MIN, PRICE_TTL_EXTEND);
+        env.storage()
+            .persistent()
+            .extend_ttl(&history_key, PRICE_TTL_MIN, PRICE_TTL_EXTEND);
     }
 }
 

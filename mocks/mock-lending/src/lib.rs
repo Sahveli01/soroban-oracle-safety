@@ -5,6 +5,23 @@ use soroban_sdk::{
     contract, contracterror, contractevent, contractimpl, contracttype, Address, Env, IntoVal,
 };
 
+/// Phase 7.1: TTL extension constants for mock-lending storage.
+///
+/// `INSTANCE_TTL_*` sizes the renewal for `instance` storage (admin, oracle,
+/// registry, validated config). Instance entries change rarely, so the
+/// strategy is "extend to the maximum on every initialize call" — gas paid
+/// once at deploy buys ~31 days of guaranteed liveness.
+///
+/// `PERSISTENT_TTL_*` sizes the renewal for `persistent` storage (per-user
+/// deposit balances). Persistent entries change every deposit, so the
+/// strategy is "extend on each write" with a 24h baseline; users who deposit
+/// then go silent still see their balance preserved across the extension
+/// horizon (a few hundred deposits between extends in steady state).
+const INSTANCE_TTL_MIN: u32 = 1_000;
+const INSTANCE_TTL_EXTEND: u32 = 535_679;
+const PERSISTENT_TTL_MIN: u32 = 100;
+const PERSISTENT_TTL_EXTEND: u32 = 17_280;
+
 #[contractevent]
 #[derive(Clone, Debug)]
 pub struct Borrow {
@@ -229,7 +246,11 @@ impl MockLending {
             .instance()
             .set(&DataKey::Registry, &liquidity_registry);
         env.storage().instance().set(&DataKey::Config, &config);
-        // TODO: extend_ttl in production
+        // Phase 7.1: extend instance TTL — config rarely changes, so push
+        // to the maximum (~31 days) on each constructor invocation.
+        env.storage()
+            .instance()
+            .extend_ttl(INSTANCE_TTL_MIN, INSTANCE_TTL_EXTEND);
 
         Ok(())
     }
@@ -239,7 +260,11 @@ impl MockLending {
         let key = DataKey::Deposit(caller, asset);
         let current: i128 = env.storage().persistent().get(&key).unwrap_or(0);
         env.storage().persistent().set(&key, &(current + amount));
-        // TODO: extend_ttl in production
+        // Phase 7.1: extend persistent TTL on every deposit — keeps user
+        // balances alive between deposits (24h baseline).
+        env.storage()
+            .persistent()
+            .extend_ttl(&key, PERSISTENT_TTL_MIN, PERSISTENT_TTL_EXTEND);
     }
 
     /// Borrow against deposited collateral.

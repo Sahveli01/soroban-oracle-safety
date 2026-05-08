@@ -46,6 +46,24 @@ pub enum LiquidityRegistryError {
 /// honest feeds can plausibly be" budget applies to attesters.
 const MAX_TIMESTAMP_SKEW_SECONDS: u64 = 300;
 
+/// Phase 7.1: TTL extension constants for snapshot persistence.
+///
+/// Soroban persistent-storage entries expire after their TTL elapses and are
+/// archived off-chain (`MIN_PERSISTENT_ENTRY_TTL` ledgers post-write); without
+/// `extend_ttl` calls, snapshots silently disappear on testnet/mainnet,
+/// breaking integrator reads.
+///
+/// `SNAPSHOT_TTL_MIN` is the trigger threshold: when an entry's remaining TTL
+/// drops below this many ledgers, the next write/read extends it.
+/// `SNAPSHOT_TTL_EXTEND` is the post-extension target.
+///
+/// Sizing assumes oracle-watch attests every ~5 minutes (60 ledgers @ 5 s/ledger).
+/// The 24h baseline (17_280 ledgers) leaves ~290 attestation cycles of buffer
+/// between extends, so the amortized cost per write is one extend every
+/// ~290 attestations.
+const SNAPSHOT_TTL_MIN: u32 = 100;
+const SNAPSHOT_TTL_EXTEND: u32 = 17_280;
+
 /// On-chain SDEX trade attestation snapshot for a single asset.
 ///
 /// Produced off-chain by `oracle-watch` and persisted here so that
@@ -239,8 +257,9 @@ impl LiquidityRegistry {
     /// 6. Replay protection — strict greater-than on the previous timestamp
     ///    rejects both stale resubmissions and equal-timestamp double-writes.
     ///
-    /// Snapshots are stored in `persistent` storage keyed by asset; production
-    /// deployments must call `extend_ttl` here (Phase 8 deployment work).
+    /// Snapshots are stored in `persistent` storage keyed by asset. Phase 7.1
+    /// extends TTL on every successful write; see `SNAPSHOT_TTL_*` constants
+    /// for sizing rationale.
     pub fn write_snapshot(
         env: Env,
         attester: Address,
@@ -292,7 +311,12 @@ impl LiquidityRegistry {
         }
 
         env.storage().persistent().set(&snapshot_key, &snapshot);
-        // TODO: extend_ttl in production (Phase 8 deployment).
+        // Phase 7.1: extend persistent TTL on write — keeps snapshots alive
+        // for ~24h baseline. Frequent attestations (every ~5min) trigger
+        // re-extends well before the 100-ledger threshold is hit.
+        env.storage()
+            .persistent()
+            .extend_ttl(&snapshot_key, SNAPSHOT_TTL_MIN, SNAPSHOT_TTL_EXTEND);
 
         SnapshotWritten {
             asset: snapshot.asset,
@@ -321,14 +345,23 @@ impl LiquidityRegistry {
     /// the registry policy-agnostic lets multiple integrators share one
     /// attestation feed with different freshness requirements.
     ///
-    /// Production deployment must call `extend_ttl` on read paths to prevent
-    /// silent expiration of fresh snapshots between attestations (Phase 8
-    /// deployment work).
+    /// Phase 7.1 defensively extends TTL on every successful read so that even
+    /// when attestations slow down, integrator reads keep recent snapshots
+    /// alive long enough for ops to react.
     pub fn get_snapshot(env: Env, asset: Address) -> Option<LiquiditySnapshot> {
-        env.storage()
-            .persistent()
-            .get::<DataKey, LiquiditySnapshot>(&DataKey::Snapshot(asset))
-        // TODO: extend_ttl on read in production (Phase 8 deployment).
+        let snapshot_key = DataKey::Snapshot(asset);
+        let snapshot: Option<LiquiditySnapshot> = env.storage().persistent().get(&snapshot_key);
+        if snapshot.is_some() {
+            // Phase 7.1: defensive extend on read — if attesters slow down or
+            // halt entirely, integrator reads still keep recent snapshots
+            // alive long enough for ops to react.
+            env.storage().persistent().extend_ttl(
+                &snapshot_key,
+                SNAPSHOT_TTL_MIN,
+                SNAPSHOT_TTL_EXTEND,
+            );
+        }
+        snapshot
     }
 }
 

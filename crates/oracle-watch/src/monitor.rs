@@ -158,12 +158,14 @@ impl AnomalyDetector {
             });
         }
 
-        // Phase 6.6: log to stdout. Phase 6.7 will replace with webhook dispatch.
+        // Log anomalies to stderr for ops visibility. Webhook dispatch is a
+        // separate concern handled by `main.rs::run_iteration` calling
+        // `dispatch_alerts(&anomalies, sinks)` (Phase 6.7); this analyzer
+        // intentionally stays sync + side-effect-free for testability.
         if !anomalies.is_empty() {
             for anomaly in &anomalies {
                 eprintln!("ORACLE-WATCH ANOMALY: {anomaly:?}");
             }
-            // TODO Phase 6.7: dispatch_alerts(&anomalies, &alert_config).await
         }
 
         // prev_snapshot is currently only used as future-facing context
