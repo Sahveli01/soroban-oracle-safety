@@ -88,10 +88,19 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_send_network_error_returns_dispatch_error() {
-        // Use a URL that will fail at network level
-        let sink =
-            DiscordSink::new("http://this-domain-does-not-exist-12345.invalid/webhook".to_string());
+    async fn test_send_unroutable_ip_returns_dispatch_error() {
+        // Phase 7.2 reliability fix (Phase 7.1 follow-up): the prior
+        // `.invalid` hostname assumed DNS would return NXDOMAIN, but some
+        // ISPs (notably some Turkish residential ISPs) DNS-hijack unknown
+        // names to a search/redirect page that responds HTTP 200 — the
+        // assertion `result.is_err()` then failed in those environments.
+        //
+        // RFC 5737 reserves `192.0.2.0/24` as TEST-NET-1: addresses
+        // guaranteed to be unroutable on the public Internet, with no DNS
+        // resolution involved. Port 1 is privileged and never bound by
+        // ordinary services, so the connection attempt must fail at the
+        // network layer regardless of ISP behavior.
+        let sink = DiscordSink::new("http://192.0.2.1:1/webhook".to_string());
         let result = sink.send("test message").await;
         assert!(result.is_err());
     }

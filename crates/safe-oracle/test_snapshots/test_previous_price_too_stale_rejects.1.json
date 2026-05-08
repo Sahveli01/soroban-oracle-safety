@@ -157,7 +157,6 @@
     [],
     [],
     [],
-    [],
     []
   ],
   "ledger": {
@@ -188,7 +187,7 @@
                         "symbol": "Other"
                       },
                       {
-                        "symbol": "USDC"
+                        "symbol": "ETH"
                       }
                     ]
                   }
@@ -239,7 +238,7 @@
                         "symbol": "Other"
                       },
                       {
-                        "symbol": "USDC"
+                        "symbol": "ETH"
                       }
                     ]
                   }
@@ -263,7 +262,7 @@
                           "symbol": "timestamp"
                         },
                         "val": {
-                          "u64": "99900"
+                          "u64": "99000"
                         }
                       }
                     ]
@@ -337,112 +336,6 @@
                     }
                   ]
                 }
-              }
-            }
-          },
-          "ext": "v0"
-        },
-        "live_until": 4095
-      },
-      {
-        "entry": {
-          "last_modified_ledger_seq": 0,
-          "data": {
-            "contract_data": {
-              "ext": "v0",
-              "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M",
-              "key": {
-                "vec": [
-                  {
-                    "symbol": "Price"
-                  },
-                  {
-                    "vec": [
-                      {
-                        "symbol": "Other"
-                      },
-                      {
-                        "symbol": "USDC"
-                      }
-                    ]
-                  }
-                ]
-              },
-              "durability": "persistent",
-              "val": {
-                "map": [
-                  {
-                    "key": {
-                      "symbol": "price"
-                    },
-                    "val": {
-                      "i128": "100000000000000"
-                    }
-                  },
-                  {
-                    "key": {
-                      "symbol": "timestamp"
-                    },
-                    "val": {
-                      "u64": "99950"
-                    }
-                  }
-                ]
-              }
-            }
-          },
-          "ext": "v0"
-        },
-        "live_until": 4095
-      },
-      {
-        "entry": {
-          "last_modified_ledger_seq": 0,
-          "data": {
-            "contract_data": {
-              "ext": "v0",
-              "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M",
-              "key": {
-                "vec": [
-                  {
-                    "symbol": "PriceHistory"
-                  },
-                  {
-                    "vec": [
-                      {
-                        "symbol": "Other"
-                      },
-                      {
-                        "symbol": "USDC"
-                      }
-                    ]
-                  }
-                ]
-              },
-              "durability": "persistent",
-              "val": {
-                "vec": [
-                  {
-                    "map": [
-                      {
-                        "key": {
-                          "symbol": "price"
-                        },
-                        "val": {
-                          "i128": "100000000000000"
-                        }
-                      },
-                      {
-                        "key": {
-                          "symbol": "timestamp"
-                        },
-                        "val": {
-                          "u64": "99950"
-                        }
-                      }
-                    ]
-                  }
-                ]
               }
             }
           },

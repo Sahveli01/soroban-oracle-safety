@@ -34,11 +34,13 @@ pub struct Borrow {
 
 /// Error type returned by `MockLending::borrow`.
 ///
-/// Discriminants 1–7 mirror `safe_oracle::OracleSafetyViolation` exactly so
+/// Discriminants 1–10 mirror `safe_oracle::OracleSafetyViolation` exactly so
 /// the `borrow` flow can transparently propagate which guardrail tripped —
 /// audit logs and client-side error handling preserve guardrail granularity
 /// rather than collapsing every oracle failure into a single bucket.
 /// Discriminants 100+ are mock-lending-specific (no oracle equivalent).
+/// Phase 7.2 extended the mirrored range from 1–8 to 1–10 (DecimalsMismatch,
+/// UnexpectedDecimals).
 #[contracterror]
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub enum MockLendingError {
@@ -54,6 +56,13 @@ pub enum MockLendingError {
     /// trapped during a cross-contract invocation; the lending integrator's
     /// caller sees the same granular reason safe-oracle reported.
     ExternalContractFailure = 8,
+    /// Mirror of `OracleSafetyViolation::DecimalsMismatch` (Phase 7.2 closure
+    /// of lib.rs:262). Cross-source primary/secondary `decimals()` disagree.
+    DecimalsMismatch = 9,
+    /// Mirror of `OracleSafetyViolation::UnexpectedDecimals` (Phase 7.2
+    /// closure of lib.rs:820). Primary Reflector reports a `decimals()`
+    /// value other than the expected 14.
+    UnexpectedDecimals = 10,
     NotInitialized = 100,
     /// Retained for audit-trail continuity; no longer reachable from
     /// any contract entry point after Hardening 6B's CAP-0058
@@ -83,6 +92,8 @@ impl From<OracleSafetyViolation> for MockLendingError {
             OracleSafetyViolation::ExternalContractFailure => {
                 MockLendingError::ExternalContractFailure
             }
+            OracleSafetyViolation::DecimalsMismatch => MockLendingError::DecimalsMismatch,
+            OracleSafetyViolation::UnexpectedDecimals => MockLendingError::UnexpectedDecimals,
         }
     }
 }
@@ -130,8 +141,9 @@ impl From<ConfigError> for MockLendingError {
 ///   does not compose with `#[contracterror]` payloads. Phase 6 debt #17
 ///   tracks restoring the typed `MockLendingError` payload when SDK
 ///   supports it. This pattern mirrors `safe_oracle::PriceResult::Err(u32)`.
-/// - Discriminants 1..=7 mirror `MockLendingError` 1:1 (oracle violations),
-///   100..=101 are init-related, 200 is collateral-related.
+/// - Discriminants 1..=10 mirror `MockLendingError` 1:1 (oracle violations,
+///   Phase 7.2 added 9–10), 100..=102 are init-related, 200 is
+///   collateral-related.
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum BorrowOutcome {
@@ -154,7 +166,7 @@ impl BorrowOutcome {
     /// Convert to standard Rust `Result` for ergonomic `?` operator usage.
     /// Re-hydrates the `u32` discriminant into the typed `MockLendingError`.
     /// Unknown discriminants panic — they cannot occur on a result produced
-    /// by `borrow()` (which only emits 1..=7, 100..=101, 200), but the
+    /// by `borrow()` (which only emits 1..=10, 100..=102, 200), but the
     /// explicit panic guards against forged values reaching the shim.
     pub fn into_result(self) -> Result<(), MockLendingError> {
         match self {
@@ -167,6 +179,8 @@ impl BorrowOutcome {
             BorrowOutcome::Failed(6) => Err(MockLendingError::CircuitBreakerOpen),
             BorrowOutcome::Failed(7) => Err(MockLendingError::StaleSnapshot),
             BorrowOutcome::Failed(8) => Err(MockLendingError::ExternalContractFailure),
+            BorrowOutcome::Failed(9) => Err(MockLendingError::DecimalsMismatch),
+            BorrowOutcome::Failed(10) => Err(MockLendingError::UnexpectedDecimals),
             BorrowOutcome::Failed(100) => Err(MockLendingError::NotInitialized),
             BorrowOutcome::Failed(101) => Err(MockLendingError::AlreadyInitialized),
             BorrowOutcome::Failed(102) => Err(MockLendingError::InvalidConfig),

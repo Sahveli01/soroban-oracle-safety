@@ -133,6 +133,14 @@
                     },
                     {
                       "key": {
+                        "symbol": "previous_max_staleness_seconds"
+                      },
+                      "val": {
+                        "u32": 900
+                      }
+                    },
+                    {
+                      "key": {
                         "symbol": "secondary_oracle"
                       },
                       "val": "void"
@@ -201,7 +209,7 @@
                       "symbol": "timestamp"
                     },
                     "val": {
-                      "u64": "50300"
+                      "u64": "99650"
                     }
                   }
                 ]
@@ -254,7 +262,7 @@
                           "symbol": "timestamp"
                         },
                         "val": {
-                          "u64": "50000"
+                          "u64": "99500"
                         }
                       }
                     ]
@@ -274,7 +282,7 @@
                           "symbol": "timestamp"
                         },
                         "val": {
-                          "u64": "50300"
+                          "u64": "99650"
                         }
                       }
                     ]
@@ -593,6 +601,14 @@
                             },
                             "val": {
                               "u32": 5
+                            }
+                          },
+                          {
+                            "key": {
+                              "symbol": "previous_max_staleness_seconds"
+                            },
+                            "val": {
+                              "u32": 900
                             }
                           },
                           {

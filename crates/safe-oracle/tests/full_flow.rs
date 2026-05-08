@@ -20,10 +20,11 @@ use safe_oracle::{Asset, OracleSafetyViolation, SafeOracleConfig};
 use soroban_sdk::{testutils::Address as _, Address};
 use test_utils::TestEnv;
 
-/// Layer 1 internal order: deviation runs before staleness. A scenario that
-/// trips *both* must surface `ExcessiveDeviation`. Pinning this stops a future
-/// reorder from silently swapping the surfaced error — important for incident
-/// triage, where the violation variant is the first signal an integrator sees.
+/// Layer 1 internal order: deviation runs before current-price staleness. A
+/// scenario that trips *both* must surface `ExcessiveDeviation`. Pinning this
+/// stops a future reorder from silently swapping the surfaced error —
+/// important for incident triage, where the violation variant is the first
+/// signal an integrator sees.
 #[test]
 fn test_full_flow_deviation_caught_before_staleness() {
     let test_env = TestEnv::new();
@@ -33,11 +34,14 @@ fn test_full_flow_deviation_caught_before_staleness() {
     // Layer 2 would pass if reached; this test isolates Layer 1 ordering.
     test_env.write_snapshot_now(&asset_address, TestEnv::HEALTHY_VOLUME_USD, 10_u32);
 
-    // Two failures live on the same Reflector reads:
-    //   - 9900% jump from $1 → $100  → check_deviation fails (default 2000 BPS)
-    //   - newest timestamp 5000s old → check_staleness fails (default 300s)
-    test_env.set_oracle_price(&asset, TestEnv::ONE_DOLLAR, 94_950);
-    test_env.set_oracle_price(&asset, TestEnv::ONE_DOLLAR * 100, 95_000);
+    // Phase 7.2: keep `previous` within the new previous-staleness gate
+    // (default 900s) but make `current` stale (> 300s). Ledger now is 100_000:
+    //   - prev_ts = 99_500  (500s old, within 900s prev gate)
+    //   - curr_ts = 99_650  (350s old, > 300s current gate)
+    // 9900% jump still trips deviation; staleness on `current` would also
+    // fire if reached. Deviation must surface first.
+    test_env.set_oracle_price(&asset, TestEnv::ONE_DOLLAR, 99_500);
+    test_env.set_oracle_price(&asset, TestEnv::ONE_DOLLAR * 100, 99_650);
 
     let result = test_env.lastprice(&asset, &SafeOracleConfig::default());
 

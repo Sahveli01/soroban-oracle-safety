@@ -133,6 +133,14 @@
                     },
                     {
                       "key": {
+                        "symbol": "previous_max_staleness_seconds"
+                      },
+                      "val": {
+                        "u32": 900
+                      }
+                    },
+                    {
+                      "key": {
                         "symbol": "secondary_oracle"
                       },
                       "val": "void"
@@ -743,6 +751,14 @@
                             },
                             "val": {
                               "u32": 5
+                            }
+                          },
+                          {
+                            "key": {
+                              "symbol": "previous_max_staleness_seconds"
+                            },
+                            "val": {
+                              "u32": 900
                             }
                           },
                           {

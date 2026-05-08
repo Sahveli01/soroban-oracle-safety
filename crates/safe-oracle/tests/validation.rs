@@ -311,3 +311,39 @@ fn test_validate_zero_cross_source_bps_skipped_when_no_secondary() {
         "max_cross_source_bps validation skipped when secondary_oracle is None"
     );
 }
+
+// ============================================================
+// Phase 7.2 — previous_max_staleness_seconds validation
+// ============================================================
+
+/// `previous_max_staleness_seconds == 0` silently disables the
+/// previous-price freshness check (every previous price would be
+/// classified `StaleData`, blocking every borrow). Validator must reject.
+#[test]
+fn test_validate_zero_previous_staleness_rejected() {
+    let config = SafeOracleConfig {
+        previous_max_staleness_seconds: 0,
+        ..SafeOracleConfig::default()
+    };
+    assert_eq!(
+        config.validate(),
+        Err(ConfigError::InvalidPreviousStalenessSeconds),
+        "zero previous_max_staleness_seconds blocks every borrow — must be rejected"
+    );
+}
+
+/// `previous_max_staleness_seconds > 86_400` (24h) accepts unsafe
+/// staleness for the deviation reference. Validator must reject — same
+/// upper bound as `max_staleness_seconds`.
+#[test]
+fn test_validate_excessive_previous_staleness_rejected() {
+    let config = SafeOracleConfig {
+        previous_max_staleness_seconds: 86_401,
+        ..SafeOracleConfig::default()
+    };
+    assert_eq!(
+        config.validate(),
+        Err(ConfigError::InvalidPreviousStalenessSeconds),
+        "previous_max_staleness_seconds > 24h is unsafe — must be rejected"
+    );
+}

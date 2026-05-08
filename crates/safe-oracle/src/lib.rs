@@ -25,7 +25,7 @@ pub const MAX_CIRCUIT_BREAKER_HALT_LEDGERS: u32 = 120_960;
 /// Reasons a guardrail has rejected a price; the `Err` payload of every
 /// safe_oracle public API.
 ///
-/// Discriminants are stable u32 values (1..=7) so they can be carried as the
+/// Discriminants are stable u32 values (1..=10) so they can be carried as the
 /// `u32` inside [`PriceResult::Err`] and re-hydrated through
 /// [`PriceResult::into_result`]. Integrators surfacing oracle violations to
 /// their own callers typically mirror these discriminants 1:1 in their own
@@ -62,7 +62,41 @@ pub enum OracleSafetyViolation {
     /// — `check_cross_source` skips silently on secondary trap, consistent
     /// with `None` and "secondary returned `None`" semantics.
     ExternalContractFailure = 8,
+    /// Cross-source check rejected because primary and secondary oracles
+    /// report different `decimals()` values. Comparing prices across
+    /// different scales would produce false signals; fail explicitly so
+    /// integrators see a misconfigured pair rather than always-fires
+    /// `CrossSourceMismatch`.
+    ///
+    /// **Recovery:** verify both oracles target the same precision (Reflector
+    /// mainnet = 14). Phase 7.2 closure of the lib.rs:262 reconciliation plan
+    /// — what was previously documented as integrator responsibility is now
+    /// enforced at library level.
+    DecimalsMismatch = 9,
+    /// Primary Reflector reported a `decimals()` value different from
+    /// `REFLECTOR_DECIMALS_EXPECTED` (14). The library's BPS arithmetic and
+    /// staleness calculations are calibrated for 14-decimal precision; a
+    /// different value indicates a misconfigured oracle address or a
+    /// Reflector contract upgrade that has changed the precision contract.
+    ///
+    /// **Recovery:** verify oracle address matches Reflector's published
+    /// mainnet/testnet address. If Reflector intentionally changed decimals,
+    /// safe-oracle library version bump is required. Phase 7.2 closure of
+    /// the lib.rs:820 plan.
+    UnexpectedDecimals = 10,
 }
+
+/// Expected `decimals()` value for the primary Reflector oracle contract.
+///
+/// Reflector publishes 14-decimal precision per mainnet convention. The
+/// library's BPS arithmetic and staleness comparisons assume this value;
+/// deviation from 14 returns [`OracleSafetyViolation::UnexpectedDecimals`]
+/// rather than silently producing scaled-wrong results.
+///
+/// Phase 7.2 closure of the lib.rs:820 plan — runtime validation replaces
+/// the previous "Phase 7 will add a one-time `decimals()` call" doc-only
+/// commitment.
+pub const REFLECTOR_DECIMALS_EXPECTED: u32 = 14;
 
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -122,7 +156,7 @@ pub struct PriceData {
 ///
 /// Carrying the violation as its `u32` discriminant sidesteps both
 /// constraints. The values here MUST stay aligned with
-/// `OracleSafetyViolation = 1..=8`. The `into_result()` shim re-hydrates
+/// `OracleSafetyViolation = 1..=10`. The `into_result()` shim re-hydrates
 /// the typed variant for callers that want it. Hardening Phase debt #17
 /// remains deferred for future SDK releases that resolve constraint (2).
 ///
@@ -166,7 +200,7 @@ pub enum PriceResult {
     Ok(PriceData),
 
     /// Guardrail violation; price MUST NOT be used. The `u32` is the
-    /// `OracleSafetyViolation` discriminant (1..=7); see `into_result()`
+    /// `OracleSafetyViolation` discriminant (1..=10); see `into_result()`
     /// for the typed re-hydration.
     Err(u32),
 }
@@ -190,7 +224,7 @@ impl PriceResult {
     /// Re-hydrates the `u32` discriminant into the typed
     /// `OracleSafetyViolation`. Unknown discriminants panic — they cannot
     /// occur on a result produced by `lastprice()`, which only emits
-    /// values from the canonical `1..=7` range, but the explicit panic
+    /// values from the canonical `1..=10` range, but the explicit panic
     /// guards against forged values reaching the shim.
     pub fn into_result(self) -> Result<PriceData, OracleSafetyViolation> {
         match self {
@@ -203,8 +237,10 @@ impl PriceResult {
             PriceResult::Err(6) => Err(OracleSafetyViolation::CircuitBreakerOpen),
             PriceResult::Err(7) => Err(OracleSafetyViolation::StaleSnapshot),
             PriceResult::Err(8) => Err(OracleSafetyViolation::ExternalContractFailure),
+            PriceResult::Err(9) => Err(OracleSafetyViolation::DecimalsMismatch),
+            PriceResult::Err(10) => Err(OracleSafetyViolation::UnexpectedDecimals),
             PriceResult::Err(d) => panic!(
-                "PriceResult::Err discriminant {} is outside the OracleSafetyViolation range (1..=8)",
+                "PriceResult::Err discriminant {} is outside the OracleSafetyViolation range (1..=10)",
                 d
             ),
         }
@@ -240,6 +276,25 @@ impl From<Result<PriceData, OracleSafetyViolation>> for PriceResult {
 pub struct SafeOracleConfig {
     pub max_deviation_bps: u32,
     pub max_staleness_seconds: u32,
+    /// Maximum staleness (in seconds) for the **previous** price reference
+    /// used in deviation comparison.
+    ///
+    /// Distinct from `max_staleness_seconds`, which gates the *current*
+    /// price. The previous price is intentionally older (one Reflector
+    /// resolution window earlier — typically ~5 min) and is allowed to be
+    /// further from "now" than the current price, but excessively-stale
+    /// references make deviation comparison meaningless: a years-old
+    /// previous price compared to a fresh current produces false-positive
+    /// `ExcessiveDeviation` halts.
+    ///
+    /// **Default:** `900` (15 minutes) — three times the default
+    /// `max_staleness_seconds = 300`. Recommend 2-3× current threshold.
+    /// `0` is rejected by `validate()` as a silent-disable.
+    ///
+    /// Phase 7.2 closure of the lib.rs:713 plan — replaces the previous
+    /// "Phase 7 will add a configurable previous_max_staleness_seconds"
+    /// doc-only commitment.
+    pub previous_max_staleness_seconds: u32,
     pub max_cross_source_bps: u32,
     /// Maximum age (in seconds) of a `LiquidityRegistry` snapshot still
     /// considered fresh. Phase 4's `check_liquidity` rejects snapshots older
@@ -254,12 +309,11 @@ pub struct SafeOracleConfig {
     /// `Some(addr)` activates `check_cross_source` against the configured
     /// `max_cross_source_bps` threshold.
     ///
-    /// **Integrator warning (AR.H M2):** the secondary must report prices in
-    /// the same decimal precision as the primary (Reflector mainnet = 14
-    /// decimals). A decimals-mismatched secondary produces always-fires
-    /// `CrossSourceMismatch` because BPS arithmetic is unscaled `i128` math.
-    /// See `check_cross_source` doc-comment for full rationale and the
-    /// Phase 7 reconciliation plan.
+    /// **Decimals reconciliation (Phase 7.2 closure):** when this is
+    /// `Some(addr)`, both primary and secondary `decimals()` are fetched at
+    /// cross-source check time and must agree, otherwise the call returns
+    /// [`OracleSafetyViolation::DecimalsMismatch`]. The pre-7.2 integrator
+    /// warning ("verify same precision") is now enforced at library level.
     pub secondary_oracle: Option<Address>,
     pub circuit_breaker_enabled: bool,
     pub circuit_breaker_halt_ledgers: u32,
@@ -270,6 +324,11 @@ impl Default for SafeOracleConfig {
         Self {
             max_deviation_bps: 2000,
             max_staleness_seconds: 300,
+            // Phase 7.2: 3× max_staleness_seconds. The previous price is
+            // typically ~5min behind the current price, so 15min absorbs one
+            // resolution window of attestation lag without classifying it as
+            // a data gap.
+            previous_max_staleness_seconds: 900,
             max_cross_source_bps: 500,
             max_snapshot_age_seconds: 300,
             min_liquidity_usd: 100_000_000_000,
@@ -378,6 +437,16 @@ pub enum ConfigError {
     /// 3A boundary kept the new-variant count at 5; the Layer 2 snapshot age
     /// validation remained an audit-trail gap until this patch.
     InvalidSnapshotAge,
+
+    /// `previous_max_staleness_seconds == 0` silently disables the
+    /// previous-price freshness check (every previous price would be
+    /// classified `StaleData`, blocking every borrow), or `> 86_400` (24h)
+    /// accepts unsafe staleness for the deviation reference. Mirrors
+    /// `InvalidStalenessSeconds` boundary logic.
+    ///
+    /// Phase 7.2 addition — pairs with the new
+    /// `previous_max_staleness_seconds` field on [`SafeOracleConfig`].
+    InvalidPreviousStalenessSeconds,
 }
 
 impl SafeOracleConfig {
@@ -469,6 +538,13 @@ impl SafeOracleConfig {
         // 0 rejects all snapshots; > 86_400 (24h) accepts unsafe staleness.
         if self.max_snapshot_age_seconds == 0 || self.max_snapshot_age_seconds > 86_400 {
             return Err(ConfigError::InvalidSnapshotAge);
+        }
+
+        // Phase 7.2: previous-price staleness gate. Same boundary logic as
+        // `max_staleness_seconds` (silent-disable defense + 24h upper).
+        if self.previous_max_staleness_seconds == 0 || self.previous_max_staleness_seconds > 86_400
+        {
+            return Err(ConfigError::InvalidPreviousStalenessSeconds);
         }
 
         Ok(())
@@ -597,12 +673,25 @@ fn lastprice_inner(
         (p1, p0)
     };
 
-    // 2. Layer 1 guardrails (Reflector-only data).
+    // 2. Phase 7.2: validate primary Reflector decimals before any further
+    // computation. If the primary publishes a precision other than the
+    // expected `REFLECTOR_DECIMALS_EXPECTED`, the library's BPS / staleness
+    // calculations would silently produce scaled-wrong results — fail
+    // explicitly with `UnexpectedDecimals` so the misconfiguration surfaces.
+    let primary_decimals = check_primary_decimals(env, reflector)?;
+
+    // 3. Phase 7.2: gate the previous price's freshness BEFORE the deviation
+    // calculation. An ancient `previous` (post-gap recovery) makes the
+    // BPS deviation meaningless — surface that as `StaleData` rather than
+    // a misclassified `ExcessiveDeviation`.
+    check_previous_staleness(env, &previous, config)?;
+
+    // 4. Layer 1 guardrails (Reflector-only data).
     // `check_deviation_from_pair` is pure validation — both prices are
     // already in hand, no further cross-contract calls.
     check_deviation_from_pair(&current, &previous, config)?;
     check_staleness(env, &current, config)?;
-    check_cross_source(env, asset, &current, config)?;
+    check_cross_source(env, reflector, asset, &current, config, primary_decimals)?;
 
     // 3. Layer 2 guardrails (require LiquidityRegistry).
     // Single cross-contract call shared by both threshold checks; helper
@@ -687,33 +776,24 @@ fn fetch_reflector_prices(
 ///   `abs_diff * 10_000` would exceed `i128::MAX`; treating overflow as
 ///   deviation is the safe default.
 ///
-/// # Liveness limitation — previous-price staleness (AR.H M3)
+/// # Previous-price staleness (Phase 7.2 closure of AR.H M3)
 ///
-/// **The `previous` price's timestamp is not freshness-checked.** Only
-/// `current.timestamp` is validated by `check_staleness`. The `previous`
-/// price comes from `prices.get(1)` of the same `records=2` Reflector
-/// call, but Reflector retains historical records — during a real-world
-/// data gap (RPC outage, oracle network downtime, asset just listed),
-/// `previous` may be hours/days/weeks old.
+/// The pre-7.2 design only freshness-checked `current.timestamp` and left
+/// `previous` unbounded — during a real-world data gap (RPC outage,
+/// oracle downtime, asset just listed), `previous` could be days/weeks
+/// old, so legitimate post-gap drift produced false-positive
+/// `ExcessiveDeviation` halts.
 ///
-/// **Operational consequence:** legitimate post-gap market drift is
-/// computed against an arbitrarily ancient denominator, producing
-/// false-positive `ExcessiveDeviation` halts. With
-/// `circuit_breaker_enabled = true`, every recovery re-trips the
-/// breaker until Reflector accumulates a fresh second record.
+/// **Phase 7.2 fix:** [`check_previous_staleness`] gates the previous
+/// price against the new `config.previous_max_staleness_seconds` field
+/// (default 900s = 3× current threshold) **before** deviation runs.
+/// Excessively-stale previous price now surfaces as `StaleData` rather
+/// than misclassified `ExcessiveDeviation`, so callers and the circuit
+/// breaker see "no fresh deviation reference" instead of "violent move."
 ///
-/// **This is a liveness issue, not a safety issue** — the failure
-/// favors fail-closed (legitimate borrows blocked, no funds at risk).
-/// Integrators relying on continuous availability through Reflector
-/// outages should:
-/// - Set `circuit_breaker_enabled = false` and rely on per-call
-///   `ExcessiveDeviation` reporting (governance can investigate),
-/// - Or accept gap-induced halts as part of their safety budget.
-///
-/// Phase 7 will add a configurable `previous_max_staleness_seconds`
-/// (or reuse `max_staleness_seconds * K` for some K=2..5) so post-gap
-/// movement is correctly classified as `StaleData` rather than
-/// `ExcessiveDeviation`.
+/// Integrators choose the gap policy via the config field: tighter values
+/// halt sooner; looser values accept stale references and fall back to
+/// the deviation calculation against ancient denominators.
 fn check_deviation_from_pair(
     current: &PriceData,
     previous: &PriceData,
@@ -798,34 +878,30 @@ fn check_staleness(
 /// Primary is the BPS reference (`|primary - secondary| * 10_000 / primary`)
 /// because primary is the value the lending contract actually consumes.
 ///
-/// # Integrator warning — decimals reconciliation (AR.H M2)
+/// # Decimals reconciliation (Phase 7.2 closure of AR.H M2)
 ///
-/// **The library compares `current.price` and `secondary_price.price` as
-/// raw `i128` values without decimals reconciliation.** Reflector mainnet
-/// uses `decimals = 14`; if the integrator wires a secondary oracle that
-/// reports prices in a different decimal precision (e.g., DIA at 8 or
-/// Pyth at varying precision), the BPS calculation is meaningless:
+/// **The library now enforces precision agreement explicitly.** Pre-7.2,
+/// `current.price` and `secondary_price.price` were compared as raw `i128`
+/// values without decimals reconciliation, leaving the always-fires-on-
+/// mismatch footgun documented as integrator responsibility.
 ///
-/// - With `circuit_breaker_enabled = true`: a decimals-mismatched
-///   secondary produces an immediate auto-halt that cannot recover
-///   (every recovery re-triggers `CrossSourceMismatch`).
-/// - With `circuit_breaker_enabled = false`: every borrow surfaces
-///   `CrossSourceMismatch`, operationally broken but recoverable by
-///   removing the secondary from config.
+/// Phase 7.2 closure: this function fetches `decimals()` from both oracles
+/// before the BPS comparison and returns
+/// [`OracleSafetyViolation::DecimalsMismatch`] on disagreement. Cost is
+/// two extra cross-contract calls per cross-source-enabled `lastprice`,
+/// paid once at the cross-source step (Reflector cost is amortized; both
+/// reads of `lastprice`/`lastprices` already dominate the gas budget).
 ///
-/// **Integrator responsibility:** verify that the secondary oracle reports
-/// in the same decimal precision as the primary. The cross-source
-/// guardrail is currently safe to use only with same-precision pairs.
-///
-/// Phase 7 will add a one-time `decimals()` call at first read to verify
-/// primary/secondary precision agreement, with `CrossSourceMismatch` (or
-/// a new error variant) returned if they disagree. Until then, this is
-/// an integrator-side configuration concern.
+/// Mismatched-precision pairs surface as a distinct, recoverable error
+/// (operator removes the secondary or upgrades library) rather than the
+/// pre-7.2 always-fires `CrossSourceMismatch`.
 fn check_cross_source(
     env: &Env,
+    primary: &Address,
     asset: &Asset,
     current: &PriceData,
     config: &SafeOracleConfig,
+    primary_decimals: u32,
 ) -> Result<(), OracleSafetyViolation> {
     let secondary = match &config.secondary_oracle {
         Some(addr) => addr,
@@ -851,6 +927,26 @@ fn check_cross_source(
 
     if secondary_price.price <= 0 {
         return Err(OracleSafetyViolation::CrossSourceMismatch);
+    }
+
+    // Phase 7.2: decimals reconciliation. Fetch the secondary's decimals and
+    // compare against the primary's already-validated value. A secondary
+    // `try_decimals` trap is silent-skip (same semantics as a secondary
+    // `try_lastprice` trap above); a successful but mismatched value is a
+    // hard `DecimalsMismatch` error so misconfigured pairs surface cleanly
+    // rather than producing always-fires `CrossSourceMismatch` halts.
+    //
+    // `primary` is unused for the decimals fetch (primary value already
+    // determined upstream in `lastprice_inner` and passed in as
+    // `primary_decimals`) but retained in the signature for future
+    // primary-side cross-checks; bind to `_` to silence the unused warning.
+    let _ = primary;
+    let secondary_decimals = match client.try_decimals() {
+        Ok(Ok(d)) => d,
+        _ => return Ok(()),
+    };
+    if secondary_decimals != primary_decimals {
+        return Err(OracleSafetyViolation::DecimalsMismatch);
     }
 
     // Hardening Phase debt #3: skip when the secondary feed is stale. A
@@ -880,6 +976,62 @@ fn check_cross_source(
         return Err(OracleSafetyViolation::CrossSourceMismatch);
     }
 
+    Ok(())
+}
+
+/// Phase 7.2: fetch + validate the primary Reflector's `decimals()` value.
+///
+/// Returns the live decimals value on success. Two failure modes:
+/// - Cross-contract call traps → [`OracleSafetyViolation::ExternalContractFailure`]
+///   (same as primary `lastprice` trap — uniform handling for primary feed
+///   failure modes).
+/// - Live value disagrees with [`REFLECTOR_DECIMALS_EXPECTED`] →
+///   [`OracleSafetyViolation::UnexpectedDecimals`] (Phase 7.2 closure of
+///   the lib.rs:820 plan; prevents silent scaling errors when Reflector
+///   contract upgrades change precision).
+///
+/// Cost: one extra cross-contract call per `lastprice` invocation. Reflector
+/// `decimals()` reads instance storage (cheaper than the persistent reads
+/// done by `lastprice`/`lastprices`), so the marginal cost is small relative
+/// to the existing call budget.
+fn check_primary_decimals(env: &Env, primary: &Address) -> Result<u32, OracleSafetyViolation> {
+    let client = ReflectorClient::new(env, primary);
+    let decimals = match client.try_decimals() {
+        Ok(Ok(d)) => d,
+        _ => return Err(OracleSafetyViolation::ExternalContractFailure),
+    };
+    if decimals != REFLECTOR_DECIMALS_EXPECTED {
+        return Err(OracleSafetyViolation::UnexpectedDecimals);
+    }
+    Ok(decimals)
+}
+
+/// Phase 7.2: gate the previous price's freshness BEFORE deviation runs.
+///
+/// The `previous` price is intentionally older than `current` (one Reflector
+/// resolution window earlier — typically ~5 min), but during a real-world
+/// data gap (RPC outage, oracle downtime, asset just listed) it can be
+/// arbitrarily old. Without this gate, post-gap recovery computes deviation
+/// against ancient denominators and produces false-positive
+/// `ExcessiveDeviation` halts.
+///
+/// Returns `StaleData` (not `ExcessiveDeviation`) when `previous` exceeds
+/// `config.previous_max_staleness_seconds` so callers and the circuit
+/// breaker observe the correct semantic — "no fresh deviation reference"
+/// rather than "violent move."
+///
+/// `saturating_sub` handles future-dated `previous.timestamp` (clock skew)
+/// without panicking — future values yield `age = 0` and fall through.
+fn check_previous_staleness(
+    env: &Env,
+    previous: &PriceData,
+    config: &SafeOracleConfig,
+) -> Result<(), OracleSafetyViolation> {
+    let now = env.ledger().timestamp();
+    let age = now.saturating_sub(previous.timestamp);
+    if age > config.previous_max_staleness_seconds as u64 {
+        return Err(OracleSafetyViolation::StaleData);
+    }
     Ok(())
 }
 
@@ -1008,6 +1160,8 @@ mod test {
         let cfg = SafeOracleConfig::default();
         assert_eq!(cfg.max_deviation_bps, 2000);
         assert_eq!(cfg.max_staleness_seconds, 300);
+        // Phase 7.2: previous-price staleness default = 3× current threshold.
+        assert_eq!(cfg.previous_max_staleness_seconds, 900);
         assert_eq!(cfg.max_cross_source_bps, 500);
         assert_eq!(cfg.max_snapshot_age_seconds, 300);
         assert_eq!(cfg.min_liquidity_usd, 100_000_000_000);
@@ -1030,5 +1184,9 @@ mod test {
         // The discriminant is correctly used in PriceResult::into_result and the
         // mock-lending mirror; the gap was solely in this regression test.
         assert_eq!(OracleSafetyViolation::ExternalContractFailure as u32, 8);
+        // Phase 7.2 additions — discriminants must stay aligned with the
+        // mock-lending mirror and `PriceResult::into_result` re-hydration.
+        assert_eq!(OracleSafetyViolation::DecimalsMismatch as u32, 9);
+        assert_eq!(OracleSafetyViolation::UnexpectedDecimals as u32, 10);
     }
 }

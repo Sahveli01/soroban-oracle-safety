@@ -37,19 +37,23 @@ fn test_layer1_happy_path_all_guardrails_pass() {
     assert_eq!(price.timestamp, 99_950);
 }
 
-/// When both deviation and staleness would fail, `ExcessiveDeviation` is
-/// returned because deviation runs first. A regression that swaps the
-/// execution order is caught here by the failing assertion.
+/// When both deviation and current-price staleness would fail,
+/// `ExcessiveDeviation` is returned because deviation runs first. A
+/// regression that swaps the execution order is caught here by the failing
+/// assertion.
 #[test]
 fn test_layer1_execution_order_deviation_before_staleness() {
     let test_env = TestEnv::new();
     let asset = Asset::Other(Symbol::new(&test_env.env, "ETH"));
 
-    // ts=50_000/50_300 → ~50_000s elapsed (strict max_staleness=300 → stale)
-    // prices: $100 → $200 = 10_000 BPS deviation (strict max=2000 → excessive)
-    // Both Layer 1 checks would fire; deviation must surface first.
-    test_env.set_oracle_price(&asset, 100 * TestEnv::ONE_DOLLAR, 50_000);
-    test_env.set_oracle_price(&asset, 200 * TestEnv::ONE_DOLLAR, 50_300);
+    // Phase 7.2: keep `previous` within the new previous-staleness gate
+    // (default 900s) so that gate doesn't preempt the deviation check.
+    //   - now=100_000 (TestEnv default)
+    //   - prev_ts=99_500 → 500s old (within 900s prev gate)
+    //   - curr_ts=99_650 → 350s old (> 300s current gate, fails staleness)
+    // 100% deviation = 10_000 BPS still exceeds strict max=2000.
+    test_env.set_oracle_price(&asset, 100 * TestEnv::ONE_DOLLAR, 99_500);
+    test_env.set_oracle_price(&asset, 200 * TestEnv::ONE_DOLLAR, 99_650);
 
     let config = TestEnv::strict_config();
 

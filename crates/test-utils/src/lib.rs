@@ -284,6 +284,47 @@ impl<'a> TestEnv<'a> {
             .set_price(asset, &price, &timestamp);
     }
 
+    /// Phase 7.2: reconfigure the primary mock Reflector with a different
+    /// `decimals` value. Used by tests that exercise the new
+    /// `OracleSafetyViolation::UnexpectedDecimals` path (primary precision
+    /// disagrees with `REFLECTOR_DECIMALS_EXPECTED = 14`). All other
+    /// `ConfigData` fields are kept at their `TestEnv::new` defaults.
+    pub fn override_primary_decimals(&self, decimals: u32) {
+        let admin = Address::generate(&self.env);
+        let base_asset = Asset::Other(Symbol::new(&self.env, "USD"));
+        let cfg = ConfigData {
+            admin,
+            history_retention_period: 0,
+            assets: vec![&self.env],
+            base_asset,
+            decimals,
+            resolution: 300,
+            cache_size: 10,
+            fee_config: FeeConfig::None,
+        };
+        self.reflector_client.config(&cfg);
+    }
+
+    /// Phase 7.2: reconfigure the secondary mock Reflector with a different
+    /// `decimals` value. Used by tests that exercise the new
+    /// `OracleSafetyViolation::DecimalsMismatch` path (primary/secondary
+    /// precision disagreement caught at cross-source check time).
+    pub fn override_secondary_decimals(&self, decimals: u32) {
+        let admin = Address::generate(&self.env);
+        let base_asset = Asset::Other(Symbol::new(&self.env, "USD"));
+        let cfg = ConfigData {
+            admin,
+            history_retention_period: 0,
+            assets: vec![&self.env],
+            base_asset,
+            decimals,
+            resolution: 300,
+            cache_size: 10,
+            fee_config: FeeConfig::None,
+        };
+        self.secondary_reflector_client.config(&cfg);
+    }
+
     /// Write a snapshot through the default whitelisted attester. Convenience
     /// wrapper around `LiquidityRegistry::write_snapshot` for Phase 4 tests
     /// that just need *some* attestation present for an asset; the explicit
@@ -364,6 +405,12 @@ impl<'a> TestEnv<'a> {
         SafeOracleConfig {
             max_deviation_bps: 5000,
             max_staleness_seconds: 100_000,
+            // Phase 7.2: relaxed previous-price freshness gate. Tests that
+            // primed `previous` with timestamp 99_900 against a baseline
+            // `now = 100_000` need ≥ 100s; using the same generous 100_000s
+            // bound as the current-price gate keeps the existing fixtures
+            // exercising other guardrails without spurious StaleData hits.
+            previous_max_staleness_seconds: 100_000,
             max_cross_source_bps: 2000,
             max_snapshot_age_seconds: 100_000,
             min_liquidity_usd: 1,
