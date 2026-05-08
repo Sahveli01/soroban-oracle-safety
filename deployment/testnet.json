@@ -1,5 +1,5 @@
 {
-  "phase": "7.4 — identities established, contracts not yet deployed",
+  "phase": "7.5 — 3 contracts deployed, attester whitelist pending (Phase 7.6)",
   "network": {
     "name": "testnet",
     "passphrase": "Test SDF Network ; September 2015",
@@ -23,7 +23,24 @@
     }
   },
   "contracts": {
-    "_comment": "Populated in Phase 7.5 after WASM build + deployment"
+    "liquidity_registry": {
+      "contract_id": "CCDWMKL54WC3525IJA2UNRCRLTIROHWVVPK3MBU2YO4EMASLRB6WWGND",
+      "wasm_hash": "1608aff608a93a1131748ef3fa34829a1b70c71938d8b10af9a7d2ae40639489",
+      "deploy_tx": "3db5217675ac7c4fe2122128c217c97ad0f09e75c23e1663e0844093596e8d92",
+      "explorer": "https://stellar.expert/explorer/testnet/contract/CCDWMKL54WC3525IJA2UNRCRLTIROHWVVPK3MBU2YO4EMASLRB6WWGND"
+    },
+    "mock_reflector": {
+      "contract_id": "CBUPTLPDDNCB2OHTGTHD3DKHLGSZUDUMINU5OKU4CG5ZRHW5T7ATPHO7",
+      "wasm_hash": "b38afefbdfdae595f44177c6e376bcf7b4eadfea3bbb4f1cba4ecdb685e3d98f",
+      "deploy_tx": "f524098d41a3972a6c9a4e9088d0b7d10415782900dc3741d18d4bb7fff51e11",
+      "explorer": "https://stellar.expert/explorer/testnet/contract/CBUPTLPDDNCB2OHTGTHD3DKHLGSZUDUMINU5OKU4CG5ZRHW5T7ATPHO7"
+    },
+    "mock_lending": {
+      "contract_id": "CBXSYSZKW5K66PBVZ5QFH73XT4DWX6JLPDZWHIZUZDHHH454NBSRNSAY",
+      "wasm_hash": "2ee1b761a2eab1fcdd5813c06e51dc8578bbb82e27b5444c93fc466db5fbd041",
+      "deploy_tx": "9c8b48b29ec72f1e09c032ec870358212f28e7c6da27c8814fa554a50145b1bc",
+      "explorer": "https://stellar.expert/explorer/testnet/contract/CBXSYSZKW5K66PBVZ5QFH73XT4DWX6JLPDZWHIZUZDHHH454NBSRNSAY"
+    }
   },
   "deployment_history": [
     {
@@ -31,6 +48,15 @@
       "action": "Identities created and funded via Friendbot",
       "deployer_address": "GCDVCIWJ7EJCDKSV6DLCOZKOJU54EYWZUSPOB4G6OD5GWIUMUANEMZ2S",
       "attester_address": "GA5ZA5DMMB7QZ2IQLPT3Q76VIOG66FGIOFKARTC6V2IWBGMR46GEDTVF"
+    },
+    {
+      "phase": "7.5",
+      "action": "WASM build + deploy 3 contracts",
+      "deployer_address": "GCDVCIWJ7EJCDKSV6DLCOZKOJU54EYWZUSPOB4G6OD5GWIUMUANEMZ2S",
+      "liquidity_registry": "CCDWMKL54WC3525IJA2UNRCRLTIROHWVVPK3MBU2YO4EMASLRB6WWGND",
+      "mock_reflector": "CBUPTLPDDNCB2OHTGTHD3DKHLGSZUDUMINU5OKU4CG5ZRHW5T7ATPHO7",
+      "mock_lending": "CBXSYSZKW5K66PBVZ5QFH73XT4DWX6JLPDZWHIZUZDHHH454NBSRNSAY",
+      "note": "mock-lending config: lenient testnet thresholds (max_deviation_bps=9999, min_liquidity_usd=1, min_trade_count_1h=1). Phase 7.6 adds attester + initializes registry."
     }
   ]
 }
