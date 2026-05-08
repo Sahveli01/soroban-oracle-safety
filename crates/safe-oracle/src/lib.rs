@@ -1,4 +1,17 @@
 #![no_std]
+// CI fix: clippy::enum_variant_names fires from inside the
+// #[contracttype] macro expansion for `ConfigError` (all 8 variants
+// share the `Invalid` prefix by design — every variant represents a
+// config field rejected by `validate()`, and the prefix improves
+// readability for integrators destructuring errors). The lint
+// originates in the macro's emitted code, so a per-enum #[allow]
+// attribute on the original item does not suppress it (verified on
+// rustc 1.95 — both `#[allow]` above and below `#[contracttype]`
+// failed to silence the error). Crate-level inner attribute is the
+// working suppression. Renaming the variants would be a public API
+// breaking change (290 tests reference these); the lint is stylistic,
+// not semantic — keeping the names.
+#![allow(clippy::enum_variant_names)]
 
 use soroban_sdk::{contracterror, contracttype, Address, Env, Symbol, Vec};
 
@@ -360,14 +373,11 @@ impl Default for SafeOracleConfig {
 ///
 /// - All errors are recoverable at init time; runtime config changes are
 ///   not supported (config is immutable after deploy per spec §4).
+// Note: `enum_variant_names` lint suppression for the shared `Invalid`
+// prefix is at crate level (see #![allow] at the top of this file) —
+// the lint fires from inside `#[contracttype]`'s macro expansion and
+// per-enum attributes do not suppress it.
 #[contracttype]
-// All variants share the `Invalid` prefix by design — every variant
-// represents a "config field rejected by `validate()`", and the common
-// prefix improves readability for integrators destructuring errors
-// (e.g., `match e { ConfigError::InvalidDeviationBps => ..., ... }`).
-// Removing the prefix would be a public API change with no real
-// ergonomic gain. The lint is stylistic, not semantic.
-#[allow(clippy::enum_variant_names)]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum ConfigError {
     /// `max_deviation_bps` is 0 (allows infinite deviation, disabling the
