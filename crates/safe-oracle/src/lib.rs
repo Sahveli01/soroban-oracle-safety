@@ -361,6 +361,13 @@ impl Default for SafeOracleConfig {
 /// - All errors are recoverable at init time; runtime config changes are
 ///   not supported (config is immutable after deploy per spec §4).
 #[contracttype]
+// All variants share the `Invalid` prefix by design — every variant
+// represents a "config field rejected by `validate()`", and the common
+// prefix improves readability for integrators destructuring errors
+// (e.g., `match e { ConfigError::InvalidDeviationBps => ..., ... }`).
+// Removing the prefix would be a public API change with no real
+// ergonomic gain. The lint is stylistic, not semantic.
+#[allow(clippy::enum_variant_names)]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum ConfigError {
     /// `max_deviation_bps` is 0 (allows infinite deviation, disabling the
