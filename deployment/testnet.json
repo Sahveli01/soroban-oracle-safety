@@ -1,5 +1,5 @@
 {
-  "phase": "7.8 — happy-path borrow validated",
+  "phase": "7.9 — adversarial replay validated, library rejects manipulation",
   "network": {
     "name": "testnet",
     "passphrase": "Test SDF Network ; September 2015",
@@ -158,6 +158,22 @@
         "Mock-reflector prices stored under Asset::Other(Symbol('XLM')) but safe_oracle calls with Asset::Stellar(SAC_address) — null returned. Fixed by setting prices with correct asset key.",
         "Phase 7.5 mock-lending had implicit defaults previous_max_staleness_seconds=900 and max_snapshot_age_seconds=300 — too strict for testnet. Re-deployed with 86400s (24h) for all staleness windows."
       ]
+    },
+    {
+      "phase": "7.9",
+      "date": "2026-05-08",
+      "action": "Adversarial replay — YieldBlox-style oracle manipulation rejected by Layer 1 deviation guardrail",
+      "attack_setprice_tx": "b99d61340c63748394f27a589ac228bbc6a02aba7d74c5b50b67a416ee6acfb6",
+      "adversarial_borrow_tx": "a1cfdec1fe8f6c778c0f6f48f481c0b7dfd31ea7322834d84944459ca80a7653",
+      "recovery_setprice_tx": "9cae263874ab308ccba3871bc00aeec95dbff0199e2e7187c71c1ecf1bba378f",
+      "post_recovery_borrow_tx": "5f5d06e4822e3a1b061513acfd159958105e2a7f7f1ab15a5337fa8ab10aec55",
+      "scenario": "10x XLM price spike ($0.10 → $1.00) via mock-reflector, then borrow attempted",
+      "deviation_at_attack_bps": 90000,
+      "max_deviation_bps_threshold": 9999,
+      "result": "BorrowOutcome::Failed(1) = MockLendingError::ExcessiveDeviation",
+      "tx_status": "SUCCESS at protocol level (Ok-only enum design — preserves auto-halt write semantics)",
+      "post_recovery_result": "Borrow succeeded after price restored ($0.10). circuit_breaker_enabled=false in Phase 7.8 config means no halt window — recovery is immediate.",
+      "note": "Defense in depth validated end-to-end: oracle manipulation caught by safe_oracle's deviation check, error propagated transparently through mock-lending to caller."
     }
   ],
   "e2e_validations": {
@@ -173,6 +189,43 @@
       "result": "SUCCESS — all 5 guardrails passed",
       "event_emitted": {"asset":"Stellar(CDLZFC3...)","amount":1000000000,"price":10000000000000},
       "config_note": "Testnet demo only: all staleness windows 86400s, min_liquidity_usd=1, min_trade_count_1h=1. Mainnet uses production thresholds."
+    },
+    "adversarial_replay": {
+      "phase": "7.9",
+      "date": "2026-05-08",
+      "scenario": "YieldBlox-style oracle manipulation: 10x XLM price spike via mock-reflector, then borrow attempted",
+      "stages": [
+        {
+          "stage": "1_attack_price_spike",
+          "action": "set_price XLM from $0.10 (10000000000000) to $1.00 (100000000000000) — 90000 BPS deviation vs prior",
+          "tx_hash": "b99d61340c63748394f27a589ac228bbc6a02aba7d74c5b50b67a416ee6acfb6",
+          "explorer": "https://stellar.expert/explorer/testnet/tx/b99d61340c63748394f27a589ac228bbc6a02aba7d74c5b50b67a416ee6acfb6"
+        },
+        {
+          "stage": "2_adversarial_borrow",
+          "action": "borrow(100 XLM) called against manipulated oracle",
+          "tx_hash": "a1cfdec1fe8f6c778c0f6f48f481c0b7dfd31ea7322834d84944459ca80a7653",
+          "explorer": "https://stellar.expert/explorer/testnet/tx/a1cfdec1fe8f6c778c0f6f48f481c0b7dfd31ea7322834d84944459ca80a7653",
+          "result": "REJECTED — BorrowOutcome::Failed(1) = ExcessiveDeviation",
+          "tx_protocol_status": "SUCCESS (Ok-only enum design — see types.rs PriceResult comment)",
+          "guardrail_triggered": "Layer 1 deviation check: 90000 BPS > 9999 BPS threshold"
+        },
+        {
+          "stage": "3_recovery_price_restore",
+          "action": "set_price XLM back to $0.10",
+          "tx_hash": "9cae263874ab308ccba3871bc00aeec95dbff0199e2e7187c71c1ecf1bba378f",
+          "explorer": "https://stellar.expert/explorer/testnet/tx/9cae263874ab308ccba3871bc00aeec95dbff0199e2e7187c71c1ecf1bba378f"
+        },
+        {
+          "stage": "4_post_recovery_borrow",
+          "action": "borrow(100 XLM) attempted after price restored",
+          "tx_hash": "5f5d06e4822e3a1b061513acfd159958105e2a7f7f1ab15a5337fa8ab10aec55",
+          "explorer": "https://stellar.expert/explorer/testnet/tx/5f5d06e4822e3a1b061513acfd159958105e2a7f7f1ab15a5337fa8ab10aec55",
+          "result": "SUCCESS — borrow accepted (deviation 9000 BPS < 9999 threshold; CB disabled in testnet config means no halt window)",
+          "note": "Mainnet config would have circuit_breaker_enabled=true, which would extend the halt for circuit_breaker_halt_ledgers (default 720 = ~1h)."
+        }
+      ],
+      "summary": "Library successfully rejected oracle manipulation attack via Layer 1 deviation guardrail. Defense in depth validated end-to-end on testnet — failed tx visible on explorer for audit trail."
     }
   }
 }
