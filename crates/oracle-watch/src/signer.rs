@@ -48,10 +48,10 @@ impl std::error::Error for SignerError {}
 ///
 /// The signing key lives in process memory for the lifetime of the
 /// service. There is no key rotation in this design (Phase 6 scope).
-/// Phase 8 deployment must handle key provisioning carefully — env-var
-/// loading is convenient but exposes the key to anyone with read access
-/// to the process environment (`/proc/self/environ`, container inspect
-/// commands, etc.). HSM/KMS integration is post-Phase-8 work if SCF
+/// Phase 9 (mainnet) deployment must handle key provisioning carefully —
+/// env-var loading is convenient but exposes the key to anyone with read
+/// access to the process environment (`/proc/self/environ`, container
+/// inspect commands, etc.). HSM/KMS integration is mainnet work if
 /// deployment scales beyond a single attester.
 #[derive(Debug)]
 pub struct Signer {
@@ -128,7 +128,7 @@ impl Signer {
     ///
     /// Test-only alternative to [`Signer::public_key_bytes`] — main loop
     /// uses the byte form for logging/registration; verification flows
-    /// (currently in unit tests, Phase 8 cross-verification) use this.
+    /// (currently in unit tests, Phase 9 mainnet cross-verification) use this.
     #[allow(dead_code)]
     pub fn verifying_key(&self) -> VerifyingKey {
         self.keypair.verifying_key()

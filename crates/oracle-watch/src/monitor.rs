@@ -239,7 +239,7 @@ use async_trait::async_trait;
 /// DispatchError>` so the dispatcher can log per-sink failures while
 /// continuing to other sinks.
 ///
-/// # Example: adding a new sink in Phase 8
+/// # Example: adding a new sink
 ///
 /// ```ignore
 /// pub struct SlackSink { webhook_url: String }
@@ -296,8 +296,8 @@ impl std::error::Error for DispatchError {}
 /// - **Per-sink failure** → logged via eprintln!, does NOT prevent
 ///   other sinks from being attempted.
 /// - **Sequential dispatch** for simplicity. Anomalies are infrequent
-///   (rate limit pressure low); concurrent dispatch is Phase 8 if real
-///   throughput becomes an issue.
+///   (rate limit pressure low); concurrent dispatch is Phase 9 (mainnet)
+///   if real throughput becomes an issue.
 ///
 /// # Why this returns ()
 ///

@@ -132,7 +132,7 @@ impl HorizonClient {
 /// - `(code="XLM", issuer="native", _)` → `("native", "")`
 /// - `(code="USDC", issuer="GA5ZSEJ", "counter_")` →
 ///   `("credit_alphanum4", "&counter_asset_code=USDC&counter_asset_issuer=GA5ZSEJ")`
-fn asset_query_params<'a>(code: &str, issuer: &str, prefix: &str) -> (&'static str, String) {
+fn asset_query_params(code: &str, issuer: &str, prefix: &str) -> (&'static str, String) {
     if issuer == "native" {
         return ("native", String::new());
     }

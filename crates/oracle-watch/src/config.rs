@@ -42,8 +42,8 @@ pub struct Config {
     /// USD value of 1 unit of the counter asset for volume aggregation.
     ///
     /// **Phase 6.8 placeholder.** Currently a single static value applied
-    /// to all watched pairs. Phase 8 will replace this with a real-time
-    /// price feed (likely Reflector itself, with circular-dependency
+    /// to all watched pairs. Phase 9 (mainnet) will replace this with a
+    /// real-time price feed (likely Reflector itself, with circular-dependency
     /// safeguards) per-asset. Default `1.0` is correct for USDC pairs and
     /// approximate for stablecoin-denominated pairs.
     pub usdc_price_usd: f64,
@@ -161,12 +161,12 @@ impl Config {
         let network_passphrase = env::var("ORACLE_WATCH_NETWORK_PASSPHRASE")
             .unwrap_or_else(|_| "Test SDF Network ; September 2015".to_string());
 
-        let counter_asset_code = env::var("ORACLE_WATCH_COUNTER_ASSET_CODE")
-            .unwrap_or_else(|_| "USDC".to_string());
+        let counter_asset_code =
+            env::var("ORACLE_WATCH_COUNTER_ASSET_CODE").unwrap_or_else(|_| "USDC".to_string());
 
         // Default: testnet Circle USDC issuer. Mainnet operators must override.
-        let counter_asset_issuer = env::var("ORACLE_WATCH_COUNTER_ASSET_ISSUER")
-            .unwrap_or_else(|_| {
+        let counter_asset_issuer =
+            env::var("ORACLE_WATCH_COUNTER_ASSET_ISSUER").unwrap_or_else(|_| {
                 "GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5".to_string()
             });
 

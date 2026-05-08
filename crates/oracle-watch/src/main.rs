@@ -125,7 +125,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 /// 3. Detect anomalies vs previous snapshot
 /// 4. Dispatch alerts via configured sinks
 /// 5. Write snapshot to LiquidityRegistry (stub in Phase 6.5; real
-///    submission Phase 8)
+///    9-step submission path landed in Phase 7.3)
 ///
 /// Per-asset failures are logged and do not abort the iteration —
 /// other assets continue to be polled.
@@ -165,8 +165,9 @@ async fn run_iteration(
         };
 
         // Phase 6.3 takes the same trades for both 30m and 1h windows
-        // when no time-filter is applied. Phase 8 will pre-filter by
-        // ledger_close_time before passing.
+        // when no time-filter is applied. Phase 9 (mainnet) will pre-filter
+        // by ledger_close_time before passing — testnet thin liquidity makes
+        // the distinction immaterial.
         let snapshot = aggregate_trades(
             &asset.code,
             &asset.issuer,

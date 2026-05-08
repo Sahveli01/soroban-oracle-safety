@@ -653,8 +653,8 @@ fn lastprice_inner(
     // `check_deviation` for the previous price. The records=2 fetch
     // already returns both, so the records=1 call was redundant; folding
     // it eliminates one Reflector round-trip per Layer 1 evaluation.
-    // Actual gas savings will be measured during testnet deployment
-    // (debt #13, deferred to Phase 8).
+    // Actual gas savings will be measured under sustained production load
+    // (debt #13, deferred to Phase 9 — mainnet measurement).
     //
     // `fetch_reflector_prices` enforces `prices.len() >= records`, so
     // missing-history scenarios (0 or 1 stored price) surface as

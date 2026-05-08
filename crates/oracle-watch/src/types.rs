@@ -27,9 +27,9 @@ use serde::{Deserialize, Deserializer};
 /// account whose offer was active and matched). For SDEX-style trades
 /// this aligns with "the trader who initiated the matching offer".
 // Fields are populated by serde from Horizon JSON; the aggregator only
-// consumes a subset directly, but downstream Phase 8 work (dedup by id,
-// time-window filtering by ledger_close_time) needs the rest. The
-// dead_code lint cannot see serde's field reads.
+// consumes a subset directly, but downstream Phase 9 (mainnet) work
+// (dedup by id, time-window filtering by ledger_close_time) needs the
+// rest. The dead_code lint cannot see serde's field reads.
 #[allow(dead_code)]
 #[derive(Debug, Clone, Deserialize)]
 pub struct TradeRecord {
@@ -68,7 +68,7 @@ pub struct TradeRecord {
 ///
 /// Horizon emits n/d as integers for orderbook trades and as stringified
 /// integers for liquidity-pool trades; the custom deserializer handles both.
-#[allow(dead_code)] // serde-populated; consumed by Phase 8 precision-sensitive paths.
+#[allow(dead_code)] // serde-populated; consumed by Phase 9 (mainnet) precision-sensitive paths.
 #[derive(Debug, Clone, Copy, Deserialize)]
 pub struct PriceRatio {
     #[serde(deserialize_with = "de_i64_from_str_or_int")]
