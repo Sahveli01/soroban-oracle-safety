@@ -15,7 +15,7 @@ interface SectionShellProps {
  */
 export function SectionShell({ id, eyebrow, children }: SectionShellProps) {
   return (
-    <section id={id} className="relative px-6 py-32 md:py-48">
+    <section id={id} className="relative px-6 py-20 md:py-32 lg:py-48">
       <div className="mx-auto max-w-5xl">
         <motion.p
           initial={{ opacity: 0, y: 10 }}

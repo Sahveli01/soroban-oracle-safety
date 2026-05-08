@@ -6,6 +6,13 @@ authors.workspace = true
 license.workspace = true
 repository.workspace = true
 rust-version.workspace = true
+description = "Drop-in oracle protection for Stellar Soroban — five mathematically-verified guardrails against oracle manipulation attacks."
+homepage = "https://soroban-oracle-safety.vercel.app"
+documentation = "https://docs.rs/safe-oracle"
+readme = "README.md"
+keywords = ["stellar", "soroban", "oracle", "defi", "security"]
+categories = ["cryptography::cryptocurrencies", "no-std"]
+include = ["src/**/*", "Cargo.toml", "README.md"]
 
 [dependencies]
 soroban-sdk = { workspace = true }

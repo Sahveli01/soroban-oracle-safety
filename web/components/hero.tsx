@@ -40,7 +40,7 @@ export function Hero() {
       </motion.p>
 
       {/* Big headline — word-by-word stagger */}
-      <h1 className="text-center text-6xl font-medium leading-[1.05] tracking-tight md:text-7xl lg:text-8xl">
+      <h1 className="text-center text-5xl font-medium leading-[1.05] tracking-tight sm:text-6xl md:text-7xl lg:text-8xl">
         <span className="block">
           {HEADLINE_LINE_1.map((word, i) => (
             <motion.span

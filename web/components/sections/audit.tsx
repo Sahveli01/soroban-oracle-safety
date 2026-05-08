@@ -78,7 +78,7 @@ export function Audit() {
         whileInView={{ opacity: 1, y: 0 }}
         viewport={{ once: true, margin: "-100px" }}
         transition={{ duration: 0.7 }}
-        className="text-5xl font-medium leading-[1.1] tracking-tight md:text-6xl"
+        className="text-4xl font-medium leading-[1.1] tracking-tight sm:text-5xl md:text-6xl"
       >
         Independently audited.
       </motion.h2>

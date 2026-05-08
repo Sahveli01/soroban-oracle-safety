@@ -84,7 +84,7 @@ export function Live() {
         whileInView={{ opacity: 1, y: 0 }}
         viewport={{ once: true, margin: "-100px" }}
         transition={{ duration: 0.7 }}
-        className="text-5xl font-medium leading-[1.1] tracking-tight md:text-6xl"
+        className="text-4xl font-medium leading-[1.1] tracking-tight sm:text-5xl md:text-6xl"
       >
         <span className="inline-flex items-center gap-3">
           <span className="relative flex h-3 w-3">
