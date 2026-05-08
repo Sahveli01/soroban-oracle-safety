@@ -3,7 +3,7 @@
 //! Defines the core data types for trade records, aggregated snapshots,
 //! and signed payload structures that flow between modules.
 
-use serde::Deserialize;
+use serde::{Deserialize, Deserializer};
 
 /// A single SDEX trade record from Stellar Horizon.
 ///
@@ -49,6 +49,9 @@ pub struct TradeRecord {
     pub counter_amount: String,
 
     /// Trade price as rational `n/d` fraction (avoids float imprecision).
+    /// Horizon emits this as `price_r` for orderbook trades and `price` for
+    /// liquidity-pool trades; both are accepted via the serde alias.
+    #[serde(alias = "price")]
     pub price_r: PriceRatio,
 
     /// Account that initiated the matching trade (used by aggregator's
@@ -59,14 +62,40 @@ pub struct TradeRecord {
 
 /// Trade price as a rational `n/d` fraction.
 ///
-/// Horizon's wire format for `price_r`. Aggregator may convert to f64
-/// for USD valuation, but the rational form is preserved here for any
+/// Horizon's wire format for `price_r`/`price`. Aggregator may convert to
+/// f64 for USD valuation, but the rational form is preserved here for any
 /// future precision-sensitive consumer.
+///
+/// Horizon emits n/d as integers for orderbook trades and as stringified
+/// integers for liquidity-pool trades; the custom deserializer handles both.
 #[allow(dead_code)] // serde-populated; consumed by Phase 8 precision-sensitive paths.
 #[derive(Debug, Clone, Copy, Deserialize)]
 pub struct PriceRatio {
+    #[serde(deserialize_with = "de_i64_from_str_or_int")]
     pub n: i64,
+    #[serde(deserialize_with = "de_i64_from_str_or_int")]
     pub d: i64,
+}
+
+fn de_i64_from_str_or_int<'de, D: Deserializer<'de>>(d: D) -> Result<i64, D::Error> {
+    struct Visitor;
+    impl<'de> serde::de::Visitor<'de> for Visitor {
+        type Value = i64;
+        fn expecting(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+            write!(f, "i64 or string-encoded integer")
+        }
+        fn visit_i64<E: serde::de::Error>(self, v: i64) -> Result<i64, E> {
+            Ok(v)
+        }
+        fn visit_u64<E: serde::de::Error>(self, v: u64) -> Result<i64, E> {
+            Ok(v as i64)
+        }
+        fn visit_str<E: serde::de::Error>(self, v: &str) -> Result<i64, E> {
+            v.parse()
+                .map_err(|_| E::invalid_value(serde::de::Unexpected::Str(v), &self))
+        }
+    }
+    d.deserialize_any(Visitor)
 }
 
 /// Aggregated trade statistics for a single asset over a time window.
@@ -93,6 +122,15 @@ pub struct AggregatedSnapshot {
 
     /// Asset issuer (Stellar address or `"native"` for XLM).
     pub asset_issuer: String,
+
+    /// Stellar Asset Contract (SAC) address for this asset on the network
+    /// (C... StrKey format). When `Some`, `registry_writer` uses this as the
+    /// on-chain `LiquiditySnapshot.asset: Address` field. When `None`, falls
+    /// back to `ScVal::Symbol` (simulation will reject — for unit tests only).
+    ///
+    /// Set via the 3-part `ORACLE_WATCH_WATCHED_ASSETS` format:
+    /// `CODE:ISSUER:SAC_CONTRACT_ID`.
+    pub sac_contract_id: Option<String>,
 
     /// 30-minute USD volume × 10^7 (stroop convention).
     ///

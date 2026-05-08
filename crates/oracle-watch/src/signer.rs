@@ -148,8 +148,9 @@ fn strkey_encode_public(bytes: &[u8; 32]) -> String {
     let crc = crc16_xmodem(&payload);
     let mut data = [0u8; 35];
     data[..33].copy_from_slice(&payload);
-    data[33] = (crc >> 8) as u8;
-    data[34] = (crc & 0xff) as u8;
+    // Stellar StrKey spec: CRC16 stored little-endian (low byte first)
+    data[33] = (crc & 0xff) as u8;
+    data[34] = (crc >> 8) as u8;
     base32_encode_nopad(&data)
 }
 
@@ -333,15 +334,16 @@ mod tests {
 
     #[test]
     fn test_strkey_encode_public_known_vector() {
-        // RFC 8032 test vector 1: secret seed → known public → known G-address
-        // secret = 9d61b19deffd5a60ba844af492ec2cc44449c5697b326919703bac031cae7f60
-        // public = d75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a
+        // Testnet oracle-watch attester key — verifies exact StrKey output including
+        // little-endian CRC16. pubkey hex from: stellar keys address oracle-watch-attester
         let pub_bytes =
-            hex::decode("d75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a")
+            hex::decode("3b90746c607f0ce9105be7b87fd5438def14c8715408cc5eae91609991e78c41")
                 .unwrap();
         let addr = strkey_encode_public(pub_bytes.as_slice().try_into().unwrap());
-        assert_eq!(addr.len(), 56);
-        assert!(addr.starts_with('G'));
+        assert_eq!(
+            addr,
+            "GA5ZA5DMMB7QZ2IQLPT3Q76VIOG66FGIOFKARTC6V2IWBGMR46GEDTVF"
+        );
     }
 
     // ===== Payload serialization tests =====
@@ -389,6 +391,7 @@ mod tests {
         let snap = AggregatedSnapshot {
             asset_code: "XLM".to_string(),
             asset_issuer: "native".to_string(),
+            sac_contract_id: None,
             volume_30m_usd_i128: 5_000_000_000,
             unique_trades_1h: 12,
             computed_at: 1_715_000_000,

@@ -144,10 +144,14 @@ async fn run_iteration(
     let mut iteration_sign_failures = 0;
 
     for asset in &config.watched_assets {
-        // Currently watching every asset against USDC as counter. Phase 8
-        // may parameterize counter selection per asset (XLM-pair, etc.).
         let trades = match horizon
-            .get_recent_trades(&asset.code, &asset.issuer, "USDC", "native", 200)
+            .get_recent_trades(
+                &asset.code,
+                &asset.issuer,
+                &config.counter_asset_code,
+                &config.counter_asset_issuer,
+                200,
+            )
             .await
         {
             Ok(t) => t,
@@ -166,6 +170,7 @@ async fn run_iteration(
         let snapshot = aggregate_trades(
             &asset.code,
             &asset.issuer,
+            asset.sac_contract_id.clone(),
             &trades,
             &trades,
             config.usdc_price_usd,
@@ -275,10 +280,13 @@ mod tests {
             watched_assets: vec![config::WatchedAsset {
                 code: "TESTASSET".to_string(),
                 issuer: "GISSUER".to_string(),
+                sac_contract_id: None,
             }],
             max_snapshot_age_seconds: 300,
             usdc_price_usd: 1.0,
             network_passphrase: "Test SDF Network ; September 2015".to_string(),
+            counter_asset_code: "USDC".to_string(),
+            counter_asset_issuer: "native".to_string(),
         }
     }
 

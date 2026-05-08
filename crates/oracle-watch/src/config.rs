@@ -22,11 +22,13 @@ use std::env;
 /// | `ORACLE_WATCH_MAX_SNAPSHOT_AGE_SECONDS` | no | `300` | Snapshot freshness threshold |
 /// | `ORACLE_WATCH_USDC_PRICE_USD` | no | `1.0` | USD value of 1 unit of counter asset |
 /// | `ORACLE_WATCH_NETWORK_PASSPHRASE` | no | testnet | Stellar network passphrase |
+/// | `ORACLE_WATCH_COUNTER_ASSET_CODE` | no | `USDC` | Counter asset code for SDEX pair queries |
+/// | `ORACLE_WATCH_COUNTER_ASSET_ISSUER` | no | testnet USDC issuer | Counter asset issuer |
 ///
 /// # Watched asset format
 ///
-/// `ORACLE_WATCH_WATCHED_ASSETS` parses as: `CODE1:ISSUER1,CODE2:ISSUER2,...`
-/// Example: `USDC:GA5ZSEJ...,XLM:native`
+/// `ORACLE_WATCH_WATCHED_ASSETS` parses as: `CODE1:ISSUER1:SAC1,CODE2:ISSUER2,...`
+/// Example: `XLM:native:CDLZFC3...,USDC:GA5ZSEJ...:CCCC...`
 #[derive(Debug, Clone)]
 pub struct Config {
     pub horizon_url: String,
@@ -50,17 +52,32 @@ pub struct Config {
     /// signing. Defaults to testnet; mainnet operators must override via
     /// `ORACLE_WATCH_NETWORK_PASSPHRASE`.
     pub network_passphrase: String,
+
+    /// Counter asset code for SDEX pair queries (e.g. "USDC").
+    /// Watched assets are polled as `watched_asset / counter_asset` pairs.
+    pub counter_asset_code: String,
+
+    /// Counter asset issuer. Use `"native"` for XLM. Defaults to the
+    /// testnet Circle USDC issuer (`GBBD47IF...`). Mainnet operators must
+    /// set `ORACLE_WATCH_COUNTER_ASSET_ISSUER` to the correct issuer.
+    pub counter_asset_issuer: String,
 }
 
 /// A single asset watched by oracle-watch.
 ///
 /// Stellar assets are identified by `(code, issuer)` pairs. The native
 /// XLM asset uses the literal issuer string `"native"` per Stellar
-/// convention.
+/// convention. `sac_contract_id` is the Stellar Asset Contract (SAC)
+/// C-address for the asset; used as the on-chain `LiquiditySnapshot.asset`
+/// Address field. When `None`, the registry writer falls back to a Symbol
+/// (simulation will reject — for unit tests only).
 #[derive(Debug, Clone)]
 pub struct WatchedAsset {
     pub code: String,
     pub issuer: String,
+    /// SAC contract C-address (e.g. `CDLZFC3...`). Set via the 3-part
+    /// `CODE:ISSUER:SAC_ADDRESS` format in `ORACLE_WATCH_WATCHED_ASSETS`.
+    pub sac_contract_id: Option<String>,
 }
 
 /// Errors that can occur while loading configuration from environment.
@@ -144,6 +161,15 @@ impl Config {
         let network_passphrase = env::var("ORACLE_WATCH_NETWORK_PASSPHRASE")
             .unwrap_or_else(|_| "Test SDF Network ; September 2015".to_string());
 
+        let counter_asset_code = env::var("ORACLE_WATCH_COUNTER_ASSET_CODE")
+            .unwrap_or_else(|_| "USDC".to_string());
+
+        // Default: testnet Circle USDC issuer. Mainnet operators must override.
+        let counter_asset_issuer = env::var("ORACLE_WATCH_COUNTER_ASSET_ISSUER")
+            .unwrap_or_else(|_| {
+                "GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5".to_string()
+            });
+
         Ok(Config {
             horizon_url,
             soroban_rpc_url,
@@ -154,6 +180,8 @@ impl Config {
             max_snapshot_age_seconds,
             usdc_price_usd,
             network_passphrase,
+            counter_asset_code,
+            counter_asset_issuer,
         })
     }
 }
@@ -171,13 +199,14 @@ fn parse_watched_assets(raw: &str) -> Result<Vec<WatchedAsset>, ConfigError> {
         if pair.is_empty() {
             continue;
         }
-        let mut parts = pair.splitn(2, ':');
+        let mut parts = pair.splitn(3, ':');
         let code = parts.next().ok_or_else(|| {
             ConfigError::InvalidWatchedAssets(format!("missing code in pair: {pair}"))
         })?;
         let issuer = parts.next().ok_or_else(|| {
             ConfigError::InvalidWatchedAssets(format!("missing issuer in pair: {pair}"))
         })?;
+        let sac_contract_id = parts.next().filter(|s| !s.is_empty()).map(str::to_string);
         if code.is_empty() || issuer.is_empty() {
             return Err(ConfigError::InvalidWatchedAssets(format!(
                 "empty code or issuer in pair: {pair}"
@@ -186,6 +215,7 @@ fn parse_watched_assets(raw: &str) -> Result<Vec<WatchedAsset>, ConfigError> {
         assets.push(WatchedAsset {
             code: code.to_string(),
             issuer: issuer.to_string(),
+            sac_contract_id,
         });
     }
 

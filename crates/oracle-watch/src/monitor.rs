@@ -442,6 +442,7 @@ mod tests {
         AggregatedSnapshot {
             asset_code: asset.to_string(),
             asset_issuer: issuer.to_string(),
+            sac_contract_id: None,
             volume_30m_usd_i128: volume_stroops,
             unique_trades_1h: trades,
             computed_at: 1_715_000_000,

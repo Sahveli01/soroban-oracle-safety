@@ -29,12 +29,12 @@ use crate::types::AggregatedSnapshot;
 use ed25519_dalek::{Signer as DalekSigner, SigningKey};
 use sha2::{Digest, Sha256};
 use stellar_xdr::curr::{
-    BytesM, ContractId, DecoratedSignature, Hash, HostFunction, Int128Parts, InvokeContractArgs,
-    InvokeHostFunctionOp, Limits, Memo, MuxedAccount, Operation, OperationBody, Preconditions,
-    ReadXdr, ScAddress, ScMap, ScMapEntry, ScSymbol, ScVal, SequenceNumber, Signature,
-    SignatureHint, SorobanTransactionData, Transaction, TransactionEnvelope, TransactionExt,
-    TransactionSignaturePayload, TransactionSignaturePayloadTaggedTransaction,
-    TransactionV1Envelope, Uint256, VecM, WriteXdr,
+    AccountId, BytesM, ContractId, DecoratedSignature, Hash, HostFunction, Int128Parts,
+    InvokeContractArgs, InvokeHostFunctionOp, Limits, Memo, MuxedAccount, Operation, OperationBody,
+    Preconditions, PublicKey, ReadXdr, ScAddress, ScMap, ScMapEntry, ScSymbol, ScVal, SequenceNumber,
+    Signature, SignatureHint, SorobanAuthorizationEntry, SorobanTransactionData, Transaction,
+    TransactionEnvelope, TransactionExt, TransactionSignaturePayload,
+    TransactionSignaturePayloadTaggedTransaction, TransactionV1Envelope, Uint256, VecM, WriteXdr,
 };
 
 /// Errors that can occur during registry writing.
@@ -51,9 +51,6 @@ pub enum WriterError {
 
     /// Asset code length is invalid (1-12 characters required).
     InvalidAssetCode(String),
-
-    /// Issuer / contract address is invalid (not a 32-byte hex string).
-    InvalidIssuer(String),
 
     /// Horizon account fetch failed (network or non-200 status).
     AccountFetch(String),
@@ -75,7 +72,6 @@ impl std::fmt::Display for WriterError {
             WriterError::Sign(s) => write!(f, "sign error: {s}"),
             WriterError::Rpc(s) => write!(f, "rpc error: {s}"),
             WriterError::InvalidAssetCode(s) => write!(f, "invalid asset code: {s}"),
-            WriterError::InvalidIssuer(s) => write!(f, "invalid issuer: {s}"),
             WriterError::AccountFetch(s) => write!(f, "account fetch error: {s}"),
             WriterError::Simulation(s) => write!(f, "simulation error: {s}"),
             WriterError::SubmissionTimeout => write!(f, "transaction submission timed out"),
@@ -104,6 +100,9 @@ pub struct TransactionResult {
 struct SimulationResult {
     transaction_data_b64: String,
     min_resource_fee: i64,
+    /// Base64-encoded SorobanAuthorizationEntry XDRs returned by simulation.
+    /// Must be attached to InvokeHostFunctionOp.auth before sending.
+    auth_entries_b64: Vec<String>,
 }
 
 /// Submits signed liquidity snapshots to the `LiquidityRegistry` contract.
@@ -179,13 +178,18 @@ impl RegistryWriter {
     ) -> Result<InvokeContractArgs, WriterError> {
         let contract_address = parse_contract_address(&self.contract_id)?;
 
-        let asset_scval = build_asset_scval(&snapshot.asset_code, &snapshot.asset_issuer)?;
-        let snapshot_scval = build_snapshot_scval(snapshot)?;
+        // Derive attester public key from the signing secret — this is the
+        // address that will be passed as the first arg to write_snapshot and
+        // must match the attester whitelisted in LiquidityRegistry.
+        let attester_pub_bytes = derive_public_key_bytes(&self.signing_key_hex)?;
+        let attester_scval = build_account_address_scval(&attester_pub_bytes)?;
+        let snapshot_scval = build_snapshot_scval(snapshot, &attester_pub_bytes)?;
 
         let function_name = ScSymbol::try_from("write_snapshot".as_bytes().to_vec())
             .map_err(|e| WriterError::Build(format!("function name: {e:?}")))?;
 
-        let args_vec: VecM<ScVal> = vec![asset_scval, snapshot_scval]
+        // write_snapshot(env, attester: Address, snapshot: LiquiditySnapshot)
+        let args_vec: VecM<ScVal> = vec![attester_scval, snapshot_scval]
             .try_into()
             .map_err(|e| WriterError::Build(format!("args vec: {e:?}")))?;
 
@@ -235,9 +239,13 @@ impl RegistryWriter {
         )
         .map_err(|e| WriterError::Simulation(format!("decode soroban data: {e:?}")))?;
 
-        // Step 4: attach resources + update fee
-        let final_envelope =
-            attach_resources(base_envelope, soroban_data, simulation.min_resource_fee)?;
+        // Step 4: attach resources + update fee + apply simulation auth entries
+        let final_envelope = attach_resources(
+            base_envelope,
+            soroban_data,
+            simulation.min_resource_fee,
+            &simulation.auth_entries_b64,
+        )?;
 
         // Step 5: compute envelope hash
         let tx = match &final_envelope {
@@ -469,9 +477,26 @@ async fn simulate_transaction(
         .and_then(|s| s.parse().ok())
         .unwrap_or(100_000);
 
+    // Extract auth entries from first invocation result (if any).
+    // Soroban simulation pre-populates these; we must include them verbatim
+    // in InvokeHostFunctionOp.auth — without them, require_auth() traps.
+    let auth_entries_b64 = result
+        .get("results")
+        .and_then(|v| v.as_array())
+        .and_then(|arr| arr.first())
+        .and_then(|r| r.get("auth"))
+        .and_then(|a| a.as_array())
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|v| v.as_str().map(|s| s.to_string()))
+                .collect()
+        })
+        .unwrap_or_default();
+
     Ok(SimulationResult {
         transaction_data_b64,
         min_resource_fee,
+        auth_entries_b64,
     })
 }
 
@@ -479,18 +504,50 @@ async fn simulate_transaction(
 // Step 4: attach resources
 // =====================================================================
 
-/// Attaches simulation-provided SorobanTransactionData to the envelope
-/// and updates the fee to include the min resource fee.
+/// Attaches simulation-provided SorobanTransactionData to the envelope,
+/// updates the fee, and wires in auth entries returned by simulation.
+///
+/// The auth entries come from `simulateTransaction.result.results[0].auth`
+/// as base64-encoded XDR `SorobanAuthorizationEntry` values. Without them,
+/// the contract's `require_auth()` call traps even when the transaction is
+/// signed by the correct key.
 fn attach_resources(
     envelope: TransactionEnvelope,
     soroban_data: SorobanTransactionData,
     min_resource_fee: i64,
+    auth_entries_b64: &[String],
 ) -> Result<TransactionEnvelope, WriterError> {
+    // Decode auth entries from simulation
+    let auth_entries: Vec<SorobanAuthorizationEntry> = auth_entries_b64
+        .iter()
+        .map(|b64| {
+            SorobanAuthorizationEntry::from_xdr_base64(b64, Limits::none())
+                .map_err(|e| WriterError::Build(format!("decode auth entry: {e:?}")))
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+
+    let auth_vec: VecM<SorobanAuthorizationEntry> = auth_entries
+        .try_into()
+        .map_err(|e| WriterError::Build(format!("auth vec: {e:?}")))?;
+
     match envelope {
         TransactionEnvelope::Tx(mut v1) => {
             let new_fee = (v1.tx.fee as i64).saturating_add(min_resource_fee);
             v1.tx.fee = new_fee.min(u32::MAX as i64) as u32;
             v1.tx.ext = TransactionExt::V1(soroban_data);
+
+            // Apply auth entries to the InvokeHostFunction operation.
+            // VecM doesn't implement DerefMut, so round-trip through Vec.
+            let mut ops: Vec<Operation> = v1.tx.operations.into();
+            if let Some(op) = ops.first_mut() {
+                if let OperationBody::InvokeHostFunction(ref mut ihf) = op.body {
+                    ihf.auth = auth_vec;
+                }
+            }
+            v1.tx.operations = ops
+                .try_into()
+                .map_err(|e| WriterError::Build(format!("ops vec: {e:?}")))?;
+
             Ok(TransactionEnvelope::Tx(v1))
         }
         _ => Err(WriterError::Build("expected Tx envelope".to_string())),
@@ -720,21 +777,71 @@ async fn poll_transaction(
 // XDR helpers (build path — unchanged from Phase 6.5)
 // =====================================================================
 
-fn parse_contract_address(hex_addr: &str) -> Result<ScAddress, WriterError> {
-    let bytes = hex::decode(hex_addr.trim())
-        .map_err(|e| WriterError::InvalidIssuer(format!("hex decode: {e}")))?;
-
-    if bytes.len() != 32 {
-        return Err(WriterError::InvalidIssuer(format!(
-            "expected 32 bytes, got {}",
-            bytes.len()
-        )));
+/// Decodes a Stellar base32 string (no padding, uppercase alphabet).
+fn base32_decode_nopad(s: &str) -> Result<Vec<u8>, String> {
+    const ALPHABET: &[u8; 32] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
+    let mut bits: u32 = 0;
+    let mut bit_count: u32 = 0;
+    let mut out = Vec::new();
+    for c in s.chars() {
+        let val = ALPHABET
+            .iter()
+            .position(|&x| x == c as u8)
+            .ok_or_else(|| format!("invalid base32 char: {c}"))? as u32;
+        bits = (bits << 5) | val;
+        bit_count += 5;
+        if bit_count >= 8 {
+            bit_count -= 8;
+            out.push(((bits >> bit_count) & 0xff) as u8);
+        }
     }
-
-    let array: [u8; 32] = bytes.try_into().expect("length checked above");
-    Ok(ScAddress::Contract(ContractId(Hash(array))))
+    Ok(out)
 }
 
+/// Decodes a Stellar C-address StrKey (56-char base32) into its 32-byte hash.
+///
+/// C-address format: version_byte(0x10) + 32_byte_hash + 2_byte_crc16 = 35 bytes
+/// encoded as 56 base32 characters. CRC not verified (malformed addresses fail
+/// at the network level; valid C-addresses from env/config are trusted here).
+fn strkey_decode_contract(c_addr: &str) -> Result<[u8; 32], WriterError> {
+    let decoded = base32_decode_nopad(c_addr)
+        .map_err(|e| WriterError::Build(format!("strkey decode: {e}")))?;
+    if decoded.len() != 35 {
+        return Err(WriterError::Build(format!(
+            "strkey wrong length: expected 35, got {}",
+            decoded.len()
+        )));
+    }
+    // Contract address version byte = 2 << 3 = 0x10
+    if decoded[0] != 0x10 {
+        return Err(WriterError::Build(format!(
+            "not a contract address (version byte=0x{:02x})",
+            decoded[0]
+        )));
+    }
+    let mut bytes = [0u8; 32];
+    bytes.copy_from_slice(&decoded[1..33]);
+    Ok(bytes)
+}
+
+fn parse_contract_address(c_addr: &str) -> Result<ScAddress, WriterError> {
+    let bytes = strkey_decode_contract(c_addr.trim())?;
+    Ok(ScAddress::Contract(ContractId(Hash(bytes))))
+}
+
+fn build_account_address_scval(pub_key_bytes: &[u8; 32]) -> Result<ScVal, WriterError> {
+    Ok(ScVal::Address(ScAddress::Account(AccountId(
+        PublicKey::PublicKeyTypeEd25519(Uint256(*pub_key_bytes)),
+    ))))
+}
+
+fn build_contract_address_scval(c_addr: &str) -> Result<ScVal, WriterError> {
+    let bytes = strkey_decode_contract(c_addr)?;
+    Ok(ScVal::Address(ScAddress::Contract(ContractId(Hash(bytes)))))
+}
+
+/// Symbol fallback for the asset field when no SAC address is available.
+/// Production callers always have a SAC; this path is unit-test only.
 fn build_asset_scval(code: &str, issuer: &str) -> Result<ScVal, WriterError> {
     if code.is_empty() || code.len() > 12 {
         return Err(WriterError::InvalidAssetCode(code.to_string()));
@@ -751,7 +858,18 @@ fn build_asset_scval(code: &str, issuer: &str) -> Result<ScVal, WriterError> {
     Ok(ScVal::Symbol(sym))
 }
 
-fn build_snapshot_scval(snapshot: &AggregatedSnapshot) -> Result<ScVal, WriterError> {
+/// Builds a `LiquiditySnapshot` ScVal map matching the on-chain struct layout.
+///
+/// Five fields in alphabetical order (Soroban ScMap key ordering requirement):
+/// asset, attester, timestamp, unique_trades_1h, volume_30m_usd.
+///
+/// `asset` is `ScVal::Address(Contract)` when `sac_contract_id` is present,
+/// falling back to `ScVal::Symbol` for unit tests that have no SAC (simulation
+/// rejects the Symbol form).
+fn build_snapshot_scval(
+    snapshot: &AggregatedSnapshot,
+    attester_pub_bytes: &[u8; 32],
+) -> Result<ScVal, WriterError> {
     let i128_val = snapshot.volume_30m_usd_i128;
     let hi = (i128_val >> 64) as i64;
     let lo = i128_val as u64;
@@ -760,10 +878,16 @@ fn build_snapshot_scval(snapshot: &AggregatedSnapshot) -> Result<ScVal, WriterEr
     let trade_count_scval = ScVal::U32(snapshot.unique_trades_1h);
     let timestamp_scval = ScVal::U64(snapshot.computed_at);
 
-    let asset_scval = build_asset_scval(&snapshot.asset_code, &snapshot.asset_issuer)?;
+    let asset_scval = match &snapshot.sac_contract_id {
+        Some(sac) => build_contract_address_scval(sac)?,
+        None => build_asset_scval(&snapshot.asset_code, &snapshot.asset_issuer)?,
+    };
+    let attester_scval = build_account_address_scval(attester_pub_bytes)?;
 
+    // Keys in alphabetical order — Soroban ScMap lexicographic requirement
     let entries = vec![
         make_map_entry("asset", asset_scval)?,
+        make_map_entry("attester", attester_scval)?,
         make_map_entry("timestamp", timestamp_scval)?,
         make_map_entry("unique_trades_1h", trade_count_scval)?,
         make_map_entry("volume_30m_usd", volume_scval)?,
@@ -799,6 +923,10 @@ mod tests {
         AggregatedSnapshot {
             asset_code: "USDC".to_string(),
             asset_issuer: "GA5ZSEJ".to_string(),
+            // XLM native SAC on Stellar testnet — valid C-address for XDR encoding tests
+            sac_contract_id: Some(
+                "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC".to_string(),
+            ),
             volume_30m_usd_i128: 230_000_000_000,
             unique_trades_1h: 25,
             computed_at: 1_715_000_000,
@@ -809,7 +937,8 @@ mod tests {
         RegistryWriter::new(
             horizon_url,
             rpc_url,
-            "0000000000000000000000000000000000000000000000000000000000000001".to_string(),
+            // Testnet LiquidityRegistry C-address (valid StrKey for parse_contract_address)
+            "CCDWMKL54WC3525IJA2UNRCRLTIROHWVVPK3MBU2YO4EMASLRB6WWGND".to_string(),
             "Test SDF Network ; September 2015".to_string(),
             "9d61b19deffd5a60ba844af492ec2cc44449c5697b326919703bac031cae7f60".to_string(),
         )
@@ -826,25 +955,23 @@ mod tests {
 
     #[test]
     fn test_parse_contract_address_valid() {
-        let hex = "0000000000000000000000000000000000000000000000000000000000000001";
-        let addr = parse_contract_address(hex).unwrap();
+        let c_addr = "CCDWMKL54WC3525IJA2UNRCRLTIROHWVVPK3MBU2YO4EMASLRB6WWGND";
+        let addr = parse_contract_address(c_addr).unwrap();
         match addr {
-            ScAddress::Contract(ContractId(Hash(bytes))) => {
-                assert_eq!(bytes[31], 1);
-                assert_eq!(bytes[0], 0);
-            }
+            ScAddress::Contract(ContractId(Hash(_bytes))) => {}
             _ => panic!("expected Contract variant"),
         }
     }
 
     #[test]
-    fn test_parse_contract_address_invalid_hex() {
-        assert!(parse_contract_address("not-hex").is_err());
+    fn test_parse_contract_address_invalid_strkey() {
+        assert!(parse_contract_address("not-a-strkey!").is_err());
     }
 
     #[test]
     fn test_parse_contract_address_wrong_length() {
-        assert!(parse_contract_address("0011").is_err());
+        // Too short to be a valid C-address (needs 56 chars)
+        assert!(parse_contract_address("CSHORT").is_err());
     }
 
     // ===== build_asset_scval =====
@@ -888,10 +1015,14 @@ mod tests {
     #[test]
     fn test_build_snapshot_scval_constructs_map() {
         let snap = sample_snapshot();
-        let scval = build_snapshot_scval(&snap).unwrap();
+        let attester_bytes = derive_public_key_bytes(
+            "9d61b19deffd5a60ba844af492ec2cc44449c5697b326919703bac031cae7f60",
+        )
+        .unwrap();
+        let scval = build_snapshot_scval(&snap, &attester_bytes).unwrap();
         match scval {
             ScVal::Map(Some(map)) => {
-                assert_eq!(map.0.len(), 4);
+                assert_eq!(map.0.len(), 5);
             }
             _ => panic!("expected Map"),
         }
@@ -901,7 +1032,11 @@ mod tests {
     fn test_build_snapshot_scval_i128_split() {
         let mut snap = sample_snapshot();
         snap.volume_30m_usd_i128 = 1;
-        let scval = build_snapshot_scval(&snap).unwrap();
+        let attester_bytes = derive_public_key_bytes(
+            "9d61b19deffd5a60ba844af492ec2cc44449c5697b326919703bac031cae7f60",
+        )
+        .unwrap();
+        let scval = build_snapshot_scval(&snap, &attester_bytes).unwrap();
         if let ScVal::Map(Some(map)) = scval {
             let volume_entry = map.0.iter().find(|e| {
                 if let ScVal::Symbol(s) = &e.key {

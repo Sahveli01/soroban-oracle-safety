@@ -1,5 +1,5 @@
 {
-  "phase": "7.6 — contracts initialized, ready for oracle-watch run (Phase 7.7)",
+  "phase": "7.7 — oracle-watch live testnet run complete",
   "network": {
     "name": "testnet",
     "passphrase": "Test SDF Network ; September 2015",
@@ -90,6 +90,37 @@
       "reflector_set_price_usdc_tx": "3cfa1ab53bda5ca53041e13d447c7f76516744c38823fe244e1035805e84a779",
       "lending_initialized": "constructor-time (Phase 7.5 deploy_tx)",
       "note": "All 3 contracts operational. oracle-watch-attester whitelisted. Mock prices set at 14-decimal Reflector precision."
+    },
+    {
+      "phase": "7.7",
+      "action": "oracle-watch live testnet run — write_snapshot submitted to LiquidityRegistry",
+      "date": "2026-05-08",
+      "watched_asset": "XLM:native:CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC",
+      "counter_asset": "USDC:GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5",
+      "first_successful_tx": "cf4ecc2805c4355cd319b61dfc09aed719229c5b2c1ad5b804bc2f2099553c36",
+      "first_successful_ledger": 2448975,
+      "sample_snapshot": {
+        "asset": "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC",
+        "attester": "GA5ZA5DMMB7QZ2IQLPT3Q76VIOG66FGIOFKARTC6V2IWBGMR46GEDTVF",
+        "timestamp": 1778252887,
+        "unique_trades_1h": 6,
+        "volume_30m_usd": "56939917715"
+      },
+      "continuous_run_tx_hashes": [
+        "1748c180e88edae8474f863e6f81561b1a9b9033473b4b51dafea576f98b2b5c",
+        "85afe490764cd15a17f71569f46fae82557ffdf72f3c3f1e5e30abbf334b92f2",
+        "2b8cc84f69175c607e0740076c1f6c121ebf94a6d4961a5c690ef76c6a324fc6",
+        "b473813e831d1566e1e1a7e31b7258af6c10349f2b7c7aa14b0543963a70a672",
+        "8f2c1d30b823127c3f7d47c6f91fdeb6f010756fde92e5b883be643ba9338117"
+      ],
+      "anomalies_detected": "InsufficientLiquidity (volume ~$5694, threshold $10000 — expected for testnet thin liquidity)",
+      "bugs_fixed": [
+        "CRC16 little-endian byte order in strkey_encode_public (G-address generation)",
+        "Horizon /trades counter asset query params missing 'counter_' prefix",
+        "Horizon LP trade price field: 'price' alias + string-encoded n/d values",
+        "Soroban auth entries from simulateTransaction.result.results[0].auth not applied to InvokeHostFunctionOp.auth"
+      ],
+      "note": "17 consecutive successful write_snapshot transactions. Anomaly detection confirmed working. Polling loop stable."
     }
   ]
 }

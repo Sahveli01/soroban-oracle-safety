@@ -66,6 +66,7 @@ pub const MIN_TRADE_USD_VALUE: f64 = 10.0;
 pub fn aggregate_trades(
     asset_code: &str,
     asset_issuer: &str,
+    sac_contract_id: Option<String>,
     trades_30m: &[TradeRecord],
     trades_1h: &[TradeRecord],
     usd_per_counter: f64,
@@ -81,6 +82,7 @@ pub fn aggregate_trades(
     AggregatedSnapshot {
         asset_code: asset_code.to_string(),
         asset_issuer: asset_issuer.to_string(),
+        sac_contract_id,
         volume_30m_usd_i128,
         unique_trades_1h,
         computed_at,
@@ -163,7 +165,7 @@ mod tests {
 
     #[test]
     fn test_aggregate_empty_inputs() {
-        let snapshot = aggregate_trades("USDC", "GA5ZSEJ", &[], &[], 1.0);
+        let snapshot = aggregate_trades("USDC", "GA5ZSEJ", None, &[], &[], 1.0);
         assert_eq!(snapshot.asset_code, "USDC");
         assert_eq!(snapshot.asset_issuer, "GA5ZSEJ");
         assert_eq!(snapshot.volume_30m_usd_i128, 0);
@@ -172,7 +174,7 @@ mod tests {
 
     #[test]
     fn test_aggregate_passes_through_asset_identification() {
-        let snapshot = aggregate_trades("XLM", "native", &[], &[], 0.12);
+        let snapshot = aggregate_trades("XLM", "native", None, &[], &[], 0.12);
         assert_eq!(snapshot.asset_code, "XLM");
         assert_eq!(snapshot.asset_issuer, "native");
     }
@@ -183,7 +185,7 @@ mod tests {
             .duration_since(UNIX_EPOCH)
             .unwrap()
             .as_secs();
-        let snapshot = aggregate_trades("USDC", "GA5ZSEJ", &[], &[], 1.0);
+        let snapshot = aggregate_trades("USDC", "GA5ZSEJ", None, &[], &[], 1.0);
         let after = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .unwrap()
@@ -346,7 +348,7 @@ mod tests {
         // Spec: thin liquidity scenario — single $5 trade in 30-min window
         // → volume below threshold, single account in 1h window
         let single_trade = vec![make_trade("1", "5.0", "GATTACKER")];
-        let snapshot = aggregate_trades("USDC", "GA5ZSEJ", &single_trade, &single_trade, 1.0);
+        let snapshot = aggregate_trades("USDC", "GA5ZSEJ", None, &single_trade, &single_trade, 1.0);
         // Volume: $5 × 10^7 = 50_000_000 stroops (below $10k Layer 2 threshold)
         assert_eq!(snapshot.volume_30m_usd_i128, 50_000_000);
         // Unique trades: 0 ($5 < $10 spam threshold → excluded)
@@ -361,7 +363,7 @@ mod tests {
             make_trade("3", "5000.0", "GACCT3"),
         ];
         let trades_1h = trades_30m.clone(); // simplified for test
-        let snapshot = aggregate_trades("USDC", "GA5ZSEJ", &trades_30m, &trades_1h, 1.0);
+        let snapshot = aggregate_trades("USDC", "GA5ZSEJ", None, &trades_30m, &trades_1h, 1.0);
 
         // Volume: (10000 + 8000 + 5000) × 10^7 = 230_000_000_000 stroops ($23k)
         assert_eq!(snapshot.volume_30m_usd_i128, 230_000_000_000);

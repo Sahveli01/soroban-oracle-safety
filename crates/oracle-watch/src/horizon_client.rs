@@ -90,9 +90,9 @@ impl HorizonClient {
         counter_issuer: &str,
         limit: u32,
     ) -> Result<Vec<TradeRecord>, HorizonError> {
-        let (base_asset_type, base_asset_qs) = asset_query_params(base_code, base_issuer);
+        let (base_asset_type, base_asset_qs) = asset_query_params(base_code, base_issuer, "base_");
         let (counter_asset_type, counter_asset_qs) =
-            asset_query_params(counter_code, counter_issuer);
+            asset_query_params(counter_code, counter_issuer, "counter_");
 
         let url = format!(
             "{base}/trades?base_asset_type={bat}{baq}&counter_asset_type={cat}{caq}&limit={limit}&order=desc",
@@ -124,12 +124,15 @@ impl HorizonClient {
     }
 }
 
-/// Builds Horizon `asset_type` + `asset_code/asset_issuer` query string.
+/// Builds Horizon `asset_type` + prefixed `code/issuer` query params.
 ///
-/// - `(code="XLM", issuer="native")` → `("native", "")`
-/// - `(code, issuer)` → `("credit_alphanum4", "&asset_code=...&asset_issuer=...")`
-///   (Horizon uses `credit_alphanum12` for codes >4 chars; we infer.)
-fn asset_query_params(code: &str, issuer: &str) -> (&'static str, String) {
+/// `prefix` is `"base_"` or `"counter_"` so the URL matches Horizon's
+/// `/trades` parameter naming (`base_asset_code`, `counter_asset_code`, etc.).
+///
+/// - `(code="XLM", issuer="native", _)` → `("native", "")`
+/// - `(code="USDC", issuer="GA5ZSEJ", "counter_")` →
+///   `("credit_alphanum4", "&counter_asset_code=USDC&counter_asset_issuer=GA5ZSEJ")`
+fn asset_query_params<'a>(code: &str, issuer: &str, prefix: &str) -> (&'static str, String) {
     if issuer == "native" {
         return ("native", String::new());
     }
@@ -140,7 +143,7 @@ fn asset_query_params(code: &str, issuer: &str) -> (&'static str, String) {
         "credit_alphanum12"
     };
 
-    let qs = format!("&asset_code={code}&asset_issuer={issuer}");
+    let qs = format!("&{prefix}asset_code={code}&{prefix}asset_issuer={issuer}");
     (asset_type, qs)
 }
 
@@ -243,23 +246,23 @@ mod tests {
 
     #[test]
     fn test_asset_query_params_native() {
-        let (asset_type, qs) = asset_query_params("XLM", "native");
+        let (asset_type, qs) = asset_query_params("XLM", "native", "base_");
         assert_eq!(asset_type, "native");
         assert_eq!(qs, "");
     }
 
     #[test]
     fn test_asset_query_params_credit_alphanum4() {
-        let (asset_type, qs) = asset_query_params("USDC", "GA5ZSEJ");
+        let (asset_type, qs) = asset_query_params("USDC", "GA5ZSEJ", "counter_");
         assert_eq!(asset_type, "credit_alphanum4");
-        assert!(qs.contains("asset_code=USDC"));
-        assert!(qs.contains("asset_issuer=GA5ZSEJ"));
+        assert!(qs.contains("counter_asset_code=USDC"));
+        assert!(qs.contains("counter_asset_issuer=GA5ZSEJ"));
     }
 
     #[test]
     fn test_asset_query_params_credit_alphanum12() {
-        let (asset_type, qs) = asset_query_params("LONGCODE12", "GA5ZSEJ");
+        let (asset_type, qs) = asset_query_params("LONGCODE12", "GA5ZSEJ", "base_");
         assert_eq!(asset_type, "credit_alphanum12");
-        assert!(qs.contains("asset_code=LONGCODE12"));
+        assert!(qs.contains("base_asset_code=LONGCODE12"));
     }
 }
