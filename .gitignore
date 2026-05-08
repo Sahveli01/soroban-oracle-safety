@@ -36,3 +36,9 @@ crates/safe-oracle/test_snapshots/prop_*.json
 # OS
 Thumbs.db
 desktop.ini
+
+# Phase 8: Web site build artifacts
+web/node_modules/
+web/.next/
+web/out/
+web/.vercel/
