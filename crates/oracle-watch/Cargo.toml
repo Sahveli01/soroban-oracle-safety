@@ -14,7 +14,8 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 ed25519-dalek = { workspace = true }
 hex = { workspace = true }
-stellar-xdr = { workspace = true }
+stellar-xdr = { workspace = true, features = ["base64"] }
+sha2 = "0.10"
 async-trait = { workspace = true }
 
 [dev-dependencies]

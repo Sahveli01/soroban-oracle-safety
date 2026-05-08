@@ -112,6 +112,17 @@ impl Signer {
         self.keypair.verifying_key().to_bytes()
     }
 
+    /// Returns the Stellar G-address string for the attester's public key.
+    ///
+    /// Encodes the ed25519 public key using the Stellar StrKey format
+    /// (StrKey version byte 6 << 3 = 0x30, RFC 4648 base32, CRC16-XMODEM
+    /// checksum) — produces a 56-character string starting with 'G'.
+    /// Used as the source account identifier for Horizon account lookup
+    /// in the Phase 7.3 real submission path.
+    pub fn public_key_address(&self) -> String {
+        strkey_encode_public(&self.keypair.verifying_key().to_bytes())
+    }
+
     /// Returns the verifying key for direct use with ed25519-dalek's
     /// `Verifier` trait (e.g., in tests).
     ///
@@ -122,6 +133,58 @@ impl Signer {
     pub fn verifying_key(&self) -> VerifyingKey {
         self.keypair.verifying_key()
     }
+}
+
+/// Encodes a 32-byte ed25519 public key as a Stellar G-address (StrKey).
+///
+/// Stellar StrKey format for G-addresses:
+///   base32(version_byte || pubkey || crc16_xmodem(version_byte || pubkey))
+/// where version_byte = 6 << 3 = 0x30.
+fn strkey_encode_public(bytes: &[u8; 32]) -> String {
+    const VERSION: u8 = 6 << 3;
+    let mut payload = [0u8; 33];
+    payload[0] = VERSION;
+    payload[1..].copy_from_slice(bytes);
+    let crc = crc16_xmodem(&payload);
+    let mut data = [0u8; 35];
+    data[..33].copy_from_slice(&payload);
+    data[33] = (crc >> 8) as u8;
+    data[34] = (crc & 0xff) as u8;
+    base32_encode_nopad(&data)
+}
+
+fn crc16_xmodem(data: &[u8]) -> u16 {
+    let mut crc: u16 = 0;
+    for &byte in data {
+        crc ^= (byte as u16) << 8;
+        for _ in 0..8 {
+            crc = if crc & 0x8000 != 0 {
+                (crc << 1) ^ 0x1021
+            } else {
+                crc << 1
+            };
+        }
+    }
+    crc
+}
+
+fn base32_encode_nopad(data: &[u8]) -> String {
+    const ALPHABET: &[u8; 32] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
+    let mut out = String::with_capacity((data.len() * 8).div_ceil(5));
+    let mut bits: u32 = 0;
+    let mut bit_count: u32 = 0;
+    for &byte in data {
+        bits = (bits << 8) | (byte as u32);
+        bit_count += 8;
+        while bit_count >= 5 {
+            bit_count -= 5;
+            out.push(ALPHABET[((bits >> bit_count) & 0x1f) as usize] as char);
+        }
+    }
+    if bit_count > 0 {
+        out.push(ALPHABET[((bits << (5 - bit_count)) & 0x1f) as usize] as char);
+    }
+    out
 }
 
 #[cfg(test)]
@@ -247,6 +310,38 @@ mod tests {
         let signer = Signer::from_hex_secret(TEST_HEX_KEY).unwrap();
         let pk = signer.public_key_bytes();
         assert_eq!(pk.len(), 32);
+    }
+
+    #[test]
+    fn test_public_key_address_format() {
+        let signer = Signer::from_hex_secret(TEST_HEX_KEY).unwrap();
+        let addr = signer.public_key_address();
+        assert_eq!(addr.len(), 56, "G-address must be 56 chars");
+        assert!(addr.starts_with('G'), "G-address must start with G");
+        assert!(
+            addr.chars()
+                .all(|c| c.is_ascii_uppercase() || ('2'..='7').contains(&c)),
+            "G-address must be base32 uppercase"
+        );
+    }
+
+    #[test]
+    fn test_public_key_address_deterministic() {
+        let signer = Signer::from_hex_secret(TEST_HEX_KEY).unwrap();
+        assert_eq!(signer.public_key_address(), signer.public_key_address());
+    }
+
+    #[test]
+    fn test_strkey_encode_public_known_vector() {
+        // RFC 8032 test vector 1: secret seed → known public → known G-address
+        // secret = 9d61b19deffd5a60ba844af492ec2cc44449c5697b326919703bac031cae7f60
+        // public = d75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a
+        let pub_bytes =
+            hex::decode("d75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a")
+                .unwrap();
+        let addr = strkey_encode_public(pub_bytes.as_slice().try_into().unwrap());
+        assert_eq!(addr.len(), 56);
+        assert!(addr.starts_with('G'));
     }
 
     // ===== Payload serialization tests =====

@@ -72,13 +72,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let horizon = HorizonClient::new(config.horizon_url.clone());
     let registry_writer = RegistryWriter::new(
+        config.horizon_url.clone(),
         config.soroban_rpc_url.clone(),
         config.registry_contract_id.clone(),
         config.network_passphrase.clone(),
         config.signing_secret_key.clone(),
     );
     eprintln!(
-        "oracle-watch registry: rpc={} contract={} network=\"{}\"",
+        "oracle-watch registry: horizon={} rpc={} contract={} network=\"{}\"",
+        registry_writer.horizon_url(),
         registry_writer.rpc_url(),
         registry_writer.contract_id(),
         registry_writer.network_passphrase()
@@ -182,13 +184,26 @@ async fn run_iteration(
             }
         }
 
-        // Snapshot write (Phase 6.5 stub — Phase 8 wires real submission)
+        // Snapshot write — Phase 7.3: real 9-step submission path
         match registry_writer.build_invoke_args(&snapshot) {
-            Ok(_args) => {
+            Ok(args) => {
                 iteration_write_attempts += 1;
-                // In Phase 6.8 we don't actually submit (no live testnet account).
-                // Phase 8 will add: registry_writer.submit_transaction_stub(envelope_xdr).
-                // For now, the build itself validates the path end-to-end.
+                let attester_address = signer.public_key_address();
+                match registry_writer
+                    .submit_transaction(args, &attester_address)
+                    .await
+                {
+                    Ok(result) => {
+                        eprintln!(
+                            "oracle-watch tx {}: ledger {}",
+                            result.tx_hash, result.ledger
+                        );
+                    }
+                    Err(e) => {
+                        iteration_write_failures += 1;
+                        eprintln!("oracle-watch submit failed for {asset_key}: {e:?}");
+                    }
+                }
             }
             Err(e) => {
                 iteration_write_failures += 1;
@@ -280,6 +295,7 @@ mod tests {
         let config = make_test_config(server.url());
         let horizon = HorizonClient::new(config.horizon_url.clone());
         let registry_writer = RegistryWriter::new(
+            config.horizon_url.clone(),
             config.soroban_rpc_url.clone(),
             config.registry_contract_id.clone(),
             config.network_passphrase.clone(),
@@ -323,6 +339,7 @@ mod tests {
         let config = make_test_config(server.url());
         let horizon = HorizonClient::new(config.horizon_url.clone());
         let registry_writer = RegistryWriter::new(
+            config.horizon_url.clone(),
             config.soroban_rpc_url.clone(),
             config.registry_contract_id.clone(),
             config.network_passphrase.clone(),
@@ -374,6 +391,7 @@ mod tests {
         let config = make_test_config(server.url());
         let horizon = HorizonClient::new(config.horizon_url.clone());
         let registry_writer = RegistryWriter::new(
+            config.horizon_url.clone(),
             config.soroban_rpc_url.clone(),
             config.registry_contract_id.clone(),
             config.network_passphrase.clone(),

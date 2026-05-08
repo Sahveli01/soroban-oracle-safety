@@ -8,55 +8,45 @@
 //! **Subprocess invocation (e.g., `stellar contract invoke`,
 //! `std::process::Command`) is forbidden** — Rust-native SDK only.
 //!
-//! # Phase 6.5 scope
+//! # Phase 7.3 scope
 //!
-//! This module implements the **transaction build mantığı** in isolation:
-//! - XDR encoding for `write_snapshot(LiquiditySnapshot)` invoke args
-//! - Stellar transaction envelope construction (build helpers)
-//! - Ed25519 signing with the attester keypair (Phase 6.5 stub form)
-//! - RPC submission interface via raw reqwest (mocked in tests)
+//! This module implements the **complete transaction submission path**:
+//! 1. Account sequence fetch (Horizon GET /accounts/{id})
+//! 2. Build base TransactionEnvelopeV1 (no Soroban resources yet)
+//! 3. simulateTransaction RPC → footprint + min resource fee
+//! 4. Attach SorobanTransactionData to envelope
+//! 5. Compute envelope hash (SHA256 of TransactionSignaturePayload XDR)
+//! 6. Sign hash with attester ed25519 key (ed25519-dalek)
+//! 7. Attach DecoratedSignature to envelope
+//! 8. sendTransaction RPC → tx hash + PENDING status
+//! 9. Poll getTransaction every 1s (max 30s) until SUCCESS or FAILED
 //!
-//! Real testnet/mainnet connectivity is **Phase 8 work**:
-//! - Account sequence number fetching from live RPC (`getAccount`)
-//! - Fee bump and retry strategies
-//! - Network passphrase variation handling
-//! - Real attester account funding and authorization workflow
-//!
-//! Phase 6.5 unit tests exercise the build path with constructed values
-//! and a mockito HTTP server standing in for Soroban RPC.
-//!
-//! # Honest design note
-//!
-//! This module signs Stellar transactions with the **transaction key**
-//! (the keypair authorized as an attester). The off-chain ed25519
-//! payload signature from `signer.rs` is **not used here** — Stellar's
-//! `require_auth_for_args` handles attester verification on-chain via
-//! the transaction signature itself. See `signer.rs` doc-comment for
-//! the full design rationale.
+//! Real testnet/mainnet end-to-end is Phase 7.7 work (requires funded
+//! attester account). Phase 7.3 builds the mechanical plumbing; every
+//! step is exercised by mockito-based unit tests.
 
 use crate::types::AggregatedSnapshot;
+use ed25519_dalek::{Signer as DalekSigner, SigningKey};
+use sha2::{Digest, Sha256};
 use stellar_xdr::curr::{
-    ContractId, Hash, Int128Parts, InvokeContractArgs, ScAddress, ScMap, ScMapEntry, ScSymbol,
-    ScVal, VecM,
+    BytesM, ContractId, DecoratedSignature, Hash, HostFunction, Int128Parts, InvokeContractArgs,
+    InvokeHostFunctionOp, Limits, Memo, MuxedAccount, Operation, OperationBody, Preconditions,
+    ReadXdr, ScAddress, ScMap, ScMapEntry, ScSymbol, ScVal, SequenceNumber, Signature,
+    SignatureHint, SorobanTransactionData, Transaction, TransactionEnvelope, TransactionExt,
+    TransactionSignaturePayload, TransactionSignaturePayloadTaggedTransaction,
+    TransactionV1Envelope, Uint256, VecM, WriteXdr,
 };
 
 /// Errors that can occur during registry writing.
-///
-/// `Sign` and `Rpc` variants are reserved for Phase 8 (transaction-envelope
-/// signing path and live RPC submission) — `submit_transaction_stub` already
-/// constructs `Rpc` from network errors, but the stub is unwired in the main
-/// loop. The dead-code allow on the variants documents that boundary.
 #[derive(Debug)]
 pub enum WriterError {
-    /// XDR encoding failed (struct construction or serialization).
-    Xdr(String),
+    /// XDR / envelope construction failed.
+    Build(String),
 
     /// Transaction signing failed (ed25519 error).
-    #[allow(dead_code)]
     Sign(String),
 
     /// RPC client error (network, parsing, server response).
-    #[allow(dead_code)]
     Rpc(String),
 
     /// Asset code length is invalid (1-12 characters required).
@@ -64,35 +54,67 @@ pub enum WriterError {
 
     /// Issuer / contract address is invalid (not a 32-byte hex string).
     InvalidIssuer(String),
+
+    /// Horizon account fetch failed (network or non-200 status).
+    AccountFetch(String),
+
+    /// simulateTransaction RPC failed or returned a simulation error.
+    Simulation(String),
+
+    /// getTransaction polling exceeded the maximum wait duration.
+    SubmissionTimeout,
+
+    /// Transaction was included in a ledger but execution failed.
+    SubmissionFailed { tx_hash: String, error: String },
 }
 
 impl std::fmt::Display for WriterError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            WriterError::Xdr(s) => write!(f, "xdr error: {s}"),
+            WriterError::Build(s) => write!(f, "build error: {s}"),
             WriterError::Sign(s) => write!(f, "sign error: {s}"),
             WriterError::Rpc(s) => write!(f, "rpc error: {s}"),
             WriterError::InvalidAssetCode(s) => write!(f, "invalid asset code: {s}"),
             WriterError::InvalidIssuer(s) => write!(f, "invalid issuer: {s}"),
+            WriterError::AccountFetch(s) => write!(f, "account fetch error: {s}"),
+            WriterError::Simulation(s) => write!(f, "simulation error: {s}"),
+            WriterError::SubmissionTimeout => write!(f, "transaction submission timed out"),
+            WriterError::SubmissionFailed { tx_hash, error } => {
+                write!(f, "transaction {tx_hash} failed: {error}")
+            }
         }
     }
 }
 
 impl std::error::Error for WriterError {}
 
+/// Result of a successful transaction submission and confirmation.
+#[derive(Debug, Clone)]
+pub struct TransactionResult {
+    pub tx_hash: String,
+    #[allow(dead_code)]
+    pub successful: bool,
+    pub ledger: u64,
+    #[allow(dead_code)]
+    pub diagnostic_events: Vec<String>,
+}
+
+/// Intermediate result from simulateTransaction RPC.
+#[derive(Debug, Clone)]
+struct SimulationResult {
+    transaction_data_b64: String,
+    min_resource_fee: i64,
+}
+
 /// Submits signed liquidity snapshots to the `LiquidityRegistry` contract.
 #[derive(Debug)]
 pub struct RegistryWriter {
+    horizon_url: String,
     rpc_url: String,
     contract_id: String,
     network_passphrase: String,
-    /// Stellar transaction-signing keypair (NOT the off-chain payload signer).
-    /// This is the attester's Stellar account, authorized in
-    /// `LiquidityRegistry::initialize`. Held for Phase 8 transaction-envelope
-    /// signing — Phase 6.5/6.8 only build the invoke args; full envelope
-    /// signing requires sequence-number fetch + fee tuning that are deferred.
-    #[allow(dead_code)]
     signing_key_hex: String,
+    http: reqwest::Client,
 }
 
 impl RegistryWriter {
@@ -100,27 +122,36 @@ impl RegistryWriter {
     ///
     /// # Parameters
     ///
+    /// - `horizon_url`: Horizon REST endpoint for account sequence fetch
+    ///   (e.g., `https://horizon-testnet.stellar.org`)
     /// - `rpc_url`: Soroban RPC endpoint (e.g.,
     ///   `https://soroban-testnet.stellar.org`)
     /// - `contract_id`: hex-encoded LiquidityRegistry contract address
     ///   (32-byte hash)
     /// - `network_passphrase`: e.g., `"Test SDF Network ; September 2015"`
-    ///   for testnet, `"Public Global Stellar Network ; September 2015"`
-    ///   for mainnet
+    ///   for testnet
     /// - `signing_key_hex`: hex-encoded 32-byte ed25519 secret key for
     ///   the attester's Stellar account
     pub fn new(
+        horizon_url: String,
         rpc_url: String,
         contract_id: String,
         network_passphrase: String,
         signing_key_hex: String,
     ) -> Self {
         Self {
+            horizon_url,
             rpc_url,
             contract_id,
             network_passphrase,
             signing_key_hex,
+            http: reqwest::Client::new(),
         }
+    }
+
+    /// Returns the configured Horizon URL (read-only accessor).
+    pub fn horizon_url(&self) -> &str {
+        &self.horizon_url
     }
 
     /// Returns the configured RPC URL (read-only accessor for testing).
@@ -152,11 +183,11 @@ impl RegistryWriter {
         let snapshot_scval = build_snapshot_scval(snapshot)?;
 
         let function_name = ScSymbol::try_from("write_snapshot".as_bytes().to_vec())
-            .map_err(|e| WriterError::Xdr(format!("function name: {e:?}")))?;
+            .map_err(|e| WriterError::Build(format!("function name: {e:?}")))?;
 
         let args_vec: VecM<ScVal> = vec![asset_scval, snapshot_scval]
             .try_into()
-            .map_err(|e| WriterError::Xdr(format!("args vec: {e:?}")))?;
+            .map_err(|e| WriterError::Build(format!("args vec: {e:?}")))?;
 
         Ok(InvokeContractArgs {
             contract_address,
@@ -165,21 +196,74 @@ impl RegistryWriter {
         })
     }
 
-    /// Submits a serialized transaction envelope to Soroban RPC via JSON-RPC.
+    /// Submits a transaction to Soroban RPC via the 9-step Phase 7.3 flow.
     ///
-    /// **Phase 6.5 stub:** sends a JSON-RPC `sendTransaction` call to
-    /// `rpc_url`. The actual submission flow on a live network requires:
-    /// 1. Fetching the source account's current sequence number via
-    ///    `getAccount`
-    /// 2. Building the full transaction with proper fee/timeBounds
-    /// 3. Signing with the attester keypair
-    /// 4. Submitting via `sendTransaction` (this method)
+    /// Steps:
+    ///   1. Account sequence fetch (Horizon GET /accounts/{source_account_id})
+    ///   2. Build base TransactionEnvelopeV1
+    ///   3. simulateTransaction → footprint + min resource fee
+    ///   4. Attach SorobanTransactionData to envelope
+    ///   5. Compute envelope hash (SHA256 of TransactionSignaturePayload XDR)
+    ///   6. Sign hash with attester ed25519 key
+    ///   7. Attach DecoratedSignature to envelope
+    ///   8. sendTransaction → tx hash (status: PENDING)
+    ///   9. Poll getTransaction every 1s (max 30s) until SUCCESS or FAILED
+    pub async fn submit_transaction(
+        &self,
+        invoke_args: InvokeContractArgs,
+        source_account_id: &str,
+    ) -> Result<TransactionResult, WriterError> {
+        // Step 1: account sequence
+        let current_seq =
+            fetch_account_sequence(&self.http, &self.horizon_url, source_account_id).await?;
+        let next_seq = current_seq + 1;
+
+        // Derive source public key from signing key
+        let source_pub_bytes = derive_public_key_bytes(&self.signing_key_hex)?;
+
+        // Step 2: build base envelope (100 stroops inclusion fee, no soroban data yet)
+        let base_envelope = build_base_envelope(invoke_args, source_pub_bytes, next_seq, 100u32)?;
+        let base_xdr_b64 = envelope_to_b64(&base_envelope)?;
+
+        // Step 3: simulate
+        let simulation = simulate_transaction(&self.http, &self.rpc_url, &base_xdr_b64).await?;
+
+        // Decode SorobanTransactionData from simulation result
+        let soroban_data = SorobanTransactionData::from_xdr_base64(
+            &simulation.transaction_data_b64,
+            Limits::none(),
+        )
+        .map_err(|e| WriterError::Simulation(format!("decode soroban data: {e:?}")))?;
+
+        // Step 4: attach resources + update fee
+        let final_envelope =
+            attach_resources(base_envelope, soroban_data, simulation.min_resource_fee)?;
+
+        // Step 5: compute envelope hash
+        let tx = match &final_envelope {
+            TransactionEnvelope::Tx(v1) => &v1.tx,
+            _ => return Err(WriterError::Build("expected Tx envelope".to_string())),
+        };
+        let hash = compute_envelope_hash(tx, &self.network_passphrase)?;
+
+        // Step 6: sign hash
+        let signature = sign_envelope_hash(&hash, &self.signing_key_hex)?;
+
+        // Step 7: attach signature
+        let signed_envelope = attach_signature(final_envelope, signature)?;
+        let signed_xdr_b64 = envelope_to_b64(&signed_envelope)?;
+
+        // Step 8: send
+        let tx_hash = send_transaction(&self.http, &self.rpc_url, &signed_xdr_b64).await?;
+
+        // Step 9: poll (max 30s)
+        poll_transaction(&self.http, &self.rpc_url, &tx_hash, 30).await
+    }
+
+    /// Legacy stub: submits a pre-built envelope XDR to Soroban RPC.
     ///
-    /// All four are implemented at a structural level here. Real-network
-    /// integration is Phase 8 — testnet account funding, sequence
-    /// management, and fee tuning are out of scope for the SCF Build
-    /// submission. Phase 6.8 main loop calls `build_invoke_args` only;
-    /// this method is exercised by unit tests until Phase 8 wiring.
+    /// Retained for backward compatibility with Phase 6.5 tests. The real
+    /// submission path is `submit_transaction` (Phase 7.3).
     #[allow(dead_code)]
     pub async fn submit_transaction_stub(
         &self,
@@ -192,8 +276,8 @@ impl RegistryWriter {
             "params": { "transaction": envelope_xdr }
         });
 
-        let client = reqwest::Client::new();
-        let response = client
+        let response = self
+            .http
             .post(&self.rpc_url)
             .json(&body)
             .send()
@@ -215,10 +299,427 @@ impl RegistryWriter {
     }
 }
 
-/// Parses a hex-encoded contract address into `ScAddress::Contract`.
+// =====================================================================
+// Step 1: account sequence fetch
+// =====================================================================
+
+/// Fetches the current sequence number for an account from Horizon.
 ///
-/// LiquidityRegistry contract IDs are 32-byte hex strings (deployed
-/// contract addresses from `stellar contract deploy`).
+/// Stellar transactions require the source account's current sequence + 1
+/// as the transaction sequence. Horizon returns it as a decimal string.
+async fn fetch_account_sequence(
+    http: &reqwest::Client,
+    horizon_url: &str,
+    account_id: &str,
+) -> Result<i64, WriterError> {
+    let url = format!("{horizon_url}/accounts/{account_id}");
+
+    let response = http
+        .get(&url)
+        .send()
+        .await
+        .map_err(|e| WriterError::AccountFetch(format!("network: {e}")))?;
+
+    let status = response.status();
+    if !status.is_success() {
+        let body = response.text().await.unwrap_or_default();
+        return Err(WriterError::AccountFetch(format!(
+            "status {status}: {body}"
+        )));
+    }
+
+    let json: serde_json::Value = response
+        .json()
+        .await
+        .map_err(|e| WriterError::AccountFetch(format!("parse: {e}")))?;
+
+    let seq_str = json
+        .get("sequence")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| WriterError::AccountFetch("missing sequence field".to_string()))?;
+
+    seq_str
+        .parse::<i64>()
+        .map_err(|e| WriterError::AccountFetch(format!("invalid sequence: {e}")))
+}
+
+// =====================================================================
+// Step 2: build base envelope
+// =====================================================================
+
+fn derive_public_key_bytes(signing_key_hex: &str) -> Result<[u8; 32], WriterError> {
+    let secret =
+        hex::decode(signing_key_hex).map_err(|e| WriterError::Sign(format!("hex: {e}")))?;
+    let secret_array: [u8; 32] = secret
+        .try_into()
+        .map_err(|_| WriterError::Sign("expected 32-byte secret".to_string()))?;
+    let signing_key = SigningKey::from_bytes(&secret_array);
+    Ok(signing_key.verifying_key().to_bytes())
+}
+
+/// Builds a base TransactionEnvelope with the InvokeHostFunction operation.
+///
+/// This is the pre-simulation envelope: it has no SorobanTransactionData
+/// and only the minimum base fee (100 stroops). After simulation the
+/// caller must call `attach_resources` to add the Soroban resource data
+/// and update the fee before signing.
+fn build_base_envelope(
+    invoke_args: InvokeContractArgs,
+    source_pub_bytes: [u8; 32],
+    next_seq: i64,
+    base_fee: u32,
+) -> Result<TransactionEnvelope, WriterError> {
+    let source_account = MuxedAccount::Ed25519(Uint256(source_pub_bytes));
+
+    let host_fn = HostFunction::InvokeContract(invoke_args);
+    let invoke_op = InvokeHostFunctionOp {
+        host_function: host_fn,
+        auth: VecM::default(),
+    };
+
+    let operation = Operation {
+        source_account: None,
+        body: OperationBody::InvokeHostFunction(invoke_op),
+    };
+
+    let ops: VecM<Operation, 100> = vec![operation]
+        .try_into()
+        .map_err(|e| WriterError::Build(format!("ops vec: {e:?}")))?;
+
+    let tx = Transaction {
+        source_account,
+        fee: base_fee,
+        seq_num: SequenceNumber(next_seq),
+        cond: Preconditions::None,
+        memo: Memo::None,
+        operations: ops,
+        ext: TransactionExt::V0,
+    };
+
+    Ok(TransactionEnvelope::Tx(TransactionV1Envelope {
+        tx,
+        signatures: VecM::default(),
+    }))
+}
+
+fn envelope_to_b64(envelope: &TransactionEnvelope) -> Result<String, WriterError> {
+    envelope
+        .to_xdr_base64(Limits::none())
+        .map_err(|e| WriterError::Build(format!("envelope to base64: {e:?}")))
+}
+
+// =====================================================================
+// Step 3: simulate
+// =====================================================================
+
+async fn simulate_transaction(
+    http: &reqwest::Client,
+    rpc_url: &str,
+    envelope_xdr_b64: &str,
+) -> Result<SimulationResult, WriterError> {
+    let body = serde_json::json!({
+        "jsonrpc": "2.0",
+        "id": 1,
+        "method": "simulateTransaction",
+        "params": { "transaction": envelope_xdr_b64 }
+    });
+
+    let response = http
+        .post(rpc_url)
+        .json(&body)
+        .send()
+        .await
+        .map_err(|e| WriterError::Simulation(format!("network: {e}")))?;
+
+    let status = response.status();
+    if !status.is_success() {
+        let body_text = response.text().await.unwrap_or_default();
+        return Err(WriterError::Simulation(format!(
+            "status {status}: {body_text}"
+        )));
+    }
+
+    let json: serde_json::Value = response
+        .json()
+        .await
+        .map_err(|e| WriterError::Simulation(format!("parse: {e}")))?;
+
+    if let Some(err) = json.get("error") {
+        return Err(WriterError::Simulation(format!("rpc error: {err}")));
+    }
+
+    let result = json
+        .get("result")
+        .ok_or_else(|| WriterError::Simulation("missing result".to_string()))?;
+
+    // Simulation-level error (distinct from JSON-RPC transport error)
+    if let Some(sim_err) = result.get("error") {
+        return Err(WriterError::Simulation(format!("simulation: {sim_err}")));
+    }
+
+    let transaction_data_b64 = result
+        .get("transactionData")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| WriterError::Simulation("missing transactionData".to_string()))?
+        .to_string();
+
+    let min_resource_fee: i64 = result
+        .get("minResourceFee")
+        .and_then(|v| v.as_str())
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(100_000);
+
+    Ok(SimulationResult {
+        transaction_data_b64,
+        min_resource_fee,
+    })
+}
+
+// =====================================================================
+// Step 4: attach resources
+// =====================================================================
+
+/// Attaches simulation-provided SorobanTransactionData to the envelope
+/// and updates the fee to include the min resource fee.
+fn attach_resources(
+    envelope: TransactionEnvelope,
+    soroban_data: SorobanTransactionData,
+    min_resource_fee: i64,
+) -> Result<TransactionEnvelope, WriterError> {
+    match envelope {
+        TransactionEnvelope::Tx(mut v1) => {
+            let new_fee = (v1.tx.fee as i64).saturating_add(min_resource_fee);
+            v1.tx.fee = new_fee.min(u32::MAX as i64) as u32;
+            v1.tx.ext = TransactionExt::V1(soroban_data);
+            Ok(TransactionEnvelope::Tx(v1))
+        }
+        _ => Err(WriterError::Build("expected Tx envelope".to_string())),
+    }
+}
+
+// =====================================================================
+// Step 5: compute envelope hash
+// =====================================================================
+
+/// Computes the SHA256 hash of the TransactionSignaturePayload XDR.
+///
+/// Stellar transaction signing hash:
+///   SHA256(TransactionSignaturePayload { network_id, tagged_transaction })
+/// where network_id = SHA256(network_passphrase) and tagged_transaction
+/// wraps the inner Transaction (not the full envelope).
+fn compute_envelope_hash(
+    tx: &Transaction,
+    network_passphrase: &str,
+) -> Result<[u8; 32], WriterError> {
+    let network_id = Hash(Sha256::digest(network_passphrase.as_bytes()).into());
+
+    let payload = TransactionSignaturePayload {
+        network_id,
+        tagged_transaction: TransactionSignaturePayloadTaggedTransaction::Tx(tx.clone()),
+    };
+
+    let xdr_bytes = payload
+        .to_xdr(Limits::none())
+        .map_err(|e| WriterError::Build(format!("hash xdr: {e:?}")))?;
+
+    Ok(Sha256::digest(&xdr_bytes).into())
+}
+
+// =====================================================================
+// Step 6: sign hash
+// =====================================================================
+
+/// Signs the envelope hash with the attester ed25519 key.
+///
+/// Returns a DecoratedSignature with:
+///   hint = last 4 bytes of the public key
+///   signature = ed25519 signature over the 32-byte hash
+fn sign_envelope_hash(
+    hash: &[u8; 32],
+    signing_key_hex: &str,
+) -> Result<DecoratedSignature, WriterError> {
+    let secret_bytes =
+        hex::decode(signing_key_hex).map_err(|e| WriterError::Sign(format!("hex: {e}")))?;
+
+    let secret_array: [u8; 32] = secret_bytes
+        .try_into()
+        .map_err(|_| WriterError::Sign("expected 32-byte secret".to_string()))?;
+
+    let signing_key = SigningKey::from_bytes(&secret_array);
+    let pub_bytes = signing_key.verifying_key().to_bytes();
+
+    let signature = signing_key.sign(hash);
+
+    let hint = SignatureHint([pub_bytes[28], pub_bytes[29], pub_bytes[30], pub_bytes[31]]);
+
+    let sig_arr: [u8; 64] = signature.to_bytes();
+    let sig_bytesm: BytesM<64> = sig_arr
+        .try_into()
+        .expect("64-byte signature always fits BytesM<64>");
+
+    Ok(DecoratedSignature {
+        hint,
+        signature: Signature(sig_bytesm),
+    })
+}
+
+// =====================================================================
+// Step 7: attach signature
+// =====================================================================
+
+fn attach_signature(
+    envelope: TransactionEnvelope,
+    sig: DecoratedSignature,
+) -> Result<TransactionEnvelope, WriterError> {
+    match envelope {
+        TransactionEnvelope::Tx(mut v1) => {
+            let mut sigs: Vec<DecoratedSignature> = v1.signatures.into();
+            sigs.push(sig);
+            v1.signatures = sigs
+                .try_into()
+                .map_err(|_| WriterError::Sign("too many signatures".to_string()))?;
+            Ok(TransactionEnvelope::Tx(v1))
+        }
+        _ => Err(WriterError::Build("expected Tx envelope".to_string())),
+    }
+}
+
+// =====================================================================
+// Step 8: send transaction
+// =====================================================================
+
+async fn send_transaction(
+    http: &reqwest::Client,
+    rpc_url: &str,
+    signed_envelope_xdr_b64: &str,
+) -> Result<String, WriterError> {
+    let body = serde_json::json!({
+        "jsonrpc": "2.0",
+        "id": 1,
+        "method": "sendTransaction",
+        "params": { "transaction": signed_envelope_xdr_b64 }
+    });
+
+    let response = http
+        .post(rpc_url)
+        .json(&body)
+        .send()
+        .await
+        .map_err(|e| WriterError::Rpc(format!("send network: {e}")))?;
+
+    let json: serde_json::Value = response
+        .json()
+        .await
+        .map_err(|e| WriterError::Rpc(format!("send parse: {e}")))?;
+
+    if let Some(error) = json.get("error") {
+        return Err(WriterError::Rpc(format!("send: {error}")));
+    }
+
+    let result = json
+        .get("result")
+        .ok_or_else(|| WriterError::Rpc("send: missing result".to_string()))?;
+
+    let status = result
+        .get("status")
+        .and_then(|v| v.as_str())
+        .unwrap_or("UNKNOWN");
+
+    if status != "PENDING" {
+        let error_result = result
+            .get("errorResult")
+            .map(|v| v.to_string())
+            .unwrap_or_default();
+        return Err(WriterError::Rpc(format!(
+            "send status {status}: {error_result}"
+        )));
+    }
+
+    result
+        .get("hash")
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string())
+        .ok_or_else(|| WriterError::Rpc("send: missing hash".to_string()))
+}
+
+// =====================================================================
+// Step 9: poll for confirmation
+// =====================================================================
+
+async fn poll_transaction(
+    http: &reqwest::Client,
+    rpc_url: &str,
+    tx_hash: &str,
+    max_wait_seconds: u64,
+) -> Result<TransactionResult, WriterError> {
+    let start = std::time::Instant::now();
+    let max_duration = std::time::Duration::from_secs(max_wait_seconds);
+    let poll_interval = std::time::Duration::from_secs(1);
+
+    loop {
+        if start.elapsed() >= max_duration {
+            return Err(WriterError::SubmissionTimeout);
+        }
+
+        tokio::time::sleep(poll_interval).await;
+
+        let body = serde_json::json!({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "getTransaction",
+            "params": { "hash": tx_hash }
+        });
+
+        let response = match http.post(rpc_url).json(&body).send().await {
+            Ok(r) => r,
+            Err(_) => continue,
+        };
+
+        let json: serde_json::Value = match response.json().await {
+            Ok(j) => j,
+            Err(_) => continue,
+        };
+
+        let result = match json.get("result") {
+            Some(r) => r,
+            None => continue,
+        };
+
+        let status = result
+            .get("status")
+            .and_then(|v| v.as_str())
+            .unwrap_or("UNKNOWN");
+
+        match status {
+            "NOT_FOUND" => continue,
+            "SUCCESS" => {
+                let ledger = result.get("ledger").and_then(|v| v.as_u64()).unwrap_or(0);
+                return Ok(TransactionResult {
+                    tx_hash: tx_hash.to_string(),
+                    successful: true,
+                    ledger,
+                    diagnostic_events: Vec::new(),
+                });
+            }
+            "FAILED" => {
+                let error = result
+                    .get("resultXdr")
+                    .map(|v| v.to_string())
+                    .unwrap_or_default();
+                return Err(WriterError::SubmissionFailed {
+                    tx_hash: tx_hash.to_string(),
+                    error,
+                });
+            }
+            _ => continue,
+        }
+    }
+}
+
+// =====================================================================
+// XDR helpers (build path — unchanged from Phase 6.5)
+// =====================================================================
+
 fn parse_contract_address(hex_addr: &str) -> Result<ScAddress, WriterError> {
     let bytes = hex::decode(hex_addr.trim())
         .map_err(|e| WriterError::InvalidIssuer(format!("hex decode: {e}")))?;
@@ -234,16 +735,6 @@ fn parse_contract_address(hex_addr: &str) -> Result<ScAddress, WriterError> {
     Ok(ScAddress::Contract(ContractId(Hash(array))))
 }
 
-/// Builds an asset ScVal from code and issuer.
-///
-/// - `("XLM", "native")` → `ScVal::Symbol("Native")`
-/// - Otherwise: `ScVal::Symbol(code)`
-///
-/// The exact ScVal shape that `LiquidityRegistry::write_snapshot` expects
-/// for the `Asset` parameter is the contract's enum representation. For
-/// Phase 6.5, we emit a Symbol-tagged form trusting the contract's
-/// `Asset::Stellar { code, issuer }` / `Asset::Other(symbol)` enum
-/// will accept this. Phase 8 may refine to precise enum-discriminant XDR.
 fn build_asset_scval(code: &str, issuer: &str) -> Result<ScVal, WriterError> {
     if code.is_empty() || code.len() > 12 {
         return Err(WriterError::InvalidAssetCode(code.to_string()));
@@ -251,32 +742,15 @@ fn build_asset_scval(code: &str, issuer: &str) -> Result<ScVal, WriterError> {
 
     if issuer == "native" {
         let sym = ScSymbol::try_from("Native".as_bytes().to_vec())
-            .map_err(|e| WriterError::Xdr(format!("native symbol: {e:?}")))?;
+            .map_err(|e| WriterError::Build(format!("native symbol: {e:?}")))?;
         return Ok(ScVal::Symbol(sym));
     }
 
     let sym = ScSymbol::try_from(code.as_bytes().to_vec())
-        .map_err(|e| WriterError::Xdr(format!("asset symbol: {e:?}")))?;
+        .map_err(|e| WriterError::Build(format!("asset symbol: {e:?}")))?;
     Ok(ScVal::Symbol(sym))
 }
 
-/// Builds the LiquiditySnapshot ScVal struct.
-///
-/// Spec shape (from Phase 3 `LiquidityRegistry`):
-/// ```ignore
-/// struct LiquiditySnapshot {
-///     asset: Asset,
-///     volume_30m_usd: i128,
-///     unique_trades_1h: u32,
-///     timestamp: u64,
-///     attester: Address,
-/// }
-/// ```
-///
-/// We construct an `ScVal::Map` with 4 fields here (the `attester` field
-/// is filled in by the contract's `require_auth_for_args` flow — the
-/// caller is implicitly the attester). Phase 8 may extend with explicit
-/// attester encoding if the contract evolves.
 fn build_snapshot_scval(snapshot: &AggregatedSnapshot) -> Result<ScVal, WriterError> {
     let i128_val = snapshot.volume_30m_usd_i128;
     let hi = (i128_val >> 64) as i64;
@@ -297,19 +771,23 @@ fn build_snapshot_scval(snapshot: &AggregatedSnapshot) -> Result<ScVal, WriterEr
 
     let map_inner: VecM<ScMapEntry> = entries
         .try_into()
-        .map_err(|e| WriterError::Xdr(format!("map: {e:?}")))?;
+        .map_err(|e| WriterError::Build(format!("map: {e:?}")))?;
 
     Ok(ScVal::Map(Some(ScMap(map_inner))))
 }
 
 fn make_map_entry(key: &str, val: ScVal) -> Result<ScMapEntry, WriterError> {
     let key_sym = ScSymbol::try_from(key.as_bytes().to_vec())
-        .map_err(|e| WriterError::Xdr(format!("key {key}: {e:?}")))?;
+        .map_err(|e| WriterError::Build(format!("key {key}: {e:?}")))?;
     Ok(ScMapEntry {
         key: ScVal::Symbol(key_sym),
         val,
     })
 }
+
+// =====================================================================
+// Tests
+// =====================================================================
 
 #[cfg(test)]
 mod tests {
@@ -327,12 +805,20 @@ mod tests {
         }
     }
 
-    fn sample_writer() -> RegistryWriter {
+    fn sample_writer_with_urls(horizon_url: String, rpc_url: String) -> RegistryWriter {
         RegistryWriter::new(
-            "https://example.test".to_string(),
+            horizon_url,
+            rpc_url,
             "0000000000000000000000000000000000000000000000000000000000000001".to_string(),
             "Test SDF Network ; September 2015".to_string(),
             "9d61b19deffd5a60ba844af492ec2cc44449c5697b326919703bac031cae7f60".to_string(),
+        )
+    }
+
+    fn sample_writer() -> RegistryWriter {
+        sample_writer_with_urls(
+            "https://example.test".to_string(),
+            "https://example.test".to_string(),
         )
     }
 
@@ -455,7 +941,7 @@ mod tests {
         assert_eq!(args.args.len(), 2);
     }
 
-    // ===== submit_transaction_stub =====
+    // ===== submit_transaction_stub (Phase 6.5 backward compat) =====
 
     #[tokio::test]
     async fn test_submit_transaction_success() {
@@ -467,13 +953,7 @@ mod tests {
             .create_async()
             .await;
 
-        let writer = RegistryWriter::new(
-            server.url(),
-            "0000000000000000000000000000000000000000000000000000000000000001".to_string(),
-            "Test SDF Network ; September 2015".to_string(),
-            "9d61b19deffd5a60ba844af492ec2cc44449c5697b326919703bac031cae7f60".to_string(),
-        );
-
+        let writer = sample_writer_with_urls(server.url(), server.url());
         let result = writer
             .submit_transaction_stub("AAAAAg...".to_string())
             .await;
@@ -492,27 +972,335 @@ mod tests {
             .create_async()
             .await;
 
-        let writer = RegistryWriter::new(
-            server.url(),
-            "0000000000000000000000000000000000000000000000000000000000000001".to_string(),
-            "Test SDF Network ; September 2015".to_string(),
-            "9d61b19deffd5a60ba844af492ec2cc44449c5697b326919703bac031cae7f60".to_string(),
-        );
-
+        let writer = sample_writer_with_urls(server.url(), server.url());
         let result = writer
             .submit_transaction_stub("AAAAAg...".to_string())
             .await;
         assert!(matches!(result, Err(WriterError::Rpc(_))));
     }
 
+    // ===== fetch_account_sequence (Step 1) =====
+
+    #[tokio::test]
+    async fn test_fetch_account_sequence_success() {
+        let mut server = Server::new_async().await;
+        let mock = server
+            .mock(
+                "GET",
+                "/accounts/GAEFVT3LBRMLN5UN6WPI2RPFQTMXQRF3JMTWRJEI4CEGBR2GYSMRGCFR",
+            )
+            .with_status(200)
+            .with_body(
+                r#"{
+                    "id": "GAEFVT3LBRMLN5UN6WPI2RPFQTMXQRF3JMTWRJEI4CEGBR2GYSMRGCFR",
+                    "sequence": "12345678901"
+                }"#,
+            )
+            .create_async()
+            .await;
+
+        let client = reqwest::Client::new();
+        let seq = fetch_account_sequence(
+            &client,
+            &server.url(),
+            "GAEFVT3LBRMLN5UN6WPI2RPFQTMXQRF3JMTWRJEI4CEGBR2GYSMRGCFR",
+        )
+        .await
+        .unwrap();
+
+        mock.assert_async().await;
+        assert_eq!(seq, 12_345_678_901);
+    }
+
+    #[tokio::test]
+    async fn test_fetch_account_sequence_404_returns_error() {
+        let mut server = Server::new_async().await;
+        let _mock = server
+            .mock("GET", mockito::Matcher::Regex(r"/accounts/.*".to_string()))
+            .with_status(404)
+            .with_body(r#"{"status":404,"detail":"Account not found"}"#)
+            .create_async()
+            .await;
+
+        let client = reqwest::Client::new();
+        let result = fetch_account_sequence(&client, &server.url(), "GBADADDRESS").await;
+
+        match result {
+            Err(WriterError::AccountFetch(msg)) => assert!(msg.contains("404")),
+            other => panic!("expected AccountFetch error, got {other:?}"),
+        }
+    }
+
+    // ===== simulate_transaction (Step 3) =====
+
+    #[tokio::test]
+    async fn test_simulate_transaction_success() {
+        let mut server = Server::new_async().await;
+        let mock = server
+            .mock("POST", "/")
+            .match_body(mockito::Matcher::PartialJson(serde_json::json!({
+                "method": "simulateTransaction"
+            })))
+            .with_status(200)
+            .with_body(
+                r#"{
+                    "jsonrpc": "2.0",
+                    "id": 1,
+                    "result": {
+                        "transactionData": "AAAAAA==",
+                        "minResourceFee": "150000"
+                    }
+                }"#,
+            )
+            .create_async()
+            .await;
+
+        let client = reqwest::Client::new();
+        let result = simulate_transaction(&client, &server.url(), "BASE_XDR")
+            .await
+            .unwrap();
+
+        mock.assert_async().await;
+        assert_eq!(result.min_resource_fee, 150_000);
+        assert_eq!(result.transaction_data_b64, "AAAAAA==");
+    }
+
+    #[tokio::test]
+    async fn test_simulate_transaction_simulation_error() {
+        let mut server = Server::new_async().await;
+        let _mock = server
+            .mock("POST", "/")
+            .with_status(200)
+            .with_body(
+                r#"{
+                    "jsonrpc": "2.0",
+                    "id": 1,
+                    "result": {
+                        "error": "invalid contract invocation"
+                    }
+                }"#,
+            )
+            .create_async()
+            .await;
+
+        let client = reqwest::Client::new();
+        let result = simulate_transaction(&client, &server.url(), "BAD_XDR").await;
+
+        match result {
+            Err(WriterError::Simulation(msg)) => assert!(msg.contains("simulation")),
+            other => panic!("expected Simulation error, got {other:?}"),
+        }
+    }
+
+    // ===== send_transaction (Step 8) =====
+
+    #[tokio::test]
+    async fn test_send_transaction_pending_returns_hash() {
+        let mut server = Server::new_async().await;
+        let mock = server
+            .mock("POST", "/")
+            .match_body(mockito::Matcher::PartialJson(serde_json::json!({
+                "method": "sendTransaction"
+            })))
+            .with_status(200)
+            .with_body(
+                r#"{
+                    "jsonrpc": "2.0",
+                    "id": 1,
+                    "result": {
+                        "status": "PENDING",
+                        "hash": "deadbeef1234"
+                    }
+                }"#,
+            )
+            .create_async()
+            .await;
+
+        let client = reqwest::Client::new();
+        let hash = send_transaction(&client, &server.url(), "SIGNED_XDR")
+            .await
+            .unwrap();
+
+        mock.assert_async().await;
+        assert_eq!(hash, "deadbeef1234");
+    }
+
+    #[tokio::test]
+    async fn test_send_transaction_error_status() {
+        let mut server = Server::new_async().await;
+        let _mock = server
+            .mock("POST", "/")
+            .with_status(200)
+            .with_body(
+                r#"{
+                    "jsonrpc": "2.0",
+                    "id": 1,
+                    "result": {
+                        "status": "ERROR",
+                        "errorResult": "AAAA"
+                    }
+                }"#,
+            )
+            .create_async()
+            .await;
+
+        let client = reqwest::Client::new();
+        let result = send_transaction(&client, &server.url(), "BAD_XDR").await;
+
+        match result {
+            Err(WriterError::Rpc(msg)) => assert!(msg.contains("ERROR")),
+            other => panic!("expected Rpc error, got {other:?}"),
+        }
+    }
+
+    // ===== poll_transaction (Step 9) =====
+
+    #[tokio::test]
+    async fn test_poll_transaction_success() {
+        let mut server = Server::new_async().await;
+        let _mock = server
+            .mock("POST", "/")
+            .match_body(mockito::Matcher::PartialJson(serde_json::json!({
+                "method": "getTransaction"
+            })))
+            .with_status(200)
+            .with_body(
+                r#"{
+                    "jsonrpc": "2.0",
+                    "id": 1,
+                    "result": {
+                        "status": "SUCCESS",
+                        "ledger": 9876
+                    }
+                }"#,
+            )
+            .create_async()
+            .await;
+
+        let client = reqwest::Client::new();
+        let result = poll_transaction(&client, &server.url(), "abc123", 5)
+            .await
+            .unwrap();
+
+        assert_eq!(result.tx_hash, "abc123");
+        assert!(result.successful);
+        assert_eq!(result.ledger, 9876);
+    }
+
+    #[tokio::test]
+    async fn test_poll_transaction_failed_status() {
+        let mut server = Server::new_async().await;
+        let _mock = server
+            .mock("POST", "/")
+            .with_status(200)
+            .with_body(
+                r#"{
+                    "jsonrpc": "2.0",
+                    "id": 1,
+                    "result": {
+                        "status": "FAILED",
+                        "resultXdr": "AAAB"
+                    }
+                }"#,
+            )
+            .create_async()
+            .await;
+
+        let client = reqwest::Client::new();
+        let result = poll_transaction(&client, &server.url(), "failtx", 5).await;
+
+        match result {
+            Err(WriterError::SubmissionFailed { tx_hash, error }) => {
+                assert_eq!(tx_hash, "failtx");
+                assert!(!error.is_empty());
+            }
+            other => panic!("expected SubmissionFailed, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_poll_transaction_timeout() {
+        let mut server = Server::new_async().await;
+        let _mock = server
+            .mock("POST", "/")
+            .with_status(200)
+            .with_body(
+                r#"{
+                    "jsonrpc": "2.0",
+                    "id": 1,
+                    "result": { "status": "NOT_FOUND" }
+                }"#,
+            )
+            .expect_at_least(1)
+            .create_async()
+            .await;
+
+        let client = reqwest::Client::new();
+        let result = poll_transaction(&client, &server.url(), "pendingtx", 1).await;
+
+        assert!(
+            matches!(result, Err(WriterError::SubmissionTimeout)),
+            "expected SubmissionTimeout, got {result:?}"
+        );
+    }
+
+    // ===== sign_envelope_hash (Step 6) =====
+
+    #[test]
+    fn test_sign_envelope_hash_deterministic() {
+        let hash = [0u8; 32];
+        let key_hex = "9d61b19deffd5a60ba844af492ec2cc44449c5697b326919703bac031cae7f60";
+
+        let sig1 = sign_envelope_hash(&hash, key_hex).unwrap();
+        let sig2 = sign_envelope_hash(&hash, key_hex).unwrap();
+
+        // ed25519 is deterministic — same key + same message → same signature
+        assert_eq!(sig1.signature.0.as_slice(), sig2.signature.0.as_slice());
+        assert_eq!(sig1.hint.0, sig2.hint.0);
+    }
+
+    #[test]
+    fn test_sign_envelope_hash_hint_is_last_4_bytes_of_pubkey() {
+        let hash = [0u8; 32];
+        let key_hex = "9d61b19deffd5a60ba844af492ec2cc44449c5697b326919703bac031cae7f60";
+        let sig = sign_envelope_hash(&hash, key_hex).unwrap();
+
+        // Verify hint = last 4 bytes of the corresponding public key
+        let pub_bytes = derive_public_key_bytes(key_hex).unwrap();
+        assert_eq!(
+            sig.hint.0,
+            [pub_bytes[28], pub_bytes[29], pub_bytes[30], pub_bytes[31]]
+        );
+    }
+
+    // ===== build_base_envelope (Step 2) =====
+
+    #[test]
+    fn test_build_base_envelope_produces_tx_envelope() {
+        let snap = sample_snapshot();
+        let writer = sample_writer();
+        let args = writer.build_invoke_args(&snap).unwrap();
+        let pub_bytes = derive_public_key_bytes(
+            "9d61b19deffd5a60ba844af492ec2cc44449c5697b326919703bac031cae7f60",
+        )
+        .unwrap();
+
+        let envelope = build_base_envelope(args, pub_bytes, 1001, 100).unwrap();
+        match &envelope {
+            TransactionEnvelope::Tx(v1) => {
+                assert_eq!(v1.tx.fee, 100);
+                assert_eq!(v1.tx.seq_num.0, 1001);
+                assert_eq!(v1.tx.operations.len(), 1);
+                assert!(v1.signatures.is_empty());
+            }
+            _ => panic!("expected Tx envelope"),
+        }
+    }
+
     // ===== Subprocess absence guard (mottomuz enforcement) =====
 
     #[test]
     fn test_no_subprocess_invocation() {
-        // Strip line comments so doc-comments naming forbidden patterns do
-        // not self-trigger. The forbidden strings are also assembled at
-        // runtime via format! so they do not appear contiguously in code
-        // either.
         let source = include_str!("registry_writer.rs");
         let code_only: String = source
             .lines()
