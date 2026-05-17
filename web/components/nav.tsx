@@ -46,6 +46,10 @@ export function Nav() {
       lenis.scrollTo(el, {
         duration: 1.4,
         easing: (t: number) => 1 - Math.pow(1 - t, 4), // ease-out-quart
+        // SectionPager pauses Lenis; force + lock let nav jumps still
+        // animate cleanly and not be interrupted mid-flight.
+        force: true,
+        lock: true,
       });
     } else {
       el.scrollIntoView({ behavior: "smooth" });

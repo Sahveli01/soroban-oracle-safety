@@ -21,10 +21,10 @@ export function Attack() {
           One $5 trade
         </div>
         <div className="mt-4 flex items-end gap-4">
-          <span className="text-danger text-[clamp(4rem,16vw,11rem)] font-semibold leading-[0.85] tracking-tight">
+          <span className="text-danger text-[clamp(3rem,11vw,7rem)] font-semibold leading-[0.85] tracking-tight">
             $10.2M
           </span>
-          <span className="mb-2 text-2xl font-medium text-text md:mb-3 md:text-4xl">
+          <span className="mb-1.5 text-xl font-medium text-text md:mb-2.5 md:text-3xl">
             drained.
           </span>
         </div>

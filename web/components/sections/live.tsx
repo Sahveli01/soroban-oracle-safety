@@ -4,8 +4,8 @@ import { motion } from "framer-motion";
 import { SectionShell } from "./section-shell";
 
 /**
- * All values below are pulled from `deployment/testnet.json` at Phase 7 closure.
- * Hashes link to stellar.expert testnet explorer (verifiable on-chain).
+ * Values pulled from `deployment/testnet.json`. Hashes link to
+ * stellar.expert testnet explorer (verifiable on-chain).
  */
 const CONTRACTS = [
   {
@@ -72,6 +72,8 @@ const STATUS_LABEL: Record<TxStatus, string> = {
   recovery: "↻ RECOVERY",
 };
 
+const EASE: [number, number, number, number] = [0.19, 1, 0.22, 1];
+
 function shortHash(hash: string): string {
   return `${hash.slice(0, 8)}…${hash.slice(-4)}`;
 }
@@ -83,8 +85,8 @@ export function Live() {
         initial={{ opacity: 0, y: 20 }}
         whileInView={{ opacity: 1, y: 0 }}
         viewport={{ once: true, margin: "-100px" }}
-        transition={{ duration: 0.7 }}
-        className="text-4xl font-medium leading-[1.1] tracking-tight sm:text-5xl md:text-6xl"
+        transition={{ duration: 0.7, ease: EASE }}
+        className="text-4xl font-medium leading-[1.05] tracking-tight sm:text-5xl md:text-6xl"
       >
         <span className="inline-flex items-center gap-3">
           <span className="relative flex h-3 w-3">
@@ -99,87 +101,92 @@ export function Live() {
         initial={{ opacity: 0 }}
         whileInView={{ opacity: 1 }}
         viewport={{ once: true, margin: "-100px" }}
-        transition={{ delay: 0.2, duration: 0.7 }}
-        className="mt-8 max-w-2xl text-text-muted"
+        transition={{ delay: 0.15, duration: 0.7 }}
+        className="mt-5 max-w-xl text-text-muted"
       >
-        Three contracts deployed. 17 successful oracle-watch attestations.
-        First adversarial replay rejected at the protocol layer. All public.
+        Three contracts deployed. 17 oracle-watch attestations. First
+        adversarial replay rejected at the protocol layer. All public.
       </motion.p>
 
-      {/* Contract Addresses */}
-      <div className="mt-16">
-        <h3 className="font-mono text-xs uppercase tracking-wider text-text-muted">
-          Deployed Contracts
-        </h3>
-        <div className="mt-6 space-y-2">
-          {CONTRACTS.map((c, i) => (
-            <motion.a
-              key={c.name}
-              initial={{ opacity: 0, x: -10 }}
-              whileInView={{ opacity: 1, x: 0 }}
-              viewport={{ once: true, margin: "-50px" }}
-              transition={{ delay: i * 0.08, duration: 0.5 }}
-              href={`https://stellar.expert/explorer/testnet/contract/${c.addr}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="group flex items-center justify-between rounded-lg border border-border bg-surface p-4 transition-all hover:border-accent/40"
-            >
-              <div>
-                <div className="font-medium">{c.name}</div>
-                <div className="mt-1 font-mono text-xs text-text-muted">
-                  {c.short}
+      {/* Two columns — contracts + validation side by side to cut height */}
+      <div className="mt-10 grid gap-x-10 gap-y-8 lg:grid-cols-2">
+        <div>
+          <h3 className="font-mono text-[11px] uppercase tracking-[0.2em] text-text-dim">
+            Deployed Contracts
+          </h3>
+          <div className="mt-4 space-y-2">
+            {CONTRACTS.map((c, i) => (
+              <motion.a
+                key={c.name}
+                initial={{ opacity: 0, y: 10 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                viewport={{ once: true, margin: "-50px" }}
+                transition={{ delay: i * 0.06, duration: 0.45, ease: EASE }}
+                href={`https://stellar.expert/explorer/testnet/contract/${c.addr}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="surface-card group flex items-center justify-between px-4 py-3"
+              >
+                <div>
+                  <div className="text-sm font-medium">{c.name}</div>
+                  <div className="mt-0.5 font-mono text-xs text-text-muted">
+                    {c.short}
+                  </div>
                 </div>
-              </div>
-              <span className="text-text-dim transition-colors group-hover:text-accent">
-                Explorer →
-              </span>
-            </motion.a>
-          ))}
+                <span className="font-mono text-xs text-text-dim transition-colors group-hover:text-accent">
+                  ↗
+                </span>
+              </motion.a>
+            ))}
+          </div>
         </div>
-      </div>
 
-      {/* Validation Tx Hashes */}
-      <div className="mt-16">
-        <h3 className="font-mono text-xs uppercase tracking-wider text-text-muted">
-          End-to-End Validation
-        </h3>
-        <div className="mt-6 space-y-2">
-          {TXS.map((tx, i) => (
-            <motion.a
-              key={tx.hash}
-              initial={{ opacity: 0, x: -10 }}
-              whileInView={{ opacity: 1, x: 0 }}
-              viewport={{ once: true, margin: "-50px" }}
-              transition={{ delay: i * 0.08, duration: 0.5 }}
-              href={`https://stellar.expert/explorer/testnet/tx/${tx.hash}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="group flex items-center justify-between rounded-lg border border-border bg-surface p-4 transition-all hover:border-accent/40"
-            >
-              <div className="flex-1">
-                <div className="flex items-center gap-3">
-                  <span
-                    className={`font-mono text-xs ${STATUS_COLOR[tx.status]}`}
-                  >
-                    {STATUS_LABEL[tx.status]}
-                  </span>
-                  <span className="font-medium">{tx.label}</span>
+        <div>
+          <h3 className="font-mono text-[11px] uppercase tracking-[0.2em] text-text-dim">
+            End-to-End Validation
+          </h3>
+          <div className="mt-4 space-y-2">
+            {TXS.map((tx, i) => (
+              <motion.a
+                key={tx.hash}
+                initial={{ opacity: 0, y: 10 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                viewport={{ once: true, margin: "-50px" }}
+                transition={{ delay: i * 0.06, duration: 0.45, ease: EASE }}
+                href={`https://stellar.expert/explorer/testnet/tx/${tx.hash}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="surface-card group flex items-center justify-between px-4 py-3"
+              >
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span
+                      className={`font-mono text-[11px] ${STATUS_COLOR[tx.status]}`}
+                    >
+                      {STATUS_LABEL[tx.status]}
+                    </span>
+                    <span className="truncate text-sm font-medium">
+                      {tx.label}
+                    </span>
+                  </div>
+                  <div className="mt-0.5 font-mono text-xs text-text-muted">
+                    {shortHash(tx.hash)}
+                    {tx.ledger && (
+                      <span className="ml-2 text-text-dim">
+                        L{tx.ledger}
+                      </span>
+                    )}
+                    {tx.error && (
+                      <span className="ml-2 text-danger">{tx.error}</span>
+                    )}
+                  </div>
                 </div>
-                <div className="mt-1 font-mono text-xs text-text-muted">
-                  {shortHash(tx.hash)}
-                  {tx.ledger && (
-                    <span className="ml-3">ledger {tx.ledger}</span>
-                  )}
-                  {tx.error && (
-                    <span className="ml-3 text-danger">{tx.error}</span>
-                  )}
-                </div>
-              </div>
-              <span className="text-text-dim transition-colors group-hover:text-accent">
-                Explorer →
-              </span>
-            </motion.a>
-          ))}
+                <span className="font-mono text-xs text-text-dim transition-colors group-hover:text-accent">
+                  ↗
+                </span>
+              </motion.a>
+            ))}
+          </div>
         </div>
       </div>
     </SectionShell>

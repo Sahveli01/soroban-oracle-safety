@@ -3,18 +3,20 @@
 import { ReactLenis } from "lenis/react";
 import type { ReactNode } from "react";
 
+import { SectionPager } from "./section-pager";
+
 /**
  * Lenis smooth-scroll wrapper.
  *
- * Apple-grade scroll feel — slightly weighted, ~1.2s ease-out on
- * programmatic scrolls, lerp 0.1 on wheel input. Mounted at root so
- * anchor-link navigation in the pillow nav inherits the smoothing.
+ * Lenis powers the eased programmatic scrolls. Free wheel/touch
+ * scrolling is taken over by `SectionPager` (rendered inside, so it has
+ * Lenis context): one gesture = exactly one section, no free-scroll,
+ * minimum stutter. Lenis itself is paused by the pager and driven only
+ * through `scrollTo(..., { force, lock })`.
  *
- * Note: section snapping was tried (lenis/snap) and removed — proximity
- * snap fired after the user's scroll settled and animated to the nearest
- * section, which read as a stutter / loss of control. The "page-turn"
- * feel comes from full-height sections + parallax + smooth scroll, not
- * from snapping. Scroll stays fully user-controlled.
+ * (An earlier `lenis/snap` attempt fired a snap AFTER the scroll
+ * settled — that felt like a stutter and was removed. This pager acts
+ * on the gesture itself, never after it.)
  */
 export function LenisProvider({ children }: { children: ReactNode }) {
   return (
@@ -28,6 +30,7 @@ export function LenisProvider({ children }: { children: ReactNode }) {
         touchMultiplier: 2,
       }}
     >
+      <SectionPager />
       {children}
     </ReactLenis>
   );
