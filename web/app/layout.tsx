@@ -1,7 +1,6 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
-import { ScrollProgress } from "@/components/scroll-progress";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -57,7 +56,6 @@ export default function RootLayout({
         {/* Atmosphere — fixed depth layers behind all content */}
         <div className="atmosphere" aria-hidden="true" />
         <div className="grain" aria-hidden="true" />
-        <ScrollProgress />
         {children}
       </body>
     </html>

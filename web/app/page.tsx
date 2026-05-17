@@ -1,4 +1,5 @@
 import { Nav } from "@/components/nav";
+import { Deck, type DeckSlide } from "@/components/deck";
 import { Hero } from "@/components/hero";
 import { Attack } from "@/components/sections/attack";
 import { Solution } from "@/components/sections/solution";
@@ -11,29 +12,27 @@ import { Live } from "@/components/sections/live";
 import { Audit } from "@/components/sections/audit";
 import { Footer } from "@/components/sections/footer";
 
+// Ordered slide deck. Each is one full-viewport page; the deck moves
+// between them by integer index (no scroll) — see components/deck.tsx.
+const SLIDES: DeckSlide[] = [
+  { id: "hero", node: <Hero /> },
+  { id: "attack", node: <Attack /> },
+  { id: "solution", node: <Solution /> },
+  { id: "how-it-works", node: <HowItWorks /> },
+  { id: "architecture", node: <Architecture /> },
+  { id: "mechanism", node: <Mechanism /> },
+  { id: "infrastructure", node: <Infrastructure /> },
+  { id: "operator", node: <Operator /> },
+  { id: "live", node: <Live /> },
+  { id: "audit", node: <Audit /> },
+  { id: "footer", node: <Footer /> },
+];
+
 export default function Home() {
   return (
-    <main className="min-h-screen">
+    <main>
       <Nav />
-      {/* Stack context: consecutive sticky panels slide over each other
-          (the page-turn). Must stay transform/overflow free so `position:
-          sticky` resolves against the viewport. */}
-      <div className="relative">
-        <Hero />
-        <Attack />
-        <Solution />
-        <HowItWorks />
-        <Architecture />
-        <Mechanism />
-        <Infrastructure />
-        <Operator />
-        <Live />
-        <Audit />
-        {/* Footer is the final sticky panel of the SAME stack — it
-            page-turns in like every section and closes seamlessly,
-            so the end is one continuous page, not two. */}
-        <Footer />
-      </div>
+      <Deck slides={SLIDES} />
     </main>
   );
 }

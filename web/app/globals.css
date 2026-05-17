@@ -37,45 +37,40 @@
 }
 
 @layer base {
-  html {
+  html,
+  body {
     background: var(--color-background);
     color: var(--color-text);
+    /* ===== Presentation deck — no document scroll at all =====
+       Navigation is an integer slide index (components/deck.tsx), not
+       a scroll position. Locking the document to the viewport removes
+       the entire class of scroll bugs by construction: there is no
+       scroll to land "halfway", no offsetTop to misread, no up/down
+       asymmetry — "up" is just index − 1. */
+    height: 100%;
+    overflow: hidden;
+  }
+
+  html {
     font-family: var(--font-sans), system-ui, sans-serif;
     -webkit-font-smoothing: antialiased;
     text-rendering: optimizeLegibility;
-    /* ===== Native page-by-page snapping =====
-       The browser owns scroll position — one wheel/key gesture moves
-       exactly one section, identically forward AND backward, with no
-       JS, no offsetTop heuristics, no possible deadlock. This is what
-       finally kills the recurring "can't scroll up / nav-back fails"
-       bug: there is no custom navigation code left to get it wrong.
-       Snap points are each panel's flow position, which is exactly
-       where it fully covers the previous one — so the sticky
-       page-turn visual is preserved verbatim. */
-    scroll-snap-type: y mandatory;
-    scroll-behavior: smooth;
-    /* Hide the side scrollbar — navigation is page-by-page; the thin
-       top accent rail is the wayfinding. Firefox + legacy IE/Edge. */
     scrollbar-width: none;
     -ms-overflow-style: none;
   }
 
-  /* Hide the side scrollbar — Chrome / Safari / Brave / Edge. */
+  /* Hide every scrollbar (incl. the in-slide scroller for tall
+     sections) — Chrome / Safari / Brave / Edge / Firefox. */
   html::-webkit-scrollbar,
-  body::-webkit-scrollbar {
+  body::-webkit-scrollbar,
+  .screen-min::-webkit-scrollbar {
     width: 0;
     height: 0;
     display: none;
   }
-
-  body {
-    background: var(--color-background);
+  .screen-min {
     scrollbar-width: none;
     -ms-overflow-style: none;
-    /* `clip` (not `hidden`): hidden forces overflow-y:auto, which makes
-       body a scroll container and breaks viewport `position: sticky`
-       used by the stacked-panel page-turn. */
-    overflow-x: clip;
   }
 
   ::selection {
@@ -100,11 +95,31 @@
       animation-iteration-count: 1 !important;
       transition-duration: 0.001ms !important;
     }
-    /* Still snap page-by-page, but jump instantly (no smooth glide). */
-    html {
-      scroll-behavior: auto;
+    /* Deck still changes slide, but jumps instantly (no glide). */
+    .deck-slide {
+      transition: none !important;
     }
   }
+}
+
+/* ============================================================
+   Presentation deck — fixed full-viewport stage; slides stacked,
+   moved by integer index. The incoming slide (higher z-index) rises
+   from translateY(100%) and COVERS the current one (which stays put);
+   going back, the current slide drops away to reveal the previous one
+   beneath. This is the exact page-turn cover, now deterministic.
+   ============================================================ */
+.deck-root {
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+}
+
+.deck-slide {
+  position: absolute;
+  inset: 0;
+  will-change: transform;
+  transition: transform 740ms cubic-bezier(0.83, 0, 0.17, 1);
 }
 
 @utility tabular {
@@ -362,34 +377,18 @@
     0 18px 40px -24px rgba(0, 0, 0, 0.8);
 }
 
-/* Stacked section panel — opaque so it covers the one it slides over,
-   with a soft top shadow + rounded leading edge (the "page" edge).
-
-   `scroll-snap-align: start` makes each panel a native snap point at
-   its flow position (= exactly where it fully covers the previous
-   one). `scroll-snap-stop: always` forces the scroll to rest on every
-   panel even through trackpad momentum, so one gesture = one section,
-   forward and backward, with zero JS.
-
-   The panel is EXACTLY one viewport tall (height: 100svh). This makes
-   the snap area equal the snapport, so mandatory snap has exactly one
-   rest position per panel — its start — and backward navigation lands
-   on the full previous page identically to forward (no more "yarıda
-   kalıyor" mid-section rest, which happened when a content-sized panel
-   was taller than the viewport and the spec allowed resting anywhere
-   in it). Overflowing content scrolls inside `.screen-min`, never
-   clipped. 100vh is the universal fallback; 100svh is the area visible
-   under Safari/iOS dynamic toolbars. */
+/* Section panel — opaque so it fully covers the slide beneath it as
+   it rises (the page-turn cover). It fills its deck-slide (height:
+   100%); content that overflows scrolls inside `.screen-min`, never
+   clipped. The rounded top lip + soft shadow read as the "page edge"
+   while the slide animates up over the previous one. */
 .page-panel {
   background: var(--color-background);
   border-top: 1px solid var(--color-border);
   border-top-left-radius: 1.25rem;
   border-top-right-radius: 1.25rem;
   box-shadow: var(--shadow-page);
-  height: 100vh;
-  height: 100svh;
-  scroll-snap-align: start;
-  scroll-snap-stop: always;
+  height: 100%;
 }
 
 /* Closing panel — the footer, as the final page of the SAME stack.
@@ -401,10 +400,7 @@
   background: var(--color-background);
   border-top: 1px solid rgba(255, 255, 255, 0.04);
   box-shadow: 0 -24px 60px -28px rgba(0, 0, 0, 0.9);
-  height: 100vh;
-  height: 100svh;
-  scroll-snap-align: start;
-  scroll-snap-stop: always;
+  height: 100%;
 }
 
 /* Pillow nav — sticky capsule */

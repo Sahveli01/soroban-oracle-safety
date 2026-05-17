@@ -5,17 +5,15 @@ import { motion } from "framer-motion";
 const EASE: [number, number, number, number] = [0.19, 1, 0.22, 1];
 
 /**
- * Closing panel — the final page of the same stacked page-turn.
+ * Closing slide — the final page of the deck.
  *
- * It is a `sticky top-0` sibling like every section, so it slides up
- * and covers the last content panel exactly like every other turn (the
- * end no longer reads as "two separate pages"). `.page-foot` gives it a
- * flush, seamless leading edge (no rounded lip) so the document resolves
- * into one continuous closing surface instead of an orphaned strip.
+ * `.page-foot` gives it a flush, seamless leading edge (no rounded
+ * lip) so the deck resolves into one continuous closing surface as it
+ * covers the last content slide, instead of an orphaned strip.
  */
 export function Footer() {
   return (
-    <footer className="page-foot sticky top-0 bg-[var(--color-background)]">
+    <footer className="page-foot relative h-full bg-[var(--color-background)]">
       <div className="screen-min mx-auto flex w-full max-w-5xl flex-col justify-between px-6 py-[clamp(4rem,9vh,7rem)]">
         {/* Big closing wordmark */}
         <motion.div

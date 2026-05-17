@@ -32,7 +32,7 @@ export function SectionShell({ id, eyebrow, children }: SectionShellProps) {
   return (
     <section
       id={id}
-      className="page-panel sticky top-0 bg-[var(--color-background)]"
+      className="page-panel relative h-full bg-[var(--color-background)]"
     >
       <div className="screen-min mx-auto flex w-full max-w-5xl flex-col justify-center px-6 py-[clamp(4rem,9vh,7rem)]">
         <motion.p

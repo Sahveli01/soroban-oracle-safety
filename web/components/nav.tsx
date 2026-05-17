@@ -1,79 +1,42 @@
 "use client";
 
 import { motion } from "framer-motion";
-import Link from "next/link";
 import { useEffect, useState } from "react";
+import { deckGoTo } from "@/components/deck";
 
 /**
- * Sticky pillow navigation.
+ * Pillow navigation.
  *
- * Scroll-aware: condenses + darkens after the first scroll
- * (`data-scrolled`) and highlights whichever linked section is in view.
- *
- * Sections are `position: sticky` — a pinned panel reports rect.top ≈ 0,
- * so wayfinding AND jumps use the element's true *flow* position
- * (`docTop`), never its rect. A click does a native smooth
- * `window.scrollTo(docTop)`; CSS scroll-snap then locks onto that
- * panel. This is why nav-back finally works: it's a direct jump to a
- * known flow offset, not a fragile per-gesture index inference.
+ * The deck owns navigation now (integer slide index, no scroll). The
+ * nav listens to the `deck:change` event for the active slide and
+ * subtle condensed state; a link click calls `deckGoTo(id)`, which
+ * animates to that slide with the exact same transition as a wheel
+ * gesture. No scroll math anywhere ⇒ nav-back simply cannot fail.
  */
 const LINKS = [
   { id: "how-it-works", label: "How it works" },
   { id: "live", label: "Live" },
 ];
 
-function docTop(el: HTMLElement): number {
-  let y = 0;
-  let n: HTMLElement | null = el;
-  while (n) {
-    y += n.offsetTop;
-    n = n.offsetParent as HTMLElement | null;
-  }
-  return y;
+interface DeckChange {
+  index: number;
+  id?: string;
+  total: number;
 }
 
 export function Nav() {
   const [scrolled, setScrolled] = useState(false);
-  const [active, setActive] = useState<string | null>(null);
+  const [activeId, setActiveId] = useState<string | null>(null);
 
   useEffect(() => {
-    let raf = 0;
-    const update = () => {
-      const y = window.scrollY;
-      setScrolled(y > 32);
-      const marker = y + window.innerHeight * 0.34;
-      let current: string | null = null;
-      for (const { id } of LINKS) {
-        const el = document.getElementById(id);
-        if (el && docTop(el) <= marker) current = id;
-      }
-      setActive(current);
+    const onChange = (e: Event) => {
+      const d = (e as CustomEvent<DeckChange>).detail;
+      setScrolled(d.index > 0);
+      setActiveId(d.id ?? null);
     };
-    const onScroll = () => {
-      cancelAnimationFrame(raf);
-      raf = requestAnimationFrame(update);
-    };
-    update();
-    window.addEventListener("scroll", onScroll, { passive: true });
-    window.addEventListener("resize", onScroll, { passive: true });
-    return () => {
-      cancelAnimationFrame(raf);
-      window.removeEventListener("scroll", onScroll);
-      window.removeEventListener("resize", onScroll);
-    };
+    window.addEventListener("deck:change", onChange);
+    return () => window.removeEventListener("deck:change", onChange);
   }, []);
-
-  const goTo = (id: string) => {
-    const el = document.getElementById(id);
-    if (!el) return;
-    const reduce = window.matchMedia(
-      "(prefers-reduced-motion: reduce)"
-    ).matches;
-    window.scrollTo({
-      top: docTop(el),
-      behavior: reduce ? "auto" : "smooth",
-    });
-  };
 
   return (
     <motion.nav
@@ -88,20 +51,20 @@ export function Nav() {
           scrolled ? "px-5 py-2.5" : "px-6 py-3"
         }`}
       >
-        <Link
-          href="/"
-          className="font-mono text-sm font-medium text-[var(--color-text)]"
+        <button
+          onClick={() => deckGoTo("hero")}
+          className="cursor-pointer font-mono text-sm font-medium text-[var(--color-text)]"
         >
           safe-oracle
-        </Link>
+        </button>
 
         <div className="hidden items-center gap-6 md:flex">
           {LINKS.map(({ id, label }) => (
             <button
               key={id}
-              onClick={() => goTo(id)}
+              onClick={() => deckGoTo(id)}
               className={`cursor-pointer text-sm transition-colors ${
-                active === id
+                activeId === id
                   ? "text-[var(--color-accent)]"
                   : "text-[var(--color-text-muted)] hover:text-[var(--color-text)]"
               }`}

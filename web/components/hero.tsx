@@ -30,7 +30,7 @@ export function Hero() {
   return (
     <section
       id="hero"
-      className="page-panel sticky top-0 overflow-hidden bg-[var(--color-background)]"
+      className="page-panel relative h-full overflow-hidden bg-[var(--color-background)]"
     >
       {/* Focal aurora — soft accent bloom behind the headline */}
       <div
