@@ -23,7 +23,7 @@ export function Marquee() {
   const items = [...ITEMS, ...ITEMS];
 
   return (
-    <div className="relative overflow-hidden border-y border-[var(--color-border)] py-6">
+    <div className="marquee-mask relative overflow-hidden border-y border-[var(--color-border)] py-6">
       <div className="marquee-track flex gap-12 whitespace-nowrap">
         {items.map((item, i) => (
           <div

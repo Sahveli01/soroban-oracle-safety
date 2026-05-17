@@ -15,16 +15,21 @@ export default function Home() {
   return (
     <main className="min-h-screen">
       <Nav />
-      <Hero />
-      <Attack />
-      <Solution />
-      <HowItWorks />
-      <Architecture />
-      <Mechanism />
-      <Infrastructure />
-      <Operator />
-      <Live />
-      <Audit />
+      {/* Stack context: consecutive sticky panels slide over each other
+          (the page-turn). Must stay transform/overflow free so `position:
+          sticky` resolves against the viewport. */}
+      <div className="relative">
+        <Hero />
+        <Attack />
+        <Solution />
+        <HowItWorks />
+        <Architecture />
+        <Mechanism />
+        <Infrastructure />
+        <Operator />
+        <Live />
+        <Audit />
+      </div>
       <Footer />
     </main>
   );
