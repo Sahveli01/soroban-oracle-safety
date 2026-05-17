@@ -3,9 +3,10 @@
 import { motion, useScroll, useSpring } from "framer-motion";
 
 /**
- * Top scroll-progress rail. Reads native scroll (Lenis updates it),
- * spring-smoothed so it glides rather than tracks 1:1. Pure wayfinding
- * for a long single-page document — never intercepts scroll.
+ * Top scroll-progress rail. Reads native window scroll (the SectionSnap
+ * tween writes it every frame), spring-smoothed so it glides between
+ * page jumps rather than stepping. Pure wayfinding — never intercepts
+ * scroll. This is the thin top accent line, NOT a side scrollbar.
  */
 export function ScrollProgress() {
   const { scrollYProgress } = useScroll();

@@ -2,29 +2,26 @@
 
 import { motion } from "framer-motion";
 import Link from "next/link";
-import { useLenis } from "lenis/react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { scrollToSection } from "@/components/section-snap";
 
 /**
  * Sticky pillow navigation.
  *
  * Scroll-aware: condenses + darkens after the first scroll
- * (`data-scrolled`), and highlights whichever linked section is
- * currently in view.
+ * (`data-scrolled`) and highlights whichever linked section is in view.
  *
- * Sections are `position: sticky` — their `getBoundingClientRect()` is
- * distorted (a pinned panel reports top ≈ 0), so both wayfinding and
- * in-page jumps must use the element's true *flow* position
- * (`docTop`: summed offsetTop up the offsetParent chain), never its
- * rect. This is why the "How it works" link used to fail from lower in
- * the page — it resolved against a pinned rect and went nowhere.
+ * Sections are `position: sticky` — a pinned panel reports rect.top ≈ 0,
+ * so wayfinding uses the element's true *flow* position (`docTop`),
+ * never its rect. Link clicks drive the SectionSnap engine via
+ * `scrollToSection`, so a nav jump uses the exact same eased,
+ * page-aligned transition as a wheel/keyboard gesture.
  */
 const LINKS = [
   { id: "how-it-works", label: "How it works" },
   { id: "live", label: "Live" },
 ];
 
-/** True flow position of a sticky element, unaffected by pinning. */
 function docTop(el: HTMLElement): number {
   let y = 0;
   let n: HTMLElement | null = el;
@@ -39,36 +36,32 @@ export function Nav() {
   const [scrolled, setScrolled] = useState(false);
   const [active, setActive] = useState<string | null>(null);
 
-  // One hook call gives both the scroll callback and the instance.
-  const lenis = useLenis((instance) => {
-    const scroll = instance.scroll;
-    setScrolled(scroll > 32);
-
-    // Active = the last linked section whose flow-top has passed the
-    // viewport's upper third. Uses docTop (not rect) so sticky pinning
-    // doesn't make every section read as "already passed".
-    const marker = scroll + window.innerHeight * 0.34;
-    let current: string | null = null;
-    for (const { id } of LINKS) {
-      const el = document.getElementById(id);
-      if (el && docTop(el) <= marker) current = id;
-    }
-    setActive(current);
-  });
-
-  const scrollTo = (id: string) => {
-    const el = document.getElementById(id);
-    if (!el) return;
-    const target = docTop(el);
-    if (lenis) {
-      lenis.scrollTo(target, {
-        duration: 1.1,
-        easing: (t: number) => 1 - Math.pow(1 - t, 4), // ease-out-quart
-      });
-    } else {
-      window.scrollTo({ top: target, behavior: "smooth" });
-    }
-  };
+  useEffect(() => {
+    let raf = 0;
+    const update = () => {
+      const y = window.scrollY;
+      setScrolled(y > 32);
+      const marker = y + window.innerHeight * 0.34;
+      let current: string | null = null;
+      for (const { id } of LINKS) {
+        const el = document.getElementById(id);
+        if (el && docTop(el) <= marker) current = id;
+      }
+      setActive(current);
+    };
+    const onScroll = () => {
+      cancelAnimationFrame(raf);
+      raf = requestAnimationFrame(update);
+    };
+    update();
+    window.addEventListener("scroll", onScroll, { passive: true });
+    window.addEventListener("resize", onScroll, { passive: true });
+    return () => {
+      cancelAnimationFrame(raf);
+      window.removeEventListener("scroll", onScroll);
+      window.removeEventListener("resize", onScroll);
+    };
+  }, []);
 
   return (
     <motion.nav
@@ -94,7 +87,7 @@ export function Nav() {
           {LINKS.map(({ id, label }) => (
             <button
               key={id}
-              onClick={() => scrollTo(id)}
+              onClick={() => scrollToSection(id)}
               className={`cursor-pointer text-sm transition-colors ${
                 active === id
                   ? "text-[var(--color-accent)]"

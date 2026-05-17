@@ -43,10 +43,27 @@
     font-family: var(--font-sans), system-ui, sans-serif;
     -webkit-font-smoothing: antialiased;
     text-rendering: optimizeLegibility;
+    /* SectionSnap drives the eased tween itself — keep CSS scrolling
+       instant so window.scrollTo isn't animated twice. */
+    scroll-behavior: auto;
+    /* Hide the side scrollbar (navigation is page-by-page via
+       SectionSnap + keyboard). Firefox + legacy IE/Edge. */
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+
+  /* Hide the side scrollbar — Chrome / Safari / Brave / Edge. */
+  html::-webkit-scrollbar,
+  body::-webkit-scrollbar {
+    width: 0;
+    height: 0;
+    display: none;
   }
 
   body {
     background: var(--color-background);
+    scrollbar-width: none;
+    -ms-overflow-style: none;
     /* `clip` (not `hidden`): hidden forces overflow-y:auto, which makes
        body a scroll container and breaks viewport `position: sticky`
        used by the stacked-panel page-turn. */
