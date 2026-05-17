@@ -400,11 +400,6 @@
   border-top-right-radius: 1.25rem;
   box-shadow: var(--shadow-page);
   height: 100%;
-  position: relative;
-  /* Own stacking context so the aurora (z-index:-1) sits ABOVE this
-     panel's opaque base (keeps the cover effect) but BELOW its content,
-     and never bleeds onto an adjacent slide. */
-  isolation: isolate;
 }
 
 /* Closing panel — the footer, as the final page of the SAME stack.
@@ -417,117 +412,6 @@
   border-top: 1px solid rgba(255, 255, 255, 0.04);
   box-shadow: 0 -24px 60px -28px rgba(0, 0, 0, 0.9);
   height: 100%;
-  position: relative;
-  isolation: isolate;
-}
-
-/* ============================================================
-   Aurora — the "kutup ışıkları" behind every slide.
-
-   Smoothness is the whole point: raw low-alpha gradients on a near
-   black background show 8-bit colour banding (the "cheap / pixelated"
-   look). Two things fix that and make it feel liquid and premium:
-     1. ::before  — soft, large colour pools pushed through a heavy
-        Gaussian blur, so the gradient steps melt into a continuous
-        wash; slow transform/opacity drift only (GPU, jank-free).
-     2. ::after   — a near-invisible fractal-noise film that dithers
-        whatever banding survives, the way graded film/HDR masters
-        kill banding. This is the difference between flat and rich.
-   Both sit at z-index:-1 inside the panel's isolated context: above
-   the opaque base (page-turn cover intact), below content (text is
-   never veiled). Same field on every slide ⇒ a continuous ambience
-   that you feel more than see.
-   ============================================================ */
-.page-panel::before,
-.page-foot::before {
-  content: "";
-  position: absolute;
-  inset: -45%;
-  z-index: -1;
-  pointer-events: none;
-  background:
-    radial-gradient(
-      48% 46% at 18% 12%,
-      rgba(0, 255, 148, 0.12),
-      transparent 72%
-    ),
-    radial-gradient(
-      46% 48% at 84% 16%,
-      rgba(72, 120, 235, 0.1),
-      transparent 74%
-    ),
-    radial-gradient(
-      56% 52% at 62% 98%,
-      rgba(0, 235, 170, 0.085),
-      transparent 76%
-    );
-  filter: blur(72px) saturate(122%);
-  -webkit-mask-image: linear-gradient(
-    180deg,
-    transparent 0%,
-    #000 18%,
-    #000 82%,
-    transparent 100%
-  );
-  mask-image: linear-gradient(
-    180deg,
-    transparent 0%,
-    #000 18%,
-    #000 82%,
-    transparent 100%
-  );
-  animation: aurora-drift 44s ease-in-out infinite alternate;
-  will-change: transform;
-  transform: translateZ(0);
-}
-
-/* Dither film — breaks residual banding so the wash reads as smooth
-   light, not stepped colour. Static, ultra-faint. */
-.page-panel::after,
-.page-foot::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  z-index: -1;
-  pointer-events: none;
-  opacity: 0.045;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)'/%3E%3C/svg%3E");
-  -webkit-mask-image: linear-gradient(
-    180deg,
-    transparent 0%,
-    #000 18%,
-    #000 82%,
-    transparent 100%
-  );
-  mask-image: linear-gradient(
-    180deg,
-    transparent 0%,
-    #000 18%,
-    #000 82%,
-    transparent 100%
-  );
-}
-
-@keyframes aurora-drift {
-  0% {
-    transform: translate3d(-2.5%, -1.5%, 0) scale(1.02);
-    opacity: 0.78;
-  }
-  50% {
-    transform: translate3d(2.5%, 1.5%, 0) scale(1.09);
-    opacity: 1;
-  }
-  100% {
-    transform: translate3d(-1%, 2.5%, 0) scale(1.04);
-    opacity: 0.86;
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .page-panel::before,
-  .page-foot::before {
-    animation: none;
-  }
 }
 
 /* Code block */
