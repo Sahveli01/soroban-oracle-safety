@@ -66,9 +66,12 @@ const SCENARIOS: Scenario[] = [
     result: "err",
     errorType: "StaleData",
     rejectStage: "layer1-staleness",
+    txHash:
+      "7b799e02" + "c54d90334e2c45a2acdf2c43f4652d1fb125073896ebce1dc72a21f9",
+    txHashShort: "7b799e02...21f9",
     latencyMs: 1500,
     description:
-      "Oracle hasn't updated in >300 seconds. Layer 1 rejects. Real-world testnet replay coming.",
+      "Oracle reading carried a 48h-old timestamp, past the staleness window. Layer 1 rejects with StaleData.",
   },
 ];
 

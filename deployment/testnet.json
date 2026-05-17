@@ -226,6 +226,36 @@
         }
       ],
       "summary": "Library successfully rejected oracle manipulation attack via Layer 1 deviation guardrail. Defense in depth validated end-to-end on testnet — failed tx visible on explorer for audit trail."
+    },
+    "stale_oracle": {
+      "phase": "incremental (post-phase-8-complete)",
+      "date": "2026-05-17",
+      "scenario": "Layer 1 StaleData rejection: reflector XLM price re-published with a 48h-old timestamp, then borrow attempted. Price value unchanged ($0.10) so the staleness window is the sole rejection cause.",
+      "config_note": "Same testnet contract CA6TBUXT... and config as Phase 7.8/7.9 (max_staleness_seconds=86400 = 24h). A 48h-old (172800s) timestamp exceeds the 24h window. No contract re-deploy; reflector restored to a fresh timestamp immediately after.",
+      "stages": [
+        {
+          "stage": "1_set_stale_price",
+          "action": "set_price XLM = 10000000000000 ($0.10) with timestamp = now - 172800 (48h ago)",
+          "tx_hash": "522e2ab4d8ee951447cb6f28132d22a0750d86026599b5bf04f2bdd642f88774",
+          "explorer": "https://stellar.expert/explorer/testnet/tx/522e2ab4d8ee951447cb6f28132d22a0750d86026599b5bf04f2bdd642f88774"
+        },
+        {
+          "stage": "2_stale_borrow",
+          "action": "borrow(100 XLM) called against the stale oracle reading",
+          "tx_hash": "7b799e02c54d90334e2c45a2acdf2c43f4652d1fb125073896ebce1dc72a21f9",
+          "explorer": "https://stellar.expert/explorer/testnet/tx/7b799e02c54d90334e2c45a2acdf2c43f4652d1fb125073896ebce1dc72a21f9",
+          "result": "REJECTED — BorrowOutcome::Failed(2) = StaleData",
+          "tx_protocol_status": "SUCCESS (Ok-only enum design — see types.rs PriceResult comment)",
+          "guardrail_triggered": "Layer 1 staleness check: price age 172800s > 86400s threshold"
+        },
+        {
+          "stage": "3_price_restore",
+          "action": "set_price XLM = 10000000000000 ($0.10) with timestamp = now (fresh)",
+          "tx_hash": "66230c2152e6ee7d6af34f44ff33029ffd609bfe3e32b5801f217953bc085219",
+          "explorer": "https://stellar.expert/explorer/testnet/tx/66230c2152e6ee7d6af34f44ff33029ffd609bfe3e32b5801f217953bc085219"
+        }
+      ],
+      "summary": "Library rejected a stale oracle reading via the Layer 1 staleness guardrail. Shared testnet mock-reflector restored to a current timestamp immediately after, so the live oracle-watch service was unaffected beyond the brief test window."
     }
   }
 }
