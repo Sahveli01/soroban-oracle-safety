@@ -12,7 +12,7 @@ interface SinkCard {
 const SINKS: SinkCard[] = [
   {
     name: "Discord",
-    description: "Incoming webhook to any channel. Bold ⚠️-prefixed body.",
+    description: "Incoming webhook to any channel. Bold, alert-prefixed body.",
     envKey: "ORACLE_WATCH_DISCORD_WEBHOOK_URL",
   },
   {
@@ -47,7 +47,7 @@ export function Operator() {
         whileInView={{ opacity: 1, y: 0 }}
         viewport={{ once: true, margin: "-100px" }}
         transition={{ duration: 0.7, ease: EASE }}
-        className="text-4xl font-medium leading-[1.05] tracking-tight sm:text-5xl md:text-6xl"
+        className="t-h2"
       >
         Plug in your stack.
       </motion.h2>
@@ -73,7 +73,7 @@ export function Operator() {
             transition={{ delay: i * 0.05, duration: 0.45, ease: EASE }}
             className="surface-card group flex flex-col p-5"
           >
-            <h3 className="font-mono text-sm uppercase tracking-wider text-accent">
+            <h3 className="font-mono text-sm uppercase tracking-wider text-text">
               {sink.name}
             </h3>
             <p className="mt-2 text-sm leading-relaxed text-text-muted">
@@ -94,7 +94,7 @@ export function Operator() {
           className="surface-card flex flex-col justify-between p-5"
         >
           <div>
-            <h3 className="font-mono text-sm uppercase tracking-wider text-text-muted">
+            <h3 className="font-mono text-sm uppercase tracking-wider text-text">
               Custom sink
             </h3>
             <p className="mt-2 text-sm leading-relaxed text-text-muted">

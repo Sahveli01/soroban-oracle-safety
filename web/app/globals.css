@@ -83,6 +83,66 @@
 }
 
 /* ============================================================
+   Fluid typography — one scale, clamp-based.
+   Why clamp(): it scales with the viewport, so headings never
+   clip on a 13" MacBook / Safari (the "yazılar sığmıyor" bug)
+   yet stay large and readable on desktop. No breakpoint jumps,
+   identical in Chrome / Brave / Safari / Firefox.
+   ============================================================ */
+
+/* Section kicker — was text-xs (12px) muted grey and unreadable.
+   Now 13px, brighter, with a leading accent tick for a premium tell. */
+.t-eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.6rem;
+  font-family: var(--font-mono);
+  font-size: 0.8125rem; /* 13px */
+  line-height: 1;
+  text-transform: uppercase;
+  letter-spacing: 0.2em;
+  color: #a8a8b0; /* lifted from --color-text-muted for legibility */
+}
+
+.t-eyebrow::before {
+  content: "";
+  width: 1.75rem;
+  height: 1px;
+  background: linear-gradient(
+    90deg,
+    var(--color-accent),
+    rgba(0, 255, 148, 0.15)
+  );
+}
+
+/* Primary section heading — bumped up a notch vs. the old
+   text-4xl base, fluid to 3.5rem on wide screens. */
+.t-h2 {
+  font-size: clamp(2.35rem, 1.4rem + 3.4vw, 3.6rem);
+  line-height: 1.08;
+  letter-spacing: -0.02em;
+  font-weight: 500;
+}
+
+/* Statement heading — hero / Live / Solution voice, a step larger. */
+.t-h1 {
+  font-size: clamp(2.85rem, 1.3rem + 6vw, 5.25rem);
+  line-height: 1.06;
+  letter-spacing: -0.03em;
+  font-weight: 500;
+}
+
+/* Cross-browser viewport min-height.
+   100vh first (universal fallback), then 100svh — the *small*
+   viewport unit, i.e. the area visible even with Safari/iOS
+   dynamic toolbars showing. Fixes panels overflowing the screen
+   on macOS Safari where 100vh > visible area. */
+.screen-min {
+  min-height: 100vh;
+  min-height: 100svh;
+}
+
+/* ============================================================
    Atmosphere — depth for the void.
    A fixed, behind-everything layer: a faint hairline grid, two
    low-alpha aurora pools (accent + cool tint), and a vignette.
@@ -276,6 +336,17 @@
   border-top-left-radius: 1.25rem;
   border-top-right-radius: 1.25rem;
   box-shadow: var(--shadow-page);
+}
+
+/* Closing panel — the footer, as the final page of the SAME stack.
+   It page-turns in exactly like every other section (so the end no
+   longer reads as "two separate pages"), but its leading edge is flush
+   and seamless: no rounded lip, hairline-only top, so the document
+   resolves into one continuous closing surface. */
+.page-foot {
+  background: var(--color-background);
+  border-top: 1px solid rgba(255, 255, 255, 0.04);
+  box-shadow: 0 -24px 60px -28px rgba(0, 0, 0, 0.9);
 }
 
 /* Pillow nav — sticky capsule */

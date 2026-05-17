@@ -22,7 +22,9 @@ const EASE_OUT_EXPO: [number, number, number, number] = [0.19, 1, 0.22, 1];
  * typography (medium weight, tracking-tight — NOT the over-tight
  * semibold/text-balance that hurt legibility before). No scroll
  * transforms: it's a sticky panel the next section cleanly covers.
- * Content uses min-h-screen + justify-center so it is never clipped.
+ * Content uses .screen-min (100vh→100svh) + justify-center with fluid
+ * spacing, so it fills the *visible* viewport and never clips on
+ * macOS Safari (where 100vh exceeds the visible area).
  */
 export function Hero() {
   return (
@@ -40,19 +42,19 @@ export function Hero() {
         }}
       />
 
-      <div className="relative mx-auto flex min-h-screen w-full max-w-5xl flex-col items-center justify-center px-6 py-28">
+      <div className="screen-min relative mx-auto flex w-full max-w-5xl flex-col items-center justify-center px-6 py-[clamp(5rem,11vh,7.5rem)]">
         {/* Top slogan */}
         <motion.p
           initial={{ opacity: 0, y: 8 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.15, duration: 0.6, ease: EASE_OUT_EXPO }}
-          className="mb-10 font-mono text-sm uppercase tracking-[0.22em] text-[var(--color-text-muted)]"
+          className="mb-8 font-mono text-sm uppercase tracking-[0.22em] text-[#a8a8b0]"
         >
           {TOP_SLOGAN}
         </motion.p>
 
         {/* Big headline — word-by-word stagger */}
-        <h1 className="text-center text-5xl font-medium leading-[1.08] tracking-tight sm:text-6xl md:text-7xl lg:text-[5.5rem]">
+        <h1 className="t-h1 text-center">
           <span className="block">
             {HEADLINE_LINE_1.map((word, i) => (
               <motion.span
@@ -98,7 +100,7 @@ export function Hero() {
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.75, duration: 0.7, ease: EASE_OUT_EXPO }}
-          className="mt-10 max-w-2xl whitespace-pre-line text-center text-lg leading-relaxed text-[var(--color-text-muted)]"
+          className="mt-7 max-w-2xl whitespace-pre-line text-center text-lg leading-relaxed text-[var(--color-text-muted)]"
         >
           {SUBLINE}
         </motion.p>
@@ -108,7 +110,7 @@ export function Hero() {
           initial={{ opacity: 0, y: 16 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.95, duration: 0.6, ease: EASE_OUT_EXPO }}
-          className="mt-12"
+          className="mt-9"
         >
           <CodeSnippet code="cargo add safe-oracle" />
         </motion.div>
@@ -118,7 +120,7 @@ export function Hero() {
           initial={{ opacity: 0, y: 16 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 1.1, duration: 0.6, ease: EASE_OUT_EXPO }}
-          className="mt-8 flex flex-wrap items-center justify-center gap-4"
+          className="mt-7 flex flex-wrap items-center justify-center gap-4"
         >
           <a
             href="https://github.com/Sahveli01/soroban-oracle-safety"
@@ -139,12 +141,12 @@ export function Hero() {
         </motion.div>
 
         {/* Stats row */}
-        <div className="mt-24 w-full max-w-4xl">
+        <div className="mt-[clamp(3rem,7vh,5rem)] w-full max-w-4xl">
           <StatsRow />
         </div>
 
         {/* Marquee */}
-        <div className="mt-24 w-full">
+        <div className="mt-[clamp(3rem,7vh,5rem)] w-full">
           <Marquee />
         </div>
       </div>

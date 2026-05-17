@@ -29,8 +29,11 @@ export default function Home() {
         <Operator />
         <Live />
         <Audit />
+        {/* Footer is the final sticky panel of the SAME stack — it
+            page-turns in like every section and closes seamlessly,
+            so the end is one continuous page, not two. */}
+        <Footer />
       </div>
-      <Footer />
     </main>
   );
 }

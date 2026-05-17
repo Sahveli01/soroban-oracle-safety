@@ -19,7 +19,7 @@ export function Solution() {
         whileInView={{ opacity: 1, y: 0 }}
         viewport={{ once: true, margin: "-100px" }}
         transition={{ duration: 0.7, ease: [0.19, 1, 0.22, 1] }}
-        className="text-4xl font-medium leading-[1.1] tracking-tight sm:text-5xl md:text-6xl lg:text-7xl"
+        className="t-h1"
       >
         Five guards.
         <br />

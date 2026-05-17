@@ -22,10 +22,11 @@ interface SectionShellProps {
  * animations look broken, and the transition feel half-finished. This
  * is pure CSS sticky: it cannot jank, and it never fights the scroll.
  *
- * Content is vertically centered via `min-h-screen flex justify-center`
- * — so short sections sit centered, but tall sections (architecture
- * sim, live, operator…) grow past the viewport and stay fully
- * scrollable/readable instead of being clipped behind a pinned box.
+ * Content is vertically centered via `.screen-min` (100vh→100svh) +
+ * flex justify-center with fluid clamp() padding — so short sections
+ * sit centered and fit the *visible* viewport (no macOS Safari 100vh
+ * overflow), while tall sections (architecture sim, live, operator…)
+ * grow past it and stay fully scrollable/readable.
  */
 export function SectionShell({ id, eyebrow, children }: SectionShellProps) {
   return (
@@ -33,13 +34,13 @@ export function SectionShell({ id, eyebrow, children }: SectionShellProps) {
       id={id}
       className="page-panel sticky top-0 bg-[var(--color-background)]"
     >
-      <div className="mx-auto flex min-h-screen w-full max-w-5xl flex-col justify-center px-6 py-28 md:py-32">
+      <div className="screen-min mx-auto flex w-full max-w-5xl flex-col justify-center px-6 py-[clamp(4rem,9vh,7rem)]">
         <motion.p
           initial={{ opacity: 0, y: 8 }}
           whileInView={{ opacity: 1, y: 0 }}
           viewport={{ once: true, margin: "-80px" }}
           transition={{ duration: 0.5, ease: [0.19, 1, 0.22, 1] }}
-          className="mb-10 font-mono text-xs uppercase tracking-[0.2em] text-text-muted"
+          className="t-eyebrow mb-8"
         >
           {eyebrow}
         </motion.p>

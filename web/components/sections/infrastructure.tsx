@@ -46,7 +46,7 @@ export function Infrastructure() {
         whileInView={{ opacity: 1, y: 0 }}
         viewport={{ once: true, margin: "-100px" }}
         transition={{ duration: 0.7, ease: EASE }}
-        className="text-4xl font-medium leading-[1.05] tracking-tight sm:text-5xl md:text-6xl"
+        className="t-h2"
       >
         Modular by design.
       </motion.h2>

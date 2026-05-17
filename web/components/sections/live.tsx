@@ -152,7 +152,7 @@ export function Live() {
         whileInView={{ opacity: 1, y: 0 }}
         viewport={{ once: true, margin: "-100px" }}
         transition={{ delay: 0.1, duration: 0.7, ease: EASE }}
-        className="mt-6 text-5xl font-medium leading-[1.02] tracking-tight sm:text-6xl md:text-7xl"
+        className="mt-6 t-h1"
       >
         Proven on-chain.
       </motion.h2>

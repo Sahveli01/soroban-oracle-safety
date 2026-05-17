@@ -10,14 +10,30 @@ import { useState } from "react";
  *
  * Scroll-aware: condenses + darkens after the first scroll
  * (`data-scrolled`), and highlights whichever linked section is
- * currently in view (wayfinding on a long stacked page). In-page links
- * glide via Lenis `scrollTo` (ease-out-quart, ~1.4s) — the page-turn
- * happens on the user's click, never as an automatic snap.
+ * currently in view.
+ *
+ * Sections are `position: sticky` — their `getBoundingClientRect()` is
+ * distorted (a pinned panel reports top ≈ 0), so both wayfinding and
+ * in-page jumps must use the element's true *flow* position
+ * (`docTop`: summed offsetTop up the offsetParent chain), never its
+ * rect. This is why the "How it works" link used to fail from lower in
+ * the page — it resolved against a pinned rect and went nowhere.
  */
 const LINKS = [
   { id: "how-it-works", label: "How it works" },
   { id: "live", label: "Live" },
 ];
+
+/** True flow position of a sticky element, unaffected by pinning. */
+function docTop(el: HTMLElement): number {
+  let y = 0;
+  let n: HTMLElement | null = el;
+  while (n) {
+    y += n.offsetTop;
+    n = n.offsetParent as HTMLElement | null;
+  }
+  return y;
+}
 
 export function Nav() {
   const [scrolled, setScrolled] = useState(false);
@@ -28,13 +44,14 @@ export function Nav() {
     const scroll = instance.scroll;
     setScrolled(scroll > 32);
 
-    // Active = the last linked section whose top has passed the
-    // viewport's upper third.
-    const marker = window.innerHeight * 0.34;
+    // Active = the last linked section whose flow-top has passed the
+    // viewport's upper third. Uses docTop (not rect) so sticky pinning
+    // doesn't make every section read as "already passed".
+    const marker = scroll + window.innerHeight * 0.34;
     let current: string | null = null;
     for (const { id } of LINKS) {
       const el = document.getElementById(id);
-      if (el && el.getBoundingClientRect().top <= marker) current = id;
+      if (el && docTop(el) <= marker) current = id;
     }
     setActive(current);
   });
@@ -42,17 +59,14 @@ export function Nav() {
   const scrollTo = (id: string) => {
     const el = document.getElementById(id);
     if (!el) return;
+    const target = docTop(el);
     if (lenis) {
-      lenis.scrollTo(el, {
-        duration: 1.4,
+      lenis.scrollTo(target, {
+        duration: 1.1,
         easing: (t: number) => 1 - Math.pow(1 - t, 4), // ease-out-quart
-        // SectionPager pauses Lenis; force + lock let nav jumps still
-        // animate cleanly and not be interrupted mid-flight.
-        force: true,
-        lock: true,
       });
     } else {
-      el.scrollIntoView({ behavior: "smooth" });
+      window.scrollTo({ top: target, behavior: "smooth" });
     }
   };
 
@@ -98,16 +112,6 @@ export function Nav() {
           >
             GitHub ↗
           </a>
-        </div>
-
-        <div className="flex items-center gap-2">
-          <span className="relative flex h-2 w-2">
-            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[var(--color-accent)] opacity-75" />
-            <span className="relative inline-flex h-2 w-2 rounded-full bg-[var(--color-accent)]" />
-          </span>
-          <span className="font-mono text-xs text-[var(--color-text-muted)]">
-            testnet live
-          </span>
         </div>
       </div>
     </motion.nav>

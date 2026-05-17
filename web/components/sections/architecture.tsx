@@ -172,7 +172,7 @@ export function Architecture() {
         whileInView={{ opacity: 1, y: 0 }}
         viewport={{ once: true, margin: "-100px" }}
         transition={{ duration: 0.7 }}
-        className="text-4xl font-medium leading-[1.05] tracking-tight sm:text-5xl md:text-6xl"
+        className="t-h2"
       >
         Purely defensive.
       </motion.h2>
@@ -193,8 +193,11 @@ export function Architecture() {
       <div className="mt-10 grid gap-5 lg:grid-cols-12">
         {/* Flow diagram */}
         <div className="surface-card p-6 md:p-8 lg:col-span-7">
-          <div className="mb-6 font-mono text-[11px] uppercase tracking-[0.2em] text-text-dim">
-            Request flow
+          <div className="mb-7 flex items-center justify-between gap-4">
+            <span className="font-mono text-[11px] uppercase tracking-[0.2em] text-text-dim">
+              Request flow
+            </span>
+            <Legend />
           </div>
           <Flow state={state} />
         </div>
@@ -233,48 +236,89 @@ export function Architecture() {
           </div>
 
           {/* Result — reserved space so it never pushes layout / off-screen */}
-          <div className="mt-5 min-h-[148px] rounded-lg border border-border bg-[var(--color-background)] p-4">
+          <div className="mt-5 min-h-[210px] overflow-hidden rounded-xl border border-border bg-[var(--color-background)]">
             {showResult && currentScenario ? (
               <motion.div
                 initial={{ opacity: 0, y: 6 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.3 }}
-                className="space-y-2.5 text-sm"
               >
-                {currentScenario.result === "ok" ? (
-                  <span className="inline-flex items-center gap-2 rounded bg-accent/10 px-2 py-1 font-mono text-xs text-accent">
-                    ✓ Ok(price)
+                {/* Outcome banner */}
+                <div
+                  className={`flex items-center gap-2.5 border-b px-4 py-3 font-mono text-sm ${
+                    currentScenario.result === "ok"
+                      ? "border-accent/20 bg-accent/10 text-accent"
+                      : "border-danger/20 bg-danger/10 text-danger"
+                  }`}
+                >
+                  <span className="text-base leading-none">
+                    {currentScenario.result === "ok" ? "✓" : "✗"}
                   </span>
-                ) : (
-                  <span className="inline-flex items-center gap-2 rounded bg-danger/10 px-2 py-1 font-mono text-xs text-danger">
-                    ✗ Err({currentScenario.errorType})
+                  <span className="font-medium">
+                    {currentScenario.result === "ok"
+                      ? "Ok(price)"
+                      : `Err(${currentScenario.errorType})`}
                   </span>
-                )}
-                <p className="text-text-muted">{currentScenario.description}</p>
-                <div className="flex flex-wrap items-center gap-x-4 gap-y-1 pt-1 font-mono text-xs text-text-dim">
-                  {currentScenario.txHash ? (
-                    <a
-                      href={`https://stellar.expert/explorer/testnet/tx/${currentScenario.txHash}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-text-muted transition-colors hover:text-accent"
-                    >
-                      {currentScenario.txHashShort} ↗
-                    </a>
-                  ) : (
-                    <span>Simulated — testnet replay coming</span>
-                  )}
-                  {currentScenario.ledger && (
-                    <span>ledger {currentScenario.ledger}</span>
-                  )}
-                  <span>~{(currentScenario.latencyMs / 1000).toFixed(1)}s</span>
+                  <span className="ml-auto text-[10px] uppercase tracking-[0.18em] opacity-70">
+                    {currentScenario.result === "ok" ? "validated" : "rejected"}
+                  </span>
+                </div>
+
+                <div className="space-y-3 p-4">
+                  <p className="text-sm leading-relaxed text-text-muted">
+                    {currentScenario.description}
+                  </p>
+
+                  {/* Metadata grid — labelled rows */}
+                  <dl className="grid grid-cols-[auto_1fr] gap-x-5 gap-y-2 border-t border-border pt-3 font-mono text-xs">
+                    <dt className="text-text-dim">Transaction</dt>
+                    <dd className="text-right">
+                      {currentScenario.txHash ? (
+                        <a
+                          href={`https://stellar.expert/explorer/testnet/tx/${currentScenario.txHash}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-text transition-colors hover:text-accent"
+                        >
+                          {currentScenario.txHashShort} ↗
+                        </a>
+                      ) : (
+                        <span className="text-text-dim">
+                          simulated — replay coming
+                        </span>
+                      )}
+                    </dd>
+
+                    {currentScenario.ledger && (
+                      <>
+                        <dt className="text-text-dim">Ledger</dt>
+                        <dd className="text-right text-text-muted">
+                          {currentScenario.ledger}
+                        </dd>
+                      </>
+                    )}
+
+                    <dt className="text-text-dim">Latency</dt>
+                    <dd className="text-right text-text-muted">
+                      ~{(currentScenario.latencyMs / 1000).toFixed(1)}s
+                    </dd>
+                  </dl>
                 </div>
               </motion.div>
             ) : (
-              <div className="flex h-full min-h-[116px] items-center justify-center text-center font-mono text-xs text-text-dim">
-                {activeScenario
-                  ? "Validating…"
-                  : "Pick a scenario to run the guards"}
+              <div className="flex min-h-[210px] flex-col items-center justify-center gap-2 px-4 text-center">
+                <span
+                  className={`font-mono text-xs uppercase tracking-[0.2em] ${
+                    activeScenario ? "text-accent" : "text-text-dim"
+                  }`}
+                >
+                  {activeScenario ? "Validating…" : "Idle"}
+                </span>
+                <span className="text-xs text-text-dim">
+                  {activeScenario
+                    ? "Running guards in sequence"
+                    : "Pick a scenario to run the guards"}
+                </span>
               </div>
             )}
           </div>
@@ -285,8 +329,30 @@ export function Architecture() {
 }
 
 // =====================================================================
-// Compact horizontal request-flow visual. State-driven colour only.
+// Vertical request-flow visual — symmetric connectors with a
+// travelling data-pulse. State-driven colour only; the scenario state
+// machine and data above are unchanged.
 // =====================================================================
+
+const STATE_KEY: { k: string; label: string; cls: string }[] = [
+  { k: "idle", label: "idle", cls: "bg-border" },
+  { k: "active", label: "active", cls: "bg-accent" },
+  { k: "passed", label: "pass", cls: "bg-accent/50" },
+  { k: "failed", label: "fail", cls: "bg-danger" },
+];
+
+function Legend() {
+  return (
+    <div className="hidden items-center gap-3.5 font-mono text-[10px] uppercase tracking-[0.14em] text-text-dim sm:flex">
+      {STATE_KEY.map((s) => (
+        <span key={s.k} className="flex items-center gap-1.5">
+          <span className={`h-1.5 w-1.5 rounded-full ${s.cls}`} />
+          {s.label}
+        </span>
+      ))}
+    </div>
+  );
+}
 
 function tone(s: NodeState) {
   switch (s) {
@@ -310,17 +376,24 @@ function glow(s: NodeState): string | undefined {
 
 function Flow({ state }: { state: DiagramState }) {
   return (
-    <div className="flex flex-col gap-3 font-mono">
+    <div className="mx-auto flex w-full max-w-[20rem] flex-col items-stretch font-mono">
       <Box label="USER" state={state.user} />
-      <Rail active={state.user !== "idle"} label="borrow()" />
+      <Connector active={state.user !== "idle"} label="borrow()" />
       <Box label="mock-lending" state={state.lending} />
-      <Rail
+      <Connector
         active={state.lending !== "idle"}
         label="safe_oracle::lastprice()"
       />
 
       {/* safe-oracle library — the three guards */}
-      <div
+      <motion.div
+        animate={{
+          boxShadow:
+            state.safeOracle === "idle"
+              ? "0 0 0 0 rgba(0,0,0,0)"
+              : "0 0 32px -12px rgba(0,255,148,0.4)",
+        }}
+        transition={{ duration: 0.4 }}
         className={`rounded-xl border p-4 transition-colors ${
           state.safeOracle === "idle"
             ? "border-border"
@@ -335,9 +408,9 @@ function Flow({ state }: { state: DiagramState }) {
           <Guard label="Layer 2" sub="Market" state={state.layer2} />
           <Guard label="Breaker" sub="Auto-halt" state={state.cb} />
         </div>
-      </div>
+      </motion.div>
 
-      <Rail
+      <Connector
         active={state.result !== "idle"}
         failed={state.result === "failed"}
       />
@@ -376,13 +449,22 @@ function Flow({ state }: { state: DiagramState }) {
 function Box({ label, state }: { label: string; state: NodeState }) {
   return (
     <motion.div
-      animate={{ scale: state === "active" ? 1.015 : 1 }}
+      animate={{ scale: state === "active" ? 1.02 : 1 }}
       transition={{ duration: 0.3 }}
-      className={`rounded-lg border px-4 py-3 text-center text-sm transition-colors ${tone(
+      className={`relative w-full overflow-hidden rounded-lg border px-4 py-3 text-center text-sm transition-colors ${tone(
         state
       )}`}
       style={{ boxShadow: glow(state) }}
     >
+      {/* lit top hairline — premium edge */}
+      <span
+        aria-hidden="true"
+        className="pointer-events-none absolute inset-x-0 top-0 h-px"
+        style={{
+          background:
+            "linear-gradient(90deg, transparent, rgba(255,255,255,0.12), transparent)",
+        }}
+      />
       {label}
     </motion.div>
   );
@@ -399,7 +481,7 @@ function Guard({
 }) {
   return (
     <motion.div
-      animate={{ scale: state === "active" ? 1.04 : 1 }}
+      animate={{ scale: state === "active" ? 1.045 : 1 }}
       transition={{ duration: 0.3 }}
       className={`rounded-lg border px-2 py-3 text-center transition-colors ${tone(
         state
@@ -412,7 +494,14 @@ function Guard({
   );
 }
 
-function Rail({
+/**
+ * Symmetric connector — a centred vertical line, a centred arrowhead,
+ * and an optional centred caption (everything on the same vertical
+ * axis, no side-offset asymmetry). When the segment is energised a
+ * glowing data-pulse travels down the line — that motion IS the
+ * "request flowing through the guards".
+ */
+function Connector({
   active,
   failed = false,
   label,
@@ -421,31 +510,62 @@ function Rail({
   failed?: boolean;
   label?: string;
 }) {
-  const color = active
-    ? failed
-      ? "bg-danger"
-      : "bg-accent"
-    : "bg-border";
+  const lit = active && !failed;
+  const lineColor = !active
+    ? "var(--color-border-strong)"
+    : failed
+    ? "var(--color-danger)"
+    : "var(--color-accent)";
+
   return (
-    <div className="flex items-center justify-center gap-3">
-      <span className="relative h-5 w-px overflow-hidden bg-border">
+    <div className="flex flex-col items-center gap-1.5 py-2">
+      <span
+        className="relative h-9 w-px"
+        style={{ background: "var(--color-border)" }}
+      >
         <motion.span
-          className={`absolute inset-x-0 top-0 h-full ${color}`}
+          className="absolute inset-x-0 top-0 h-full origin-top"
+          style={{ background: lineColor }}
           initial={{ scaleY: 0 }}
           animate={{ scaleY: active ? 1 : 0 }}
           transition={{ duration: 0.35 }}
-          style={{ transformOrigin: "top" }}
         />
+        {lit && (
+          <motion.span
+            className="absolute left-1/2 top-0 h-2 w-2 rounded-full"
+            style={{
+              background: "var(--color-accent)",
+              boxShadow: "0 0 10px 2px rgba(0,255,148,0.65)",
+            }}
+            initial={{ x: "-50%", y: -10, opacity: 0 }}
+            animate={{ x: "-50%", y: [-10, 36], opacity: [0, 1, 1, 0] }}
+            transition={{ duration: 0.85, repeat: Infinity, ease: "easeIn" }}
+          />
+        )}
       </span>
+
+      <motion.span
+        animate={{ opacity: active ? 1 : 0.4 }}
+        transition={{ duration: 0.3 }}
+        style={{ color: lineColor }}
+        aria-hidden="true"
+        className="block leading-none"
+      >
+        <svg width="12" height="7" viewBox="0 0 12 7" fill="none">
+          <path
+            d="M1 1L6 5.5L11 1"
+            stroke="currentColor"
+            strokeWidth="1.6"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        </svg>
+      </motion.span>
+
       {label && (
-        <motion.span
-          initial={{ opacity: 0 }}
-          animate={{ opacity: active ? 0.8 : 0.25 }}
-          transition={{ duration: 0.3 }}
-          className="text-[10px] text-text-dim"
-        >
+        <span className="mt-0.5 max-w-full text-center text-[10px] tracking-wide text-text-dim">
           {label}
-        </motion.span>
+        </span>
       )}
     </div>
   );
