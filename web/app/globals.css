@@ -161,14 +161,19 @@
   font-weight: 500;
 }
 
-/* Cross-browser viewport min-height.
-   100vh first (universal fallback), then 100svh — the *small*
-   viewport unit, i.e. the area visible even with Safari/iOS
-   dynamic toolbars showing. Fixes panels overflowing the screen
-   on macOS Safari where 100vh > visible area. */
+/* Inner content frame. The panel (.page-panel/.page-foot) is now an
+   exact one-viewport snap unit, so this fills it (height: 100%) and
+   centres the content. If a section's content is ever taller than the
+   viewport it scrolls *inside its own page* (overflow-y: auto) instead
+   of making the panel taller — that is what guarantees backward snap
+   lands on the full page exactly like forward (an oversized snap area
+   would let the browser rest mid-section, the "yarıda kalıyor" bug),
+   while content is still never clipped. Scrollbar is hidden globally. */
 .screen-min {
-  min-height: 100vh;
+  height: 100%;
   min-height: 100svh;
+  overflow-y: auto;
+  overscroll-behavior-y: auto;
 }
 
 /* ============================================================
@@ -364,16 +369,25 @@
    its flow position (= exactly where it fully covers the previous
    one). `scroll-snap-stop: always` forces the scroll to rest on every
    panel even through trackpad momentum, so one gesture = one section,
-   forward and backward, with zero JS. A panel taller than the viewport
-   is still freely scrollable (per the scroll-snap spec: when the snap
-   area exceeds the snapport, any position within it is reachable) — so
-   tall sections are never clipped. */
+   forward and backward, with zero JS.
+
+   The panel is EXACTLY one viewport tall (height: 100svh). This makes
+   the snap area equal the snapport, so mandatory snap has exactly one
+   rest position per panel — its start — and backward navigation lands
+   on the full previous page identically to forward (no more "yarıda
+   kalıyor" mid-section rest, which happened when a content-sized panel
+   was taller than the viewport and the spec allowed resting anywhere
+   in it). Overflowing content scrolls inside `.screen-min`, never
+   clipped. 100vh is the universal fallback; 100svh is the area visible
+   under Safari/iOS dynamic toolbars. */
 .page-panel {
   background: var(--color-background);
   border-top: 1px solid var(--color-border);
   border-top-left-radius: 1.25rem;
   border-top-right-radius: 1.25rem;
   box-shadow: var(--shadow-page);
+  height: 100vh;
+  height: 100svh;
   scroll-snap-align: start;
   scroll-snap-stop: always;
 }
@@ -387,6 +401,8 @@
   background: var(--color-background);
   border-top: 1px solid rgba(255, 255, 255, 0.04);
   box-shadow: 0 -24px 60px -28px rgba(0, 0, 0, 0.9);
+  height: 100vh;
+  height: 100svh;
   scroll-snap-align: start;
   scroll-snap-stop: always;
 }
