@@ -2,6 +2,7 @@
 
 import { motion } from "framer-motion";
 import Link from "next/link";
+import { useLenis } from "lenis/react";
 
 /**
  * Sticky pillow navigation.
@@ -9,8 +10,28 @@ import Link from "next/link";
  * Centered capsule, backdrop blur over body content. Mounts with a
  * subtle slide-down. The right-side ● indicator is a real status dot
  * — testnet contracts are live (Phase 7 closure).
+ *
+ * In-page links use Lenis `scrollTo` for a smooth, user-initiated
+ * glide to the target section (ease-out-quart, ~1.4s) — the page-turn
+ * happens on the user's click, never as an automatic snap.
  */
 export function Nav() {
+  const lenis = useLenis();
+
+  const scrollTo = (target: string) => {
+    const el = document.querySelector(target);
+    if (!el) return;
+    if (lenis) {
+      lenis.scrollTo(el as HTMLElement, {
+        duration: 1.4,
+        easing: (t: number) => 1 - Math.pow(1 - t, 4), // ease-out-quart
+      });
+    } else {
+      // Lenis not ready yet — fall back to native smooth scroll.
+      el.scrollIntoView({ behavior: "smooth" });
+    }
+  };
+
   return (
     <motion.nav
       initial={{ opacity: 0, y: -10 }}
@@ -27,18 +48,18 @@ export function Nav() {
         </Link>
 
         <div className="hidden items-center gap-6 md:flex">
-          <a
-            href="#how-it-works"
-            className="text-sm text-[var(--color-text-muted)] transition-colors hover:text-[var(--color-text)]"
+          <button
+            onClick={() => scrollTo("#how-it-works")}
+            className="cursor-pointer text-sm text-[var(--color-text-muted)] transition-colors hover:text-[var(--color-text)]"
           >
             How it works
-          </a>
-          <a
-            href="#live"
-            className="text-sm text-[var(--color-text-muted)] transition-colors hover:text-[var(--color-text)]"
+          </button>
+          <button
+            onClick={() => scrollTo("#live")}
+            className="cursor-pointer text-sm text-[var(--color-text-muted)] transition-colors hover:text-[var(--color-text)]"
           >
             Live
-          </a>
+          </button>
           <a
             href="https://github.com/Sahveli01/soroban-oracle-safety"
             target="_blank"

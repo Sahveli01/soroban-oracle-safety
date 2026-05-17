@@ -3,8 +3,6 @@
 import { ReactLenis } from "lenis/react";
 import type { ReactNode } from "react";
 
-import { SnapController } from "./snap-controller";
-
 /**
  * Lenis smooth-scroll wrapper.
  *
@@ -12,9 +10,11 @@ import { SnapController } from "./snap-controller";
  * programmatic scrolls, lerp 0.1 on wheel input. Mounted at root so
  * anchor-link navigation in the pillow nav inherits the smoothing.
  *
- * `SnapController` (rendered inside, so it has Lenis context) adds
- * section-to-section snapping via the official `lenis/snap` module —
- * native CSS scroll-snap is inert under Lenis root.
+ * Note: section snapping was tried (lenis/snap) and removed — proximity
+ * snap fired after the user's scroll settled and animated to the nearest
+ * section, which read as a stutter / loss of control. The "page-turn"
+ * feel comes from full-height sections + parallax + smooth scroll, not
+ * from snapping. Scroll stays fully user-controlled.
  */
 export function LenisProvider({ children }: { children: ReactNode }) {
   return (
@@ -28,7 +28,6 @@ export function LenisProvider({ children }: { children: ReactNode }) {
         touchMultiplier: 2,
       }}
     >
-      <SnapController />
       {children}
     </ReactLenis>
   );

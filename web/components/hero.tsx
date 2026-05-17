@@ -130,6 +130,23 @@ export function Hero() {
       <div className="mt-24 w-full">
         <Marquee />
       </div>
+
+      {/* Subtle scroll cue — invites scrolling without hijacking it */}
+      <motion.div
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        transition={{ delay: 3.5, duration: 1 }}
+        className="absolute bottom-8 left-1/2 -translate-x-1/2"
+      >
+        <motion.div
+          animate={{ y: [0, 8, 0] }}
+          transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
+          className="flex flex-col items-center gap-2 font-mono text-xs uppercase tracking-widest text-[var(--color-text-dim)]"
+        >
+          <span>scroll</span>
+          <span>↓</span>
+        </motion.div>
+      </motion.div>
     </section>
   );
 }
