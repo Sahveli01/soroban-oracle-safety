@@ -28,7 +28,7 @@ const EASE_OUT_EXPO: [number, number, number, number] = [0.19, 1, 0.22, 1];
  */
 export function Hero() {
   return (
-    <section className="relative flex min-h-screen flex-col items-center px-6 pt-32 pb-24">
+    <section id="hero" className="relative flex min-h-screen flex-col items-center px-6 pt-32 pb-24">
       {/* Top slogan */}
       <motion.p
         initial={{ opacity: 0 }}
