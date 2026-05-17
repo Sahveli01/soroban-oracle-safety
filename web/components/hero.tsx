@@ -148,25 +148,6 @@ export function Hero() {
           <Marquee />
         </div>
       </div>
-
-      {/* Scroll indicator — a drawn line that pulses downward */}
-      <motion.div
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        transition={{ delay: 1.6, duration: 1 }}
-        className="pointer-events-none absolute bottom-8 left-1/2 flex -translate-x-1/2 flex-col items-center gap-3"
-      >
-        <span className="font-mono text-[10px] uppercase tracking-[0.3em] text-[var(--color-text-dim)]">
-          Scroll
-        </span>
-        <span className="relative h-10 w-px overflow-hidden bg-[var(--color-border-strong)]">
-          <motion.span
-            className="absolute inset-x-0 top-0 h-1/2 bg-[var(--color-accent)]"
-            animate={{ y: ["-100%", "200%"] }}
-            transition={{ duration: 1.8, repeat: Infinity, ease: "easeInOut" }}
-          />
-        </span>
-      </motion.div>
     </section>
   );
 }

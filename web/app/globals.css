@@ -92,43 +92,84 @@
   inset: 0;
   z-index: -2;
   pointer-events: none;
+  overflow: hidden;
+  /* Base void + a perspective depth grid that fades toward the center */
   background:
-    radial-gradient(
-      60rem 60rem at 78% 8%,
-      var(--color-accent-muted),
-      transparent 60%
+    linear-gradient(
+      rgba(255, 255, 255, 0.022) 1px,
+      transparent 1px
     ),
-    radial-gradient(50rem 50rem at 12% 92%, var(--color-aurora), transparent 60%),
-    linear-gradient(var(--color-background), var(--color-background));
-}
-
-.atmosphere::before {
-  /* Hairline grid — barely perceptible, gives the void a structure */
-  content: "";
-  position: absolute;
-  inset: 0;
-  background-image:
-    linear-gradient(rgba(255, 255, 255, 0.018) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(255, 255, 255, 0.018) 1px, transparent 1px);
-  background-size: 64px 64px;
-  mask-image: radial-gradient(circle at 50% 40%, black, transparent 78%);
+    linear-gradient(90deg, rgba(255, 255, 255, 0.022) 1px, transparent 1px),
+    radial-gradient(
+      120% 90% at 50% 0%,
+      #0a0b12 0%,
+      var(--color-background) 55%
+    );
+  background-size:
+    58px 58px,
+    58px 58px,
+    100% 100%;
   -webkit-mask-image: radial-gradient(
-    circle at 50% 40%,
-    black,
-    transparent 78%
+    ellipse 100% 75% at 50% 42%,
+    #000 60%,
+    rgba(0, 0, 0, 0.35) 100%
+  );
+  mask-image: radial-gradient(
+    ellipse 100% 75% at 50% 42%,
+    #000 60%,
+    rgba(0, 0, 0, 0.35) 100%
   );
 }
 
+.atmosphere::before {
+  /* Living web3 mesh — three large blooms slowly drifting. The motion is
+     transform-only (GPU), opacity-stable, so it never janks the scroll. */
+  content: "";
+  position: absolute;
+  inset: -25%;
+  background:
+    radial-gradient(
+      38rem 38rem at 22% 28%,
+      rgba(0, 255, 148, 0.16),
+      transparent 60%
+    ),
+    radial-gradient(
+      34rem 34rem at 80% 22%,
+      rgba(70, 110, 230, 0.16),
+      transparent 60%
+    ),
+    radial-gradient(
+      40rem 40rem at 62% 82%,
+      rgba(0, 255, 148, 0.1),
+      transparent 62%
+    );
+  filter: blur(8px);
+  animation: mesh-drift 26s ease-in-out infinite alternate;
+  will-change: transform;
+}
+
 .atmosphere::after {
-  /* Vignette — pulls focus to center */
+  /* Vignette — pulls focus to center, seals the edges */
   content: "";
   position: absolute;
   inset: 0;
   background: radial-gradient(
     ellipse 120% 80% at 50% 50%,
-    transparent 55%,
-    rgba(0, 0, 0, 0.55) 100%
+    transparent 52%,
+    rgba(0, 0, 0, 0.62) 100%
   );
+}
+
+@keyframes mesh-drift {
+  0% {
+    transform: translate3d(-3%, -2%, 0) scale(1);
+  }
+  50% {
+    transform: translate3d(3%, 2%, 0) scale(1.08);
+  }
+  100% {
+    transform: translate3d(-2%, 3%, 0) scale(1.03);
+  }
 }
 
 /* Film grain — animated, ultra-subtle, kills banding on the gradients */

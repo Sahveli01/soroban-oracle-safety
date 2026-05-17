@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion } from "framer-motion";
 import { SectionShell } from "./section-shell";
 
 type ScenarioId = "happy" | "spike" | "thin" | "stale";
@@ -172,7 +172,7 @@ export function Architecture() {
         whileInView={{ opacity: 1, y: 0 }}
         viewport={{ once: true, margin: "-100px" }}
         transition={{ duration: 0.7 }}
-        className="text-4xl font-medium leading-[1.1] tracking-tight sm:text-5xl md:text-6xl"
+        className="text-4xl font-medium leading-[1.05] tracking-tight sm:text-5xl md:text-6xl"
       >
         Purely defensive.
       </motion.h2>
@@ -181,418 +181,272 @@ export function Architecture() {
         initial={{ opacity: 0 }}
         whileInView={{ opacity: 1 }}
         viewport={{ once: true, margin: "-100px" }}
-        transition={{ delay: 0.2, duration: 0.7 }}
-        className="mt-8 max-w-2xl text-text-muted"
+        transition={{ delay: 0.15, duration: 0.7 }}
+        className="mt-5 max-w-xl text-text-muted"
       >
-        Watch a borrow request flow through five guards. Run any scenario to see
-        how safe-oracle validates the oracle response before reaching your
-        business logic.
+        Run a scenario and watch a borrow request flow through five guards —
+        validated before it ever reaches your business logic.
       </motion.p>
 
-      {/* Diagram */}
-      <motion.div
-        initial={{ opacity: 0, y: 30 }}
-        whileInView={{ opacity: 1, y: 0 }}
-        viewport={{ once: true, margin: "-50px" }}
-        transition={{ delay: 0.3, duration: 0.8 }}
-        className="mt-16 rounded-xl border border-border bg-surface p-8 md:p-12"
-      >
-        <Diagram state={state} />
-      </motion.div>
+      {/* Compact two-column console — fits one viewport, result always
+          visible (no off-screen expand). Logic/state machine unchanged. */}
+      <div className="mt-10 grid gap-5 lg:grid-cols-12">
+        {/* Flow diagram */}
+        <div className="surface-card p-6 md:p-8 lg:col-span-7">
+          <div className="mb-6 font-mono text-[11px] uppercase tracking-[0.2em] text-text-dim">
+            Request flow
+          </div>
+          <Flow state={state} />
+        </div>
 
-      {/* Scenario controls */}
-      <motion.div
-        initial={{ opacity: 0 }}
-        whileInView={{ opacity: 1 }}
-        viewport={{ once: true, margin: "-100px" }}
-        transition={{ delay: 0.5, duration: 0.6 }}
-        className="mt-8 rounded-xl border border-border bg-surface p-6"
-      >
-        <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-          <div>
-            <div className="font-mono text-xs uppercase tracking-wider text-text-muted">
+        {/* Console: scenarios + always-visible result */}
+        <div className="surface-card flex flex-col p-6 md:p-7 lg:col-span-5">
+          <div className="flex items-center justify-between">
+            <div className="font-mono text-[11px] uppercase tracking-[0.2em] text-text-dim">
               Run scenario
             </div>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            {SCENARIOS.map((s) => (
-              <button
-                key={s.id}
-                onClick={() => runScenario(s.id)}
-                disabled={activeScenario === s.id}
-                className={`rounded-lg border px-4 py-2 font-mono text-sm transition-all ${
-                  activeScenario === s.id
-                    ? "border-accent/40 bg-accent/10 text-accent"
-                    : "border-border text-text-muted hover:border-text-muted hover:text-text"
-                } disabled:cursor-default`}
-              >
-                {s.shortLabel}
-              </button>
-            ))}
             {activeScenario && (
               <button
                 onClick={reset}
-                className="rounded-lg border border-border px-4 py-2 font-mono text-sm text-text-dim transition-all hover:border-text-muted hover:text-text-muted"
+                className="cursor-pointer font-mono text-[11px] uppercase tracking-wider text-text-dim transition-colors hover:text-text"
               >
                 Reset
               </button>
             )}
           </div>
-        </div>
 
-        {/* Result panel */}
-        <AnimatePresence>
-          {showResult && currentScenario && (
-            <motion.div
-              initial={{ opacity: 0, height: 0 }}
-              animate={{ opacity: 1, height: "auto" }}
-              exit={{ opacity: 0, height: 0 }}
-              transition={{ duration: 0.3 }}
-              className="mt-6 overflow-hidden"
-            >
-              <div className="space-y-3 border-t border-border pt-6">
-                <div className="flex items-start gap-3">
-                  <span className="mt-1 font-mono text-xs text-text-dim">
-                    RESULT
-                  </span>
-                  {currentScenario.result === "ok" ? (
-                    <div className="flex items-center gap-2">
-                      <span className="rounded bg-accent/10 px-2 py-1 font-mono text-xs text-accent">
-                        ✓ Ok(price)
-                      </span>
-                      <span className="text-sm text-text-muted">
-                        All guardrails passed
-                      </span>
-                    </div>
-                  ) : (
-                    <div className="flex items-center gap-2">
-                      <span className="rounded bg-danger/10 px-2 py-1 font-mono text-xs text-danger">
-                        ✗ Err({currentScenario.errorType})
-                      </span>
-                      <span className="text-sm text-text-muted">
-                        Borrow rejected
-                      </span>
-                    </div>
-                  )}
-                </div>
+          <div className="mt-4 grid grid-cols-2 gap-2">
+            {SCENARIOS.map((s) => (
+              <button
+                key={s.id}
+                onClick={() => runScenario(s.id)}
+                disabled={activeScenario === s.id}
+                className={`cursor-pointer rounded-lg border px-3 py-2.5 text-left font-mono text-xs transition-all ${
+                  activeScenario === s.id
+                    ? "border-accent/50 bg-accent/10 text-accent"
+                    : "border-border text-text-muted hover:border-text-muted hover:text-text"
+                }`}
+              >
+                {s.shortLabel}
+              </button>
+            ))}
+          </div>
 
-                <div className="flex items-start gap-3">
-                  <span className="mt-1 font-mono text-xs text-text-dim">
-                    DESC
+          {/* Result — reserved space so it never pushes layout / off-screen */}
+          <div className="mt-5 min-h-[148px] rounded-lg border border-border bg-[var(--color-background)] p-4">
+            {showResult && currentScenario ? (
+              <motion.div
+                initial={{ opacity: 0, y: 6 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.3 }}
+                className="space-y-2.5 text-sm"
+              >
+                {currentScenario.result === "ok" ? (
+                  <span className="inline-flex items-center gap-2 rounded bg-accent/10 px-2 py-1 font-mono text-xs text-accent">
+                    ✓ Ok(price)
                   </span>
-                  <span className="text-sm text-text">
-                    {currentScenario.description}
+                ) : (
+                  <span className="inline-flex items-center gap-2 rounded bg-danger/10 px-2 py-1 font-mono text-xs text-danger">
+                    ✗ Err({currentScenario.errorType})
                   </span>
-                </div>
-
-                {currentScenario.txHash ? (
-                  <div className="flex items-start gap-3">
-                    <span className="mt-1 font-mono text-xs text-text-dim">
-                      TX
-                    </span>
+                )}
+                <p className="text-text-muted">{currentScenario.description}</p>
+                <div className="flex flex-wrap items-center gap-x-4 gap-y-1 pt-1 font-mono text-xs text-text-dim">
+                  {currentScenario.txHash ? (
                     <a
                       href={`https://stellar.expert/explorer/testnet/tx/${currentScenario.txHash}`}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="flex items-center gap-2 font-mono text-sm text-text-muted transition-colors hover:text-accent"
+                      className="text-text-muted transition-colors hover:text-accent"
                     >
-                      <span>{currentScenario.txHashShort}</span>
-                      <span className="text-xs">↗</span>
+                      {currentScenario.txHashShort} ↗
                     </a>
-                    {currentScenario.ledger && (
-                      <span className="font-mono text-xs text-text-dim">
-                        ledger {currentScenario.ledger}
-                      </span>
-                    )}
-                  </div>
-                ) : (
-                  <div className="flex items-start gap-3">
-                    <span className="mt-1 font-mono text-xs text-text-dim">
-                      TX
-                    </span>
-                    <span className="rounded bg-text-dim/10 px-2 py-1 font-mono text-xs text-text-dim">
-                      Simulated — testnet replay coming
-                    </span>
-                  </div>
-                )}
-
-                <div className="flex items-start gap-3">
-                  <span className="mt-1 font-mono text-xs text-text-dim">
-                    LATENCY
-                  </span>
-                  <span className="font-mono text-sm text-text-muted">
-                    ~{(currentScenario.latencyMs / 1000).toFixed(1)}s
-                  </span>
+                  ) : (
+                    <span>Simulated — testnet replay coming</span>
+                  )}
+                  {currentScenario.ledger && (
+                    <span>ledger {currentScenario.ledger}</span>
+                  )}
+                  <span>~{(currentScenario.latencyMs / 1000).toFixed(1)}s</span>
                 </div>
+              </motion.div>
+            ) : (
+              <div className="flex h-full min-h-[116px] items-center justify-center text-center font-mono text-xs text-text-dim">
+                {activeScenario
+                  ? "Validating…"
+                  : "Pick a scenario to run the guards"}
               </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
-      </motion.div>
+            )}
+          </div>
+        </div>
+      </div>
     </SectionShell>
   );
 }
 
 // =====================================================================
-// SVG Diagram Component
+// Compact horizontal request-flow visual. State-driven colour only.
 // =====================================================================
 
-interface DiagramProps {
-  state: DiagramState;
+function tone(s: NodeState) {
+  switch (s) {
+    case "active":
+      return "border-accent bg-accent/10 text-accent";
+    case "passed":
+      return "border-accent/50 bg-accent/5 text-accent";
+    case "failed":
+      return "border-danger bg-danger/10 text-danger";
+    default:
+      return "border-border bg-[var(--color-background)] text-text-muted";
+  }
 }
 
-function Diagram({ state }: DiagramProps) {
-  const nodeColor = (s: NodeState): string => {
-    switch (s) {
-      case "idle":
-        return "border-border bg-background text-text-muted";
-      case "active":
-        return "border-accent bg-accent/10 text-accent";
-      case "passed":
-        return "border-accent/60 bg-accent/5 text-accent";
-      case "failed":
-        return "border-danger bg-danger/10 text-danger";
-    }
-  };
+function glow(s: NodeState): string | undefined {
+  if (s === "active" || s === "passed")
+    return "0 0 22px -6px rgba(0,255,148,0.45)";
+  if (s === "failed") return "0 0 22px -6px rgba(255,45,85,0.45)";
+  return undefined;
+}
 
-  const showLine = (from: NodeState, to: NodeState): boolean => {
-    return (
-      from !== "idle" && (to === "active" || to === "passed" || to === "failed")
-    );
-  };
-
+function Flow({ state }: { state: DiagramState }) {
   return (
-    <div className="font-mono">
-      {/* User node */}
-      <div className="flex justify-center">
-        <Node
-          label="USER"
-          state={state.user}
-          className={nodeColor(state.user)}
-        />
-      </div>
-
-      {/* User → Lending */}
-      <Connector
-        to={state.lending}
-        label="borrow()"
-        active={showLine(state.user, state.lending)}
-      />
-
-      {/* Lending node */}
-      <div className="flex justify-center">
-        <Node
-          label="mock-lending"
-          state={state.lending}
-          className={nodeColor(state.lending)}
-          wide
-        />
-      </div>
-
-      {/* Lending → safe-oracle */}
-      <Connector
-        to={state.safeOracle}
+    <div className="flex flex-col gap-3 font-mono">
+      <Box label="USER" state={state.user} />
+      <Rail active={state.user !== "idle"} label="borrow()" />
+      <Box label="mock-lending" state={state.lending} />
+      <Rail
+        active={state.lending !== "idle"}
         label="safe_oracle::lastprice()"
-        active={showLine(state.lending, state.safeOracle)}
       />
 
-      {/* safe-oracle library box (contains layer1, layer2, cb) */}
-      <div className="flex justify-center">
-        <div
-          className={`rounded-lg border-2 p-6 ${
-            state.safeOracle === "idle"
-              ? "border-border bg-background"
-              : "border-accent/30 bg-accent/5"
-          }`}
-        >
-          <div className="mb-4 text-center font-mono text-xs uppercase tracking-wider text-text-muted">
-            safe-oracle library
-          </div>
-          <div className="flex flex-col items-center gap-4 md:flex-row md:items-stretch">
-            <SubNode
-              label="Layer 1"
-              sublabel="Oracle checks"
-              state={state.layer1}
-            />
-            <Arrow active={state.layer1 === "passed"} />
-            <SubNode
-              label="Layer 2"
-              sublabel="Market structure"
-              state={state.layer2}
-            />
-            <Arrow active={state.layer2 === "passed"} />
-            <SubNode label="CB" sublabel="Circuit breaker" state={state.cb} />
-          </div>
+      {/* safe-oracle library — the three guards */}
+      <div
+        className={`rounded-xl border p-4 transition-colors ${
+          state.safeOracle === "idle"
+            ? "border-border"
+            : "border-accent/30 bg-accent/5"
+        }`}
+      >
+        <div className="mb-3 text-center text-[10px] uppercase tracking-[0.2em] text-text-dim">
+          safe-oracle
+        </div>
+        <div className="grid grid-cols-3 gap-2">
+          <Guard label="Layer 1" sub="Oracle" state={state.layer1} />
+          <Guard label="Layer 2" sub="Market" state={state.layer2} />
+          <Guard label="Breaker" sub="Auto-halt" state={state.cb} />
         </div>
       </div>
 
-      {/* safe-oracle → result */}
-      <Connector
-        to={state.result}
+      <Rail
         active={state.result !== "idle"}
         failed={state.result === "failed"}
       />
 
-      {/* Result */}
+      {/* Result chip */}
       <div className="flex justify-center">
-        {state.result === "passed" && (
-          <motion.div
-            initial={{ scale: 0.8, opacity: 0 }}
-            animate={{ scale: 1, opacity: 1 }}
-            transition={{ type: "spring", stiffness: 200, damping: 15 }}
-            className="rounded-lg border-2 border-accent bg-accent/10 px-6 py-3 font-mono text-sm text-accent"
-          >
-            ✓ Ok(price)
-          </motion.div>
-        )}
-        {state.result === "failed" && (
-          <motion.div
-            initial={{ scale: 0.8, opacity: 0 }}
-            animate={{ scale: 1, opacity: 1 }}
-            transition={{ type: "spring", stiffness: 200, damping: 15 }}
-            className="rounded-lg border-2 border-danger bg-danger/10 px-6 py-3 font-mono text-sm text-danger"
-          >
-            ✗ Err(violation)
-          </motion.div>
-        )}
+        <motion.div
+          key={state.result}
+          initial={
+            state.result !== "idle"
+              ? { scale: 0.85, opacity: 0 }
+              : { scale: 1, opacity: 1 }
+          }
+          animate={{ scale: 1, opacity: 1 }}
+          transition={{ type: "spring", stiffness: 220, damping: 16 }}
+          className={`rounded-lg border px-5 py-2.5 text-sm ${
+            state.result === "passed"
+              ? "border-accent bg-accent/10 text-accent"
+              : state.result === "failed"
+              ? "border-danger bg-danger/10 text-danger"
+              : "border-border text-text-dim"
+          }`}
+          style={{ boxShadow: glow(state.result) }}
+        >
+          {state.result === "passed"
+            ? "✓ Ok(price)"
+            : state.result === "failed"
+            ? "✗ Err(violation)"
+            : "awaiting result"}
+        </motion.div>
       </div>
     </div>
   );
 }
 
-function Node({
-  label,
-  state,
-  className,
-  wide = false,
-}: {
-  label: string;
-  state: NodeState;
-  className: string;
-  wide?: boolean;
-}) {
+function Box({ label, state }: { label: string; state: NodeState }) {
   return (
     <motion.div
-      animate={{
-        scale: state === "active" ? 1.02 : 1,
-      }}
+      animate={{ scale: state === "active" ? 1.015 : 1 }}
       transition={{ duration: 0.3 }}
-      className={`rounded-lg border-2 px-4 py-3 text-center text-sm transition-all ${
-        wide ? "min-w-[180px]" : "min-w-[100px]"
-      } ${className}`}
-      style={
-        state === "active"
-          ? {
-              boxShadow: "0 0 24px rgba(0, 255, 148, 0.3)",
-            }
-          : state === "failed"
-          ? {
-              boxShadow: "0 0 24px rgba(255, 45, 85, 0.3)",
-            }
-          : {}
-      }
+      className={`rounded-lg border px-4 py-3 text-center text-sm transition-colors ${tone(
+        state
+      )}`}
+      style={{ boxShadow: glow(state) }}
     >
       {label}
     </motion.div>
   );
 }
 
-function SubNode({
+function Guard({
   label,
-  sublabel,
+  sub,
   state,
 }: {
   label: string;
-  sublabel: string;
+  sub: string;
   state: NodeState;
 }) {
-  const colorClasses =
-    state === "idle"
-      ? "border-border bg-background text-text-muted"
-      : state === "active"
-      ? "border-accent bg-accent/10 text-accent"
-      : state === "passed"
-      ? "border-accent/60 bg-accent/5 text-accent"
-      : "border-danger bg-danger/10 text-danger";
-
   return (
     <motion.div
-      animate={{
-        scale: state === "active" ? 1.05 : 1,
-      }}
+      animate={{ scale: state === "active" ? 1.04 : 1 }}
       transition={{ duration: 0.3 }}
-      className={`flex-1 rounded-lg border-2 px-4 py-3 text-center transition-all ${colorClasses}`}
-      style={
-        state === "active"
-          ? { boxShadow: "0 0 20px rgba(0, 255, 148, 0.4)" }
-          : state === "failed"
-          ? { boxShadow: "0 0 20px rgba(255, 45, 85, 0.4)" }
-          : {}
-      }
+      className={`rounded-lg border px-2 py-3 text-center transition-colors ${tone(
+        state
+      )}`}
+      style={{ boxShadow: glow(state) }}
     >
-      <div className="text-sm font-medium">{label}</div>
-      <div className="mt-1 text-xs opacity-70">{sublabel}</div>
+      <div className="text-xs font-medium">{label}</div>
+      <div className="mt-0.5 text-[10px] opacity-70">{sub}</div>
     </motion.div>
   );
 }
 
-function Connector({
-  to,
-  label,
+function Rail({
   active,
   failed = false,
+  label,
 }: {
-  to: NodeState;
-  label?: string;
   active: boolean;
   failed?: boolean;
+  label?: string;
 }) {
-  const isFail = failed || to === "failed";
-  const barColor = active
-    ? isFail
+  const color = active
+    ? failed
       ? "bg-danger"
       : "bg-accent"
     : "bg-border";
-
   return (
-    <div className="my-4 flex flex-col items-center gap-1">
-      <motion.div
-        initial={{ height: 0 }}
-        animate={{ height: active ? 24 : 0 }}
-        transition={{ duration: 0.4 }}
-        className={`w-px ${barColor}`}
-      />
+    <div className="flex items-center justify-center gap-3">
+      <span className="relative h-5 w-px overflow-hidden bg-border">
+        <motion.span
+          className={`absolute inset-x-0 top-0 h-full ${color}`}
+          initial={{ scaleY: 0 }}
+          animate={{ scaleY: active ? 1 : 0 }}
+          transition={{ duration: 0.35 }}
+          style={{ transformOrigin: "top" }}
+        />
+      </span>
       {label && (
-        <motion.div
+        <motion.span
           initial={{ opacity: 0 }}
-          animate={{ opacity: active ? 1 : 0.3 }}
+          animate={{ opacity: active ? 0.8 : 0.25 }}
           transition={{ duration: 0.3 }}
-          className="text-xs text-text-dim"
+          className="text-[10px] text-text-dim"
         >
           {label}
-        </motion.div>
+        </motion.span>
       )}
-      <motion.div
-        initial={{ height: 0 }}
-        animate={{ height: active ? 12 : 0 }}
-        transition={{ duration: 0.4, delay: 0.1 }}
-        className={`w-px ${barColor}`}
-      />
     </div>
-  );
-}
-
-function Arrow({ active }: { active: boolean }) {
-  return (
-    <motion.div
-      initial={{ opacity: 0 }}
-      animate={{ opacity: active ? 1 : 0.3 }}
-      transition={{ duration: 0.3 }}
-      className={`hidden self-center md:block ${
-        active ? "text-accent" : "text-border"
-      }`}
-    >
-      →
-    </motion.div>
   );
 }

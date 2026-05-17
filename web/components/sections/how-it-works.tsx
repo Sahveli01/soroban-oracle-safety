@@ -6,47 +6,32 @@ import { SectionShell } from "./section-shell";
 const STEPS = [
   {
     num: "01",
-    glyph: "◉",
     title: "Reflector Call",
-    body: "Your contract calls safe_oracle::lastprice() instead of reflector directly.",
-    sub: [],
+    body: "Your contract calls safe_oracle::lastprice() instead of Reflector directly.",
   },
   {
     num: "02",
-    glyph: "◈",
-    title: "Layer 1 Checks",
-    body: "Oracle-side validation against price feed mechanics.",
-    sub: [
-      "Deviation — sudden price changes blocked",
-      "Staleness — outdated feeds rejected",
-      "Cross-Source — secondary oracle disagreement caught",
-    ],
+    title: "Layer 1 — Oracle Checks",
+    body: "Deviation, staleness and cross-source disagreement validated against feed mechanics.",
   },
   {
     num: "03",
-    glyph: "●",
-    title: "Layer 2 Checks",
-    body: "Market microstructure validation against on-chain liquidity reality.",
-    sub: [
-      "Liquidity — SDEX 30-minute volume threshold",
-      "Thin Sampling — unique trader count",
-    ],
+    title: "Layer 2 — Market Checks",
+    body: "SDEX 30-minute volume and unique-trader count validated against on-chain liquidity.",
   },
   {
     num: "04",
-    glyph: "⚙",
     title: "Circuit Breaker",
-    body: "Auto-halt after first violation. Governance manual override available.",
-    sub: [],
+    body: "Auto-halt after the first violation. Governance manual override available.",
   },
   {
     num: "05",
-    glyph: "▲",
     title: "Result",
-    body: "Validated price returned. Or Err with specific violation type.",
-    sub: [],
+    body: "Validated price returned — or Err with the specific violation type.",
   },
 ];
+
+const EASE: [number, number, number, number] = [0.19, 1, 0.22, 1];
 
 export function HowItWorks() {
   return (
@@ -55,52 +40,36 @@ export function HowItWorks() {
         initial={{ opacity: 0, y: 20 }}
         whileInView={{ opacity: 1, y: 0 }}
         viewport={{ once: true, margin: "-100px" }}
-        transition={{ duration: 0.7, ease: [0.19, 1, 0.22, 1] }}
-        className="text-4xl font-medium leading-[1.1] tracking-tight sm:text-5xl md:text-6xl"
+        transition={{ duration: 0.7, ease: EASE }}
+        className="text-4xl font-medium leading-[1.05] tracking-tight sm:text-5xl md:text-6xl"
       >
-        Five steps.
-        <br />
+        Five steps.{" "}
         <span className="text-accent">One result.</span>
       </motion.h2>
 
-      <div className="mt-20 space-y-12">
+      {/* Compact connected timeline — balanced to the viewport */}
+      <div className="mt-14 grid gap-x-6 gap-y-px sm:grid-cols-2 lg:grid-cols-5">
         {STEPS.map((step, i) => (
           <motion.div
             key={step.num}
-            initial={{ opacity: 0, y: 20 }}
+            initial={{ opacity: 0, y: 18 }}
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true, margin: "-50px" }}
-            transition={{
-              delay: i * 0.1,
-              duration: 0.6,
-              ease: [0.19, 1, 0.22, 1],
-            }}
-            className="grid grid-cols-12 gap-6 border-l border-border pl-8 md:gap-8"
+            transition={{ delay: i * 0.08, duration: 0.55, ease: EASE }}
+            className="group relative flex flex-col rounded-xl border border-border bg-surface p-5 transition-colors hover:border-accent/40"
           >
-            <div className="col-span-12 flex items-baseline gap-4 md:col-span-3">
-              <span className="font-mono text-sm text-text-dim">{step.num}</span>
-              <span className="text-2xl text-accent">{step.glyph}</span>
-              <span className="font-mono text-xs uppercase tracking-wider text-text-muted">
-                Step
+            <div className="flex items-center justify-between">
+              <span className="font-mono text-2xl font-medium text-accent tabular">
+                {step.num}
               </span>
+              <span className="h-px w-8 bg-border transition-colors group-hover:bg-accent/50" />
             </div>
-            <div className="col-span-12 md:col-span-9">
-              <h3 className="text-2xl font-medium">{step.title}</h3>
-              <p className="mt-2 text-text-muted">{step.body}</p>
-              {step.sub.length > 0 && (
-                <ul className="mt-4 space-y-2">
-                  {step.sub.map((s, j) => (
-                    <li
-                      key={j}
-                      className="flex items-start gap-3 text-sm text-text-muted"
-                    >
-                      <span className="mt-2 inline-block h-px w-4 bg-text-dim" />
-                      <span>{s}</span>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </div>
+            <h3 className="mt-6 text-lg font-medium leading-snug">
+              {step.title}
+            </h3>
+            <p className="mt-2 text-sm leading-relaxed text-text-muted">
+              {step.body}
+            </p>
           </motion.div>
         ))}
       </div>
