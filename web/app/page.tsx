@@ -1,4 +1,3 @@
-import { Nav } from "@/components/nav";
 import { Deck, type DeckSlide } from "@/components/deck";
 import { Hero } from "@/components/hero";
 import { Attack } from "@/components/sections/attack";
@@ -31,7 +30,6 @@ const SLIDES: DeckSlide[] = [
 export default function Home() {
   return (
     <main>
-      <Nav />
       <Deck slides={SLIDES} />
     </main>
   );

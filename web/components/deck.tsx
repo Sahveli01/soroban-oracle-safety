@@ -33,9 +33,10 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
  * prefers-reduced-motion (instant slide change).
  */
 
-const QUIET_GAP = 120; // wheel silent this long ⇒ trackpad inertia ended
-const MIN_LOCK = 360; // floor before a new gesture is accepted
-const FAILSAFE = 2200; // absolute max lock — cannot deadlock
+const SLIDE_MS = 520; // transition length (kept in sync with .deck-slide)
+const QUIET_GAP = 80; // wheel silent this long ⇒ trackpad inertia ended
+const MIN_LOCK = 60; // tiny floor so one burst can't double-fire
+const FAILSAFE = 1600; // absolute max lock — cannot deadlock
 const WHEEL_MIN = 4;
 const TOUCH_MIN = 45;
 
@@ -86,7 +87,7 @@ export function Deck({ slides }: { slides: DeckSlide[] }) {
         () => {
           animEnd = performance.now();
         },
-        reduce ? 0 : 740
+        reduce ? 0 : SLIDE_MS
       );
       if (target === cur) return; // at an edge — still swallow inertia
       activeRef.current = target;
@@ -240,7 +241,7 @@ function DeckRail({ active, total }: { active: number; total: number }) {
       className="scroll-rail"
       style={{
         transform: `scaleX(${total > 1 ? active / (total - 1) : 0})`,
-        transition: "transform 720ms cubic-bezier(0.83, 0, 0.17, 1)",
+        transition: "transform 520ms cubic-bezier(0.22, 1, 0.36, 1)",
       }}
     />
   );
