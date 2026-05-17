@@ -32,10 +32,13 @@
 mod aggregator;
 mod config;
 mod discord_sink;
+mod generic_webhook_sink;
 mod horizon_client;
 mod monitor;
+mod pagerduty_sink;
 mod registry_writer;
 mod signer;
+mod slack_sink;
 mod telegram_sink;
 mod types;
 

@@ -108,7 +108,7 @@ env.storage().instance().set(&DataKey::Config, &config);
 - Polls SDEX trade flow via Horizon `/trades`
 - Aggregates 30-min volume + 1-hour unique trader count
 - Signs and submits liquidity snapshots to `LiquidityRegistry`
-- Detects anomalies (volume drop, trader concentration, price gap) and dispatches alerts via `WebhookSink` (Discord/Telegram out of the box)
+- Detects anomalies (volume drop, trader concentration, price gap) and dispatches alerts via `WebhookSink` (Discord, Telegram, Slack, PagerDuty, and generic-webhook out of the box)
 
 ### Prerequisites
 
@@ -140,10 +140,14 @@ ORACLE_WATCH_POLL_INTERVAL_LEDGERS=5
 ORACLE_WATCH_MAX_SNAPSHOT_AGE_SECONDS=300
 ORACLE_WATCH_USDC_PRICE_USD=1.0
 
-# Optional: alerts (set both for Telegram, just URL for Discord)
+# Optional: alerts — set only the channels you use, each is independent
 # ORACLE_WATCH_DISCORD_WEBHOOK_URL=https://discord.com/api/webhooks/...
-# ORACLE_WATCH_TELEGRAM_BOT_TOKEN=...
+# ORACLE_WATCH_TELEGRAM_BOT_TOKEN=...          # Telegram needs BOTH
 # ORACLE_WATCH_TELEGRAM_CHAT_ID=...
+# ORACLE_WATCH_SLACK_WEBHOOK_URL=https://hooks.slack.com/services/T.../B.../...
+# ORACLE_WATCH_PAGERDUTY_INTEGRATION_KEY=<32-char Events API v2 routing key>
+# ORACLE_WATCH_GENERIC_WEBHOOK_URL=https://your-api.example.com/oracle-alerts
+# ORACLE_WATCH_GENERIC_WEBHOOK_HEADERS=Authorization:Bearer xyz,X-Source:oracle-watch
 ```
 
 ### Run
@@ -187,26 +191,76 @@ Graceful shutdown via Ctrl+C — current iteration completes before the loop exi
 4. Get chat_id: `https://api.telegram.org/bot<TOKEN>/getUpdates` (look for `chat.id`)
 5. Set `ORACLE_WATCH_TELEGRAM_BOT_TOKEN=<TOKEN>` and `ORACLE_WATCH_TELEGRAM_CHAT_ID=<ID>`
 
+### Slack Webhook Setup
+
+1. Slack workspace: **Apps → "Incoming Webhooks" → Add to Slack**
+2. Pick a channel (e.g. `#alerts`), click **Allow**
+3. Copy the generated webhook URL
+4. Set `ORACLE_WATCH_SLACK_WEBHOOK_URL=https://hooks.slack.com/services/T.../B.../...`
+
+Alerts post as a Block Kit message (amber accent, code-blocked body).
+
+### PagerDuty Setup
+
+1. PagerDuty account: **Services → New Service** (or an existing service)
+2. Add an integration of type **Events API v2**
+3. Copy the **Integration Key** (32-char routing key)
+4. Set `ORACLE_WATCH_PAGERDUTY_INTEGRATION_KEY=<key>`
+
+Every dispatched anomaly triggers an incident at `warning` severity. The
+`dedup_key` is a stable hash of the alert body, so an unchanged repeating
+anomaly collapses into a single open incident rather than re-paging each
+poll. (oracle-watch only dispatches on detected anomalies; there is no
+per-anomaly severity gradient — see `pagerduty_sink.rs` module docs.)
+
+### Generic Webhook Setup
+
+POSTs a stable JSON body to any URL — integrate with an internal
+monitoring API, serverless function, or relay:
+
+```json
+{ "message": "<alert text>", "source": "oracle-watch" }
+```
+
+```bash
+ORACLE_WATCH_GENERIC_WEBHOOK_URL=https://your-api.example.com/oracle-alerts
+# Optional custom headers, comma-separated key:value pairs:
+ORACLE_WATCH_GENERIC_WEBHOOK_HEADERS=Authorization:Bearer xyz,X-Source:oracle-watch
+```
+
+Only the first `:` in each pair splits key from value, so values may
+themselves contain colons. Malformed / empty segments are skipped.
+
 ### Adding a New Sink
 
-`WebhookSink` is a trait — implement it for any HTTP service (PagerDuty, Opsgenie, internal webhook):
+`WebhookSink` is a trait — implement it for any HTTP service (Opsgenie,
+email relay, internal webhook). The dispatcher passes one shared
+plain-text `message` to every sink; each sink owns its channel's
+envelope:
 
 ```rust
-use crate::monitor::{WebhookSink, Anomaly};
+use crate::monitor::{DispatchError, WebhookSink};
 use async_trait::async_trait;
 
 pub struct MySink { url: String }
 
 #[async_trait]
 impl WebhookSink for MySink {
-    async fn dispatch(&self, anomaly: &Anomaly) -> Result<(), String> {
-        // POST to self.url with anomaly serialized as JSON
+    fn kind(&self) -> &'static str { "my-sink" }
+
+    async fn send(&self, message: &str) -> Result<(), DispatchError> {
+        // POST to self.url wrapping `message` in your channel's body shape.
+        // Return Err(DispatchError(..)) on network / non-2xx — the
+        // dispatcher logs it and continues to the other sinks.
         Ok(())
     }
 }
 ```
 
-See `crates/oracle-watch/src/discord_sink.rs` and `telegram_sink.rs` for reference implementations.
+Then add an `Option<String>` field to `AlertConfig` (in `monitor.rs`),
+load it in `from_env()`, and push the sink in `build_sinks()`. See
+`crates/oracle-watch/src/{discord,telegram,slack,pagerduty,generic_webhook}_sink.rs`
+for the five reference implementations.
 
 ---
 

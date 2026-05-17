@@ -380,6 +380,10 @@ pub struct AlertConfig {
     pub discord_webhook_url: Option<String>,
     pub telegram_bot_token: Option<String>,
     pub telegram_chat_id: Option<String>,
+    pub slack_webhook_url: Option<String>,
+    pub generic_webhook_url: Option<String>,
+    pub generic_webhook_headers: Option<String>,
+    pub pagerduty_integration_key: Option<String>,
 }
 
 impl AlertConfig {
@@ -391,6 +395,12 @@ impl AlertConfig {
     /// - `ORACLE_WATCH_DISCORD_WEBHOOK_URL`: Discord webhook URL
     /// - `ORACLE_WATCH_TELEGRAM_BOT_TOKEN`: Telegram bot token from BotFather
     /// - `ORACLE_WATCH_TELEGRAM_CHAT_ID`: target chat ID
+    /// - `ORACLE_WATCH_SLACK_WEBHOOK_URL`: Slack incoming-webhook URL
+    /// - `ORACLE_WATCH_GENERIC_WEBHOOK_URL`: arbitrary POST target URL
+    /// - `ORACLE_WATCH_GENERIC_WEBHOOK_HEADERS`: optional `key:value,...`
+    ///   custom headers for the generic webhook
+    /// - `ORACLE_WATCH_PAGERDUTY_INTEGRATION_KEY`: PagerDuty Events API v2
+    ///   routing key
     ///
     /// Telegram requires BOTH token + chat_id to be set; partial
     /// configuration is silently skipped by `build_sinks()`.
@@ -403,6 +413,10 @@ impl AlertConfig {
             discord_webhook_url: std::env::var("ORACLE_WATCH_DISCORD_WEBHOOK_URL").ok(),
             telegram_bot_token: std::env::var("ORACLE_WATCH_TELEGRAM_BOT_TOKEN").ok(),
             telegram_chat_id: std::env::var("ORACLE_WATCH_TELEGRAM_CHAT_ID").ok(),
+            slack_webhook_url: std::env::var("ORACLE_WATCH_SLACK_WEBHOOK_URL").ok(),
+            generic_webhook_url: std::env::var("ORACLE_WATCH_GENERIC_WEBHOOK_URL").ok(),
+            generic_webhook_headers: std::env::var("ORACLE_WATCH_GENERIC_WEBHOOK_HEADERS").ok(),
+            pagerduty_integration_key: std::env::var("ORACLE_WATCH_PAGERDUTY_INTEGRATION_KEY").ok(),
         }
     }
 
@@ -422,6 +436,27 @@ impl AlertConfig {
             sinks.push(Box::new(crate::telegram_sink::TelegramSink::new(
                 token.clone(),
                 chat_id.clone(),
+            )));
+        }
+
+        if let Some(url) = &self.slack_webhook_url {
+            sinks.push(Box::new(crate::slack_sink::SlackSink::new(url.clone())));
+        }
+
+        if let Some(url) = &self.generic_webhook_url {
+            let headers = self
+                .generic_webhook_headers
+                .as_deref()
+                .map(crate::generic_webhook_sink::GenericWebhookSink::parse_headers)
+                .unwrap_or_default();
+            sinks.push(Box::new(
+                crate::generic_webhook_sink::GenericWebhookSink::new(url.clone(), headers),
+            ));
+        }
+
+        if let Some(key) = &self.pagerduty_integration_key {
+            sinks.push(Box::new(crate::pagerduty_sink::PagerDutySink::new(
+                key.clone(),
             )));
         }
 
@@ -880,11 +915,72 @@ mod tests {
             discord_webhook_url: Some("https://example.test/d".to_string()),
             telegram_bot_token: Some("token".to_string()),
             telegram_chat_id: Some("12345".to_string()),
+            ..AlertConfig::default()
         };
         let sinks = config.build_sinks();
         assert_eq!(sinks.len(), 2);
         assert_eq!(sinks[0].kind(), "discord");
         assert_eq!(sinks[1].kind(), "telegram");
+    }
+
+    #[test]
+    fn test_build_sinks_slack_only() {
+        let config = AlertConfig {
+            slack_webhook_url: Some("https://hooks.slack.test/x".to_string()),
+            ..AlertConfig::default()
+        };
+        let sinks = config.build_sinks();
+        assert_eq!(sinks.len(), 1);
+        assert_eq!(sinks[0].kind(), "slack");
+    }
+
+    #[test]
+    fn test_build_sinks_generic_webhook_only() {
+        let config = AlertConfig {
+            generic_webhook_url: Some("https://api.test/alerts".to_string()),
+            generic_webhook_headers: Some("Authorization:Bearer x".to_string()),
+            ..AlertConfig::default()
+        };
+        let sinks = config.build_sinks();
+        assert_eq!(sinks.len(), 1);
+        assert_eq!(sinks[0].kind(), "generic-webhook");
+    }
+
+    #[test]
+    fn test_build_sinks_pagerduty_only() {
+        let config = AlertConfig {
+            pagerduty_integration_key: Some("0123456789abcdef".to_string()),
+            ..AlertConfig::default()
+        };
+        let sinks = config.build_sinks();
+        assert_eq!(sinks.len(), 1);
+        assert_eq!(sinks[0].kind(), "pagerduty");
+    }
+
+    #[test]
+    fn test_build_sinks_all_five_channels() {
+        let config = AlertConfig {
+            discord_webhook_url: Some("https://example.test/d".to_string()),
+            telegram_bot_token: Some("token".to_string()),
+            telegram_chat_id: Some("12345".to_string()),
+            slack_webhook_url: Some("https://hooks.slack.test/x".to_string()),
+            generic_webhook_url: Some("https://api.test/alerts".to_string()),
+            generic_webhook_headers: None,
+            pagerduty_integration_key: Some("0123456789abcdef".to_string()),
+        };
+        let sinks = config.build_sinks();
+        assert_eq!(sinks.len(), 5);
+        let kinds: Vec<&str> = sinks.iter().map(|s| s.kind()).collect();
+        assert_eq!(
+            kinds,
+            vec![
+                "discord",
+                "telegram",
+                "slack",
+                "generic-webhook",
+                "pagerduty"
+            ]
+        );
     }
 
     // ===== AlertConfig::from_env =====
