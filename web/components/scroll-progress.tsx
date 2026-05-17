@@ -3,9 +3,9 @@
 import { motion, useScroll, useSpring } from "framer-motion";
 
 /**
- * Top scroll-progress rail. Reads native window scroll (the SectionSnap
- * tween writes it every frame), spring-smoothed so it glides between
- * page jumps rather than stepping. Pure wayfinding — never intercepts
+ * Top scroll-progress rail. Reads native window scroll (the browser's
+ * CSS scroll-snap drives it), spring-smoothed so it glides between
+ * page snaps rather than stepping. Pure wayfinding — never intercepts
  * scroll. This is the thin top accent line, NOT a side scrollbar.
  */
 export function ScrollProgress() {

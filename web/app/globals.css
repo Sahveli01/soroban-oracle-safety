@@ -43,11 +43,19 @@
     font-family: var(--font-sans), system-ui, sans-serif;
     -webkit-font-smoothing: antialiased;
     text-rendering: optimizeLegibility;
-    /* SectionSnap drives the eased tween itself — keep CSS scrolling
-       instant so window.scrollTo isn't animated twice. */
-    scroll-behavior: auto;
-    /* Hide the side scrollbar (navigation is page-by-page via
-       SectionSnap + keyboard). Firefox + legacy IE/Edge. */
+    /* ===== Native page-by-page snapping =====
+       The browser owns scroll position — one wheel/key gesture moves
+       exactly one section, identically forward AND backward, with no
+       JS, no offsetTop heuristics, no possible deadlock. This is what
+       finally kills the recurring "can't scroll up / nav-back fails"
+       bug: there is no custom navigation code left to get it wrong.
+       Snap points are each panel's flow position, which is exactly
+       where it fully covers the previous one — so the sticky
+       page-turn visual is preserved verbatim. */
+    scroll-snap-type: y mandatory;
+    scroll-behavior: smooth;
+    /* Hide the side scrollbar — navigation is page-by-page; the thin
+       top accent rail is the wayfinding. Firefox + legacy IE/Edge. */
     scrollbar-width: none;
     -ms-overflow-style: none;
   }
@@ -91,6 +99,10 @@
       animation-duration: 0.001ms !important;
       animation-iteration-count: 1 !important;
       transition-duration: 0.001ms !important;
+    }
+    /* Still snap page-by-page, but jump instantly (no smooth glide). */
+    html {
+      scroll-behavior: auto;
     }
   }
 }
@@ -346,13 +358,24 @@
 }
 
 /* Stacked section panel — opaque so it covers the one it slides over,
-   with a soft top shadow + rounded leading edge (the "page" edge). */
+   with a soft top shadow + rounded leading edge (the "page" edge).
+
+   `scroll-snap-align: start` makes each panel a native snap point at
+   its flow position (= exactly where it fully covers the previous
+   one). `scroll-snap-stop: always` forces the scroll to rest on every
+   panel even through trackpad momentum, so one gesture = one section,
+   forward and backward, with zero JS. A panel taller than the viewport
+   is still freely scrollable (per the scroll-snap spec: when the snap
+   area exceeds the snapport, any position within it is reachable) — so
+   tall sections are never clipped. */
 .page-panel {
   background: var(--color-background);
   border-top: 1px solid var(--color-border);
   border-top-left-radius: 1.25rem;
   border-top-right-radius: 1.25rem;
   box-shadow: var(--shadow-page);
+  scroll-snap-align: start;
+  scroll-snap-stop: always;
 }
 
 /* Closing panel — the footer, as the final page of the SAME stack.
@@ -364,6 +387,8 @@
   background: var(--color-background);
   border-top: 1px solid rgba(255, 255, 255, 0.04);
   box-shadow: 0 -24px 60px -28px rgba(0, 0, 0, 0.9);
+  scroll-snap-align: start;
+  scroll-snap-stop: always;
 }
 
 /* Pillow nav — sticky capsule */

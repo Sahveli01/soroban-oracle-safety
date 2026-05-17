@@ -3,7 +3,6 @@
 import { motion } from "framer-motion";
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { scrollToSection } from "@/components/section-snap";
 
 /**
  * Sticky pillow navigation.
@@ -12,10 +11,11 @@ import { scrollToSection } from "@/components/section-snap";
  * (`data-scrolled`) and highlights whichever linked section is in view.
  *
  * Sections are `position: sticky` — a pinned panel reports rect.top ≈ 0,
- * so wayfinding uses the element's true *flow* position (`docTop`),
- * never its rect. Link clicks drive the SectionSnap engine via
- * `scrollToSection`, so a nav jump uses the exact same eased,
- * page-aligned transition as a wheel/keyboard gesture.
+ * so wayfinding AND jumps use the element's true *flow* position
+ * (`docTop`), never its rect. A click does a native smooth
+ * `window.scrollTo(docTop)`; CSS scroll-snap then locks onto that
+ * panel. This is why nav-back finally works: it's a direct jump to a
+ * known flow offset, not a fragile per-gesture index inference.
  */
 const LINKS = [
   { id: "how-it-works", label: "How it works" },
@@ -63,6 +63,18 @@ export function Nav() {
     };
   }, []);
 
+  const goTo = (id: string) => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    const reduce = window.matchMedia(
+      "(prefers-reduced-motion: reduce)"
+    ).matches;
+    window.scrollTo({
+      top: docTop(el),
+      behavior: reduce ? "auto" : "smooth",
+    });
+  };
+
   return (
     <motion.nav
       initial={{ opacity: 0, y: -10 }}
@@ -87,7 +99,7 @@ export function Nav() {
           {LINKS.map(({ id, label }) => (
             <button
               key={id}
-              onClick={() => scrollToSection(id)}
+              onClick={() => goTo(id)}
               className={`cursor-pointer text-sm transition-colors ${
                 active === id
                   ? "text-[var(--color-accent)]"
