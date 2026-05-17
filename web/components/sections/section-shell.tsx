@@ -1,9 +1,7 @@
 "use client";
 
 import { motion } from "framer-motion";
-import { useRef, type ReactNode } from "react";
-
-import { useRecede } from "../use-recede";
+import { type ReactNode } from "react";
 
 interface SectionShellProps {
   id: string;
@@ -12,43 +10,41 @@ interface SectionShellProps {
 }
 
 /**
- * Stacked section panel — the "notebook page-turn".
+ * Stacked section panel — the "notebook page-turn", done robustly.
  *
- * Every section is a `sticky top-0` panel with an opaque background and
- * a rounded, soft-shadowed leading edge (`.page-panel`). Because the
- * panels are consecutive sticky siblings, the next one slides up and
- * covers this one; meanwhile this panel's content recedes (scale/dim/
- * blur via `useRecede`) so it reads as a page tucking underneath.
+ * Each section is a `sticky top-0` panel with an opaque background and a
+ * rounded, soft-shadowed leading edge (`.page-panel`). Consecutive
+ * sticky siblings mean the next panel simply slides up and covers this
+ * one — that cover IS the page-turn.
  *
- * The motion is purely scroll-linked — there is no snap and nothing
- * overrides the user's scroll. Eyebrow reveal + all child
- * `whileInView` animations are preserved.
+ * Deliberately ZERO scroll-driven transforms (no scale / blur / opacity
+ * on scroll). The previous attempt did that and it made text blurry,
+ * animations look broken, and the transition feel half-finished. This
+ * is pure CSS sticky: it cannot jank, and it never fights the scroll.
+ *
+ * Content is vertically centered via `min-h-screen flex justify-center`
+ * — so short sections sit centered, but tall sections (architecture
+ * sim, live, operator…) grow past the viewport and stay fully
+ * scrollable/readable instead of being clipped behind a pinned box.
  */
 export function SectionShell({ id, eyebrow, children }: SectionShellProps) {
-  const ref = useRef<HTMLElement>(null);
-  const { scale, opacity, filter } = useRecede(ref);
-
   return (
     <section
-      ref={ref}
       id={id}
-      className="page-panel sticky top-0 flex min-h-screen items-center px-6 py-24 md:py-28"
+      className="page-panel sticky top-0 bg-[var(--color-background)]"
     >
-      <motion.div
-        style={{ scale, opacity, filter }}
-        className="mx-auto w-full max-w-5xl origin-top will-change-transform"
-      >
+      <div className="mx-auto flex min-h-screen w-full max-w-5xl flex-col justify-center px-6 py-28 md:py-32">
         <motion.p
-          initial={{ opacity: 0, y: 10 }}
+          initial={{ opacity: 0, y: 8 }}
           whileInView={{ opacity: 1, y: 0 }}
-          viewport={{ once: true, margin: "-100px" }}
+          viewport={{ once: true, margin: "-80px" }}
           transition={{ duration: 0.5, ease: [0.19, 1, 0.22, 1] }}
-          className="mb-8 font-mono text-xs uppercase tracking-[0.2em] text-text-muted"
+          className="mb-10 font-mono text-xs uppercase tracking-[0.2em] text-text-muted"
         >
           {eyebrow}
         </motion.p>
         {children}
-      </motion.div>
+      </div>
     </section>
   );
 }

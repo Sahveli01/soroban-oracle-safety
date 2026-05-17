@@ -1,11 +1,9 @@
 "use client";
 
 import { motion } from "framer-motion";
-import { useRef } from "react";
 import { CodeSnippet } from "./code-snippet";
 import { StatsRow } from "./stats-row";
 import { Marquee } from "./marquee";
-import { useRecede } from "./use-recede";
 
 const TOP_SLOGAN = "Eight lines. Five guards. Zero exploits.";
 
@@ -20,53 +18,46 @@ const EASE_OUT_EXPO: [number, number, number, number] = [0.19, 1, 0.22, 1];
 /**
  * Hero — the first stacked panel.
  *
- * Front-loaded timeline (everything resolves under ~1.4s, premium sites
- * never make you wait): slogan .15s → headline word stagger .3s →
- * subline .7s → command .95s → CTAs 1.1s. A soft accent aurora sits
- * behind the headline; a drawn-line indicator invites the scroll.
- * Recedes under the next panel like every other section.
+ * Front-loaded timeline (resolves under ~1.4s). Clean, readable
+ * typography (medium weight, tracking-tight — NOT the over-tight
+ * semibold/text-balance that hurt legibility before). No scroll
+ * transforms: it's a sticky panel the next section cleanly covers.
+ * Content uses min-h-screen + justify-center so it is never clipped.
  */
 export function Hero() {
-  const ref = useRef<HTMLElement>(null);
-  const { scale, opacity, filter } = useRecede(ref);
-
   return (
     <section
-      ref={ref}
       id="hero"
-      className="page-panel sticky top-0 flex min-h-screen flex-col items-center justify-center overflow-hidden px-6 py-28"
+      className="page-panel sticky top-0 overflow-hidden bg-[var(--color-background)]"
     >
       {/* Focal aurora — soft accent bloom behind the headline */}
       <div
         aria-hidden="true"
-        className="pointer-events-none absolute left-1/2 top-[38%] h-[34rem] w-[34rem] -translate-x-1/2 -translate-y-1/2 rounded-full opacity-60 blur-[120px]"
+        className="pointer-events-none absolute left-1/2 top-[36%] h-[32rem] w-[32rem] -translate-x-1/2 -translate-y-1/2 rounded-full opacity-50 blur-[130px]"
         style={{
           background:
             "radial-gradient(circle, var(--color-accent-glow), transparent 70%)",
         }}
       />
 
-      <motion.div
-        style={{ scale, opacity, filter }}
-        className="relative flex w-full origin-top flex-col items-center will-change-transform"
-      >
+      <div className="relative mx-auto flex min-h-screen w-full max-w-5xl flex-col items-center justify-center px-6 py-28">
         {/* Top slogan */}
         <motion.p
           initial={{ opacity: 0, y: 8 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.15, duration: 0.6, ease: EASE_OUT_EXPO }}
-          className="mb-10 font-mono text-sm uppercase tracking-[0.25em] text-[var(--color-text-muted)]"
+          className="mb-10 font-mono text-sm uppercase tracking-[0.22em] text-[var(--color-text-muted)]"
         >
           {TOP_SLOGAN}
         </motion.p>
 
         {/* Big headline — word-by-word stagger */}
-        <h1 className="text-balance text-center text-5xl font-semibold leading-[1.04] tracking-[-0.03em] sm:text-6xl md:text-7xl lg:text-8xl">
+        <h1 className="text-center text-5xl font-medium leading-[1.08] tracking-tight sm:text-6xl md:text-7xl lg:text-[5.5rem]">
           <span className="block">
             {HEADLINE_LINE_1.map((word, i) => (
               <motion.span
                 key={`l1-${i}`}
-                initial={{ opacity: 0, y: 24 }}
+                initial={{ opacity: 0, y: 22 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{
                   delay: 0.3 + i * 0.07,
@@ -78,7 +69,7 @@ export function Hero() {
                 }`}
               >
                 {word}
-                {i < HEADLINE_LINE_1.length - 1 && " "}
+                {i < HEADLINE_LINE_1.length - 1 && " "}
               </motion.span>
             ))}
           </span>
@@ -86,7 +77,7 @@ export function Hero() {
             {HEADLINE_LINE_2.map((word, i) => (
               <motion.span
                 key={`l2-${i}`}
-                initial={{ opacity: 0, y: 24 }}
+                initial={{ opacity: 0, y: 22 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{
                   delay: 0.5 + i * 0.07,
@@ -96,7 +87,7 @@ export function Hero() {
                 className="inline-block"
               >
                 {word}
-                {i < HEADLINE_LINE_2.length - 1 && " "}
+                {i < HEADLINE_LINE_2.length - 1 && " "}
               </motion.span>
             ))}
           </span>
@@ -104,9 +95,9 @@ export function Hero() {
 
         {/* Subline */}
         <motion.p
-          initial={{ opacity: 0, filter: "blur(8px)" }}
-          animate={{ opacity: 1, filter: "blur(0px)" }}
-          transition={{ delay: 0.7, duration: 0.8 }}
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.75, duration: 0.7, ease: EASE_OUT_EXPO }}
           className="mt-10 max-w-2xl whitespace-pre-line text-center text-lg leading-relaxed text-[var(--color-text-muted)]"
         >
           {SUBLINE}
@@ -156,14 +147,14 @@ export function Hero() {
         <div className="mt-24 w-full">
           <Marquee />
         </div>
-      </motion.div>
+      </div>
 
       {/* Scroll indicator — a drawn line that pulses downward */}
       <motion.div
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         transition={{ delay: 1.6, duration: 1 }}
-        className="absolute bottom-9 left-1/2 flex -translate-x-1/2 flex-col items-center gap-3"
+        className="pointer-events-none absolute bottom-8 left-1/2 flex -translate-x-1/2 flex-col items-center gap-3"
       >
         <span className="font-mono text-[10px] uppercase tracking-[0.3em] text-[var(--color-text-dim)]">
           Scroll
@@ -172,11 +163,7 @@ export function Hero() {
           <motion.span
             className="absolute inset-x-0 top-0 h-1/2 bg-[var(--color-accent)]"
             animate={{ y: ["-100%", "200%"] }}
-            transition={{
-              duration: 1.8,
-              repeat: Infinity,
-              ease: "easeInOut",
-            }}
+            transition={{ duration: 1.8, repeat: Infinity, ease: "easeInOut" }}
           />
         </span>
       </motion.div>
