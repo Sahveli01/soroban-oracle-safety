@@ -58,133 +58,154 @@ const TXS: {
   },
 ];
 
-const STATUS_COLOR: Record<TxStatus, string> = {
-  success: "text-accent",
-  attack: "text-danger",
-  rejected: "text-accent",
-  recovery: "text-text-muted",
+const STATUS_DOT: Record<TxStatus, string> = {
+  success: "bg-accent",
+  attack: "bg-danger",
+  rejected: "bg-accent",
+  recovery: "bg-text-dim",
 };
 
 const STATUS_LABEL: Record<TxStatus, string> = {
-  success: "✓ SUCCESS",
-  attack: "⚠ ATTACK",
-  rejected: "✓ REJECTED",
-  recovery: "↻ RECOVERY",
+  success: "SUCCESS",
+  attack: "ATTACK",
+  rejected: "REJECTED",
+  recovery: "RECOVERY",
 };
 
 const EASE: [number, number, number, number] = [0.19, 1, 0.22, 1];
 
 function shortHash(hash: string): string {
-  return `${hash.slice(0, 8)}…${hash.slice(-4)}`;
+  return `${hash.slice(0, 8)}…${hash.slice(-6)}`;
+}
+
+/** Clean editorial row — hairline divider, generous height, big type. */
+function Row({
+  href,
+  primary,
+  secondary,
+  badge,
+  dot,
+  delay,
+}: {
+  href: string;
+  primary: string;
+  secondary: string;
+  badge?: string;
+  dot?: string;
+  delay: number;
+}) {
+  return (
+    <motion.a
+      initial={{ opacity: 0, y: 10 }}
+      whileInView={{ opacity: 1, y: 0 }}
+      viewport={{ once: true, margin: "-40px" }}
+      transition={{ delay, duration: 0.5, ease: EASE }}
+      href={href}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="group flex items-center justify-between gap-6 border-b border-border py-5 transition-colors hover:border-accent/40"
+    >
+      <div className="min-w-0">
+        <div className="flex items-center gap-3">
+          {dot && (
+            <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${dot}`} />
+          )}
+          <span className="truncate text-lg font-medium md:text-xl">
+            {primary}
+          </span>
+          {badge && (
+            <span className="shrink-0 font-mono text-[10px] uppercase tracking-[0.2em] text-text-dim">
+              {badge}
+            </span>
+          )}
+        </div>
+        <div className="mt-1.5 truncate pl-0 font-mono text-sm text-text-muted">
+          {secondary}
+        </div>
+      </div>
+      <span className="shrink-0 font-mono text-sm text-text-dim transition-all group-hover:translate-x-0.5 group-hover:text-accent">
+        ↗
+      </span>
+    </motion.a>
+  );
 }
 
 export function Live() {
   return (
     <SectionShell id="live" eyebrow="Live on Stellar">
+      <motion.div
+        initial={{ opacity: 0, y: 12 }}
+        whileInView={{ opacity: 1, y: 0 }}
+        viewport={{ once: true, margin: "-100px" }}
+        transition={{ duration: 0.6, ease: EASE }}
+        className="flex items-center gap-2.5 font-mono text-xs uppercase tracking-[0.25em] text-text-muted"
+      >
+        <span className="relative flex h-2 w-2">
+          <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-accent opacity-75" />
+          <span className="relative inline-flex h-2 w-2 rounded-full bg-accent" />
+        </span>
+        Testnet · operational
+      </motion.div>
+
       <motion.h2
         initial={{ opacity: 0, y: 20 }}
         whileInView={{ opacity: 1, y: 0 }}
         viewport={{ once: true, margin: "-100px" }}
-        transition={{ duration: 0.7, ease: EASE }}
-        className="text-4xl font-medium leading-[1.05] tracking-tight sm:text-5xl md:text-6xl"
+        transition={{ delay: 0.1, duration: 0.7, ease: EASE }}
+        className="mt-6 text-5xl font-medium leading-[1.02] tracking-tight sm:text-6xl md:text-7xl"
       >
-        <span className="inline-flex items-center gap-3">
-          <span className="relative flex h-3 w-3">
-            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-accent opacity-75" />
-            <span className="relative inline-flex h-3 w-3 rounded-full bg-accent" />
-          </span>
-          Operational on testnet.
-        </span>
+        Proven on-chain.
       </motion.h2>
 
       <motion.p
         initial={{ opacity: 0 }}
         whileInView={{ opacity: 1 }}
         viewport={{ once: true, margin: "-100px" }}
-        transition={{ delay: 0.15, duration: 0.7 }}
-        className="mt-5 max-w-xl text-text-muted"
+        transition={{ delay: 0.2, duration: 0.7 }}
+        className="mt-6 max-w-2xl text-lg leading-relaxed text-text-muted"
       >
-        Three contracts deployed. 17 oracle-watch attestations. First
-        adversarial replay rejected at the protocol layer. All public.
+        Three contracts deployed. 17 oracle-watch attestations. The first
+        adversarial replay rejected at the protocol layer — every hash public
+        and verifiable.
       </motion.p>
 
-      {/* Two columns — contracts + validation side by side to cut height */}
-      <div className="mt-10 grid gap-x-10 gap-y-8 lg:grid-cols-2">
+      <div className="mt-14 grid gap-x-16 gap-y-12 lg:grid-cols-2">
         <div>
-          <h3 className="font-mono text-[11px] uppercase tracking-[0.2em] text-text-dim">
+          <h3 className="font-mono text-xs uppercase tracking-[0.25em] text-text-dim">
             Deployed Contracts
           </h3>
-          <div className="mt-4 space-y-2">
+          <div className="mt-2 border-t border-border">
             {CONTRACTS.map((c, i) => (
-              <motion.a
+              <Row
                 key={c.name}
-                initial={{ opacity: 0, y: 10 }}
-                whileInView={{ opacity: 1, y: 0 }}
-                viewport={{ once: true, margin: "-50px" }}
-                transition={{ delay: i * 0.06, duration: 0.45, ease: EASE }}
                 href={`https://stellar.expert/explorer/testnet/contract/${c.addr}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="surface-card group flex items-center justify-between px-4 py-3"
-              >
-                <div>
-                  <div className="text-sm font-medium">{c.name}</div>
-                  <div className="mt-0.5 font-mono text-xs text-text-muted">
-                    {c.short}
-                  </div>
-                </div>
-                <span className="font-mono text-xs text-text-dim transition-colors group-hover:text-accent">
-                  ↗
-                </span>
-              </motion.a>
+                primary={c.name}
+                secondary={c.short}
+                delay={i * 0.06}
+              />
             ))}
           </div>
         </div>
 
         <div>
-          <h3 className="font-mono text-[11px] uppercase tracking-[0.2em] text-text-dim">
+          <h3 className="font-mono text-xs uppercase tracking-[0.25em] text-text-dim">
             End-to-End Validation
           </h3>
-          <div className="mt-4 space-y-2">
+          <div className="mt-2 border-t border-border">
             {TXS.map((tx, i) => (
-              <motion.a
+              <Row
                 key={tx.hash}
-                initial={{ opacity: 0, y: 10 }}
-                whileInView={{ opacity: 1, y: 0 }}
-                viewport={{ once: true, margin: "-50px" }}
-                transition={{ delay: i * 0.06, duration: 0.45, ease: EASE }}
                 href={`https://stellar.expert/explorer/testnet/tx/${tx.hash}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="surface-card group flex items-center justify-between px-4 py-3"
-              >
-                <div className="min-w-0">
-                  <div className="flex items-center gap-2">
-                    <span
-                      className={`font-mono text-[11px] ${STATUS_COLOR[tx.status]}`}
-                    >
-                      {STATUS_LABEL[tx.status]}
-                    </span>
-                    <span className="truncate text-sm font-medium">
-                      {tx.label}
-                    </span>
-                  </div>
-                  <div className="mt-0.5 font-mono text-xs text-text-muted">
-                    {shortHash(tx.hash)}
-                    {tx.ledger && (
-                      <span className="ml-2 text-text-dim">
-                        L{tx.ledger}
-                      </span>
-                    )}
-                    {tx.error && (
-                      <span className="ml-2 text-danger">{tx.error}</span>
-                    )}
-                  </div>
-                </div>
-                <span className="font-mono text-xs text-text-dim transition-colors group-hover:text-accent">
-                  ↗
-                </span>
-              </motion.a>
+                primary={tx.label}
+                badge={STATUS_LABEL[tx.status]}
+                dot={STATUS_DOT[tx.status]}
+                secondary={
+                  shortHash(tx.hash) +
+                  (tx.ledger ? `  ·  ledger ${tx.ledger}` : "") +
+                  (tx.error ? `  ·  ${tx.error}` : "")
+                }
+                delay={i * 0.06}
+              />
             ))}
           </div>
         </div>

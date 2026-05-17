@@ -52,14 +52,26 @@ export function SectionPager() {
       return footer ? [...secs, footer] : secs;
     };
 
-    const absTop = (el: HTMLElement) =>
-      el.getBoundingClientRect().top + window.scrollY;
+    // Sections are `position: sticky` — their getBoundingClientRect is
+    // distorted (pinned panels report top ≈ 0), which made backward
+    // navigation resolve to the current position (no movement). offsetTop
+    // up the offsetParent chain is the true *flow* position, unaffected
+    // by sticky pinning, so it works identically in both directions.
+    const docTop = (el: HTMLElement): number => {
+      let y = 0;
+      let n: HTMLElement | null = el;
+      while (n) {
+        y += n.offsetTop;
+        n = n.offsetParent as HTMLElement | null;
+      }
+      return y;
+    };
 
     const currentIndex = (list: HTMLElement[]): number => {
       const y = window.scrollY + 4;
       let idx = 0;
       list.forEach((el, i) => {
-        if (absTop(el) <= y) idx = i;
+        if (docTop(el) <= y) idx = i;
       });
       return idx;
     };
@@ -78,7 +90,9 @@ export function SectionPager() {
       if (next === cur) return;
       locked = true;
       animating = true;
-      lenis.scrollTo(list[next], {
+      // Scroll to the numeric flow position (not the element — element
+      // targets re-trigger the sticky-distorted rect inside Lenis).
+      lenis.scrollTo(docTop(list[next]), {
         offset: 0,
         duration: reduced ? 0 : 0.95,
         immediate: reduced,
