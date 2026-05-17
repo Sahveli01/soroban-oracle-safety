@@ -27,12 +27,13 @@ crates.io publish path, closure tag), the **formal phase structure is now closed
 | `phase-7-complete` (v0.1.0-testnet) | Testnet deployment + e2e validation closed |
 | `phase-8-complete` (v0.1.0) | Web site + crates.io metadata + formal closure |
 
-## Current State (Phase 8 Closure)
+## Current State (Phase 8 Closure + post-Phase incremental)
 
 | Item | Value |
 |------|-------|
-| Workspace tests | **290 PASS** |
-| Adversarial review | AR.H complete (0 critical, 0 high, 3 medium closed, 5 low, 10 info) |
+| Workspace tests | **310 PASS** (Phase 8 + 5-way webhook sinks `3bb2b91`) |
+| Adversarial review | AR.H complete — 0 critical, 0 high, 3/3 medium closed, 5/5 low closed (L4 closed in the debt-cleanup commit), info 10 (I1/I3 closed, I2 closed in cleanup, I4–I10 not-a-finding). Only residue: upstream-uncontrolled `cargo audit` unmaintained transitives via `soroban-sdk`. |
+| Webhook sinks | 5 — Discord, Telegram, Slack, PagerDuty, Generic (`monitor.rs` trait, commit `3bb2b91`) |
 | Live testnet contracts | 3 (LiquidityRegistry, mock-lending, mock-reflector) |
 | Live testnet validation tx hashes | 4 (successful borrow, attack, rejection, recovery) — all verifiable on stellar.expert |
 | Public web site | <https://soroban-oracle-safety.vercel.app> |
@@ -53,10 +54,15 @@ applies:
 - `docs: …` — documentation updates
 - `chore: …` — build/tooling/dependency updates
 
+Completed since Phase 8 closure (incremental):
+
+- ✅ Slack, PagerDuty, and Generic `WebhookSink` implementations added
+  alongside Discord and Telegram — 5 sinks total (commit `3bb2b91`)
+- ✅ AR.H debt cleanup: L4 (`should_panic` expected message) and I2
+  ("stateless" doc-string accuracy) closed; this `PROJECT_NOTES.md` synced
+
 Examples of likely future work, none of them mandatory:
 
-- Slack / PagerDuty `WebhookSink` implementations alongside the existing
-  Discord and Telegram sinks (the `monitor.rs` trait pattern makes this trivial)
 - Per-asset counter parameterization in `oracle-watch` (currently hard-defaults
   to USDC; supports per-deployment override via env)
 - Real-time USD price feed for the counter asset (currently a static

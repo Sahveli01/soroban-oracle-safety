@@ -273,8 +273,9 @@ impl From<Result<PriceData, OracleSafetyViolation>> for PriceResult {
 ///
 /// Holds the thresholds and toggles consumed by [`lastprice`] and the
 /// [`circuit_breaker`] module. Integrators construct it once at init time
-/// and pass it to every `lastprice` call; the library is stateless, so the
-/// integrator owns where this lives in storage.
+/// and pass it to every `lastprice` call. The library owns no storage of
+/// its own — circuit-breaker halt state lives in the *caller's* instance
+/// storage — so the integrator owns where this config lives.
 ///
 /// # Spec
 ///

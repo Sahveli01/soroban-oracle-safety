@@ -888,15 +888,25 @@ mod test {
     /// (#10) CAP-0058 model: `__constructor(admin)` calls
     /// `admin.require_auth()` during `env.register`. When `admin`'s
     /// signature is *not* in the mock-auths declaration, the host-side
-    /// auth check fails and the registration traps — observable here
-    /// as a panic.
+    /// auth check fails and the registration traps.
+    ///
+    /// AR.H L4 closure: previously a bare `#[should_panic]`, which any
+    /// panic (OOM, framework bug, unrelated trap) would satisfy. The
+    /// `expected` substring is the empirically-observed host panic
+    /// message for the constructor's failed `require_auth` — the stable
+    /// Soroban error *code* `Error(Context, InvalidAction)` (the deeper
+    /// `Error(Auth, InvalidAction)` is a diagnostic event, not part of
+    /// the panic string). Asserting the error code, not a free-text
+    /// message, pins the specific failure mode while staying resilient
+    /// to SDK message-format churn across patch releases.
     #[test]
-    #[should_panic]
+    #[should_panic(expected = "HostError: Error(Context, InvalidAction)")]
     fn test_initialize_rejects_unauthorized_signer() {
         // Hardening 6B (#10) — CAP-0058 update: with `__constructor`,
         // admin's `require_auth()` runs during `env.register`. Without a
         // matching `MockAuth` for `admin`, the host auth check fails and
-        // the registration traps. Asserted via `#[should_panic]`.
+        // the registration traps. Asserted via the specific host error
+        // code (AR.H L4), not any panic.
         let env = Env::default();
         let admin = Address::generate(&env);
         let unauthorized = Address::generate(&env);

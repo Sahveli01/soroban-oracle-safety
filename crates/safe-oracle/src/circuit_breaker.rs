@@ -29,8 +29,9 @@
 //!
 //! `safe_oracle` does **not** enforce authorization on `open_circuit_breaker`
 //! or `close_circuit_breaker`. The library has no admin concept by design
-//! (it is stateless infrastructure consumed by many integrators with
-//! different governance models). Callers MUST enforce authorization at
+//! (it is policy-agnostic infrastructure consumed by many integrators with
+//! different governance models — it keeps per-asset halt state but owns no
+//! governance of its own). Callers MUST enforce authorization at
 //! their own layer:
 //!
 //! - `open_circuit_breaker`: Intended for internal use by `lastprice()` after
