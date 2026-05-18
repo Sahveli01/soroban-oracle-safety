@@ -2,7 +2,7 @@
 
 [![crates.io](https://img.shields.io/crates/v/safe-oracle.svg)](https://crates.io/crates/safe-oracle)
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
-[![Tests](https://img.shields.io/badge/tests-290%20passing-brightgreen)](https://github.com/Sahveli01/soroban-oracle-safety)
+[![Tests](https://img.shields.io/badge/tests-310%20passing-brightgreen)](https://github.com/Sahveli01/soroban-oracle-safety)
 
 **Drop-in oracle protection for Stellar Soroban.**
 
@@ -12,7 +12,7 @@
 
 ```toml
 [dependencies]
-safe-oracle = "0.1"
+safe-oracle = "0.2"
 soroban-sdk = "25.3"
 ```
 
@@ -49,7 +49,8 @@ Plus: a per-asset circuit breaker that auto-halts on first violation.
 - LiquidityRegistry: `CCDWMKL54WC3525IJA2UNRCRLTIROHWVVPK3MBU2YO4EMASLRB6WWGND`
 - 17 successful oracle-watch attestations
 - 1 successful borrow validated end-to-end
-- 1 adversarial replay attack rejected (`ExcessiveDeviation`)
+- Adversarial replay (10× price spike) rejected (`ExcessiveDeviation`)
+- Stale oracle scenario (48h-old timestamp) rejected (`StaleData`)
 
 ## Documentation
 
