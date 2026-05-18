@@ -42,3 +42,8 @@ web/node_modules/
 web/.next/
 web/out/
 web/.vercel/
+
+# Agent guidance files — internal/auto-generated, kept out of the public
+# repo (Next.js regenerates AGENTS.md/CLAUDE.md on tooling updates).
+AGENTS.md
+CLAUDE.md

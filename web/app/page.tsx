@@ -8,7 +8,6 @@ import { Mechanism } from "@/components/sections/mechanism";
 import { Infrastructure } from "@/components/sections/infrastructure";
 import { Operator } from "@/components/sections/operator";
 import { Live } from "@/components/sections/live";
-import { Audit } from "@/components/sections/audit";
 import { Footer } from "@/components/sections/footer";
 
 // Ordered slide deck. Each is one full-viewport page; the deck moves
@@ -23,7 +22,6 @@ const SLIDES: DeckSlide[] = [
   { id: "infrastructure", node: <Infrastructure /> },
   { id: "operator", node: <Operator /> },
   { id: "live", node: <Live /> },
-  { id: "audit", node: <Audit /> },
   { id: "footer", node: <Footer /> },
 ];
 
