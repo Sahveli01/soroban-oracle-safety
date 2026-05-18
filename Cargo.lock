@@ -1345,7 +1345,7 @@ checksum = "32a66949e030da00e8c7d4434b251670a91556f4144941d37452769c25d58a53"
 
 [[package]]
 name = "liquidity-registry"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "soroban-sdk",
 ]
@@ -1407,7 +1407,7 @@ dependencies = [
 
 [[package]]
 name = "mock-lending"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "safe-oracle",
  "soroban-sdk",
@@ -1416,7 +1416,7 @@ dependencies = [
 
 [[package]]
 name = "mock-reflector"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "safe-oracle",
  "soroban-sdk",
@@ -1561,7 +1561,7 @@ dependencies = [
 
 [[package]]
 name = "oracle-watch"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "async-trait",
  "ed25519-dalek",
@@ -1991,7 +1991,7 @@ checksum = "9774ba4a74de5f7b1c1451ed6cd5285a32eddb5cccb8cc655a4e50009e06477f"
 
 [[package]]
 name = "safe-oracle"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "mock-lending",
  "proptest",
@@ -2604,7 +2604,7 @@ dependencies = [
 
 [[package]]
 name = "test-utils"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "liquidity-registry",
  "mock-lending",
