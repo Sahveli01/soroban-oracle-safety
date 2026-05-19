@@ -8,6 +8,7 @@ import {
   useTransform,
 } from "framer-motion";
 import { useRef, useEffect } from "react";
+import { useReducedMotion } from "@/lib/use-reduced-motion";
 
 /**
  * Hero stats row — four numbers that count up when scrolled into view.
@@ -49,9 +50,13 @@ function Stat({
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const inView = useInView(ref, { once: true, margin: "-50px" });
+  const reducedMotion = useReducedMotion();
 
   const motionValue = useMotionValue(0);
-  const spring = useSpring(motionValue, { duration: 1500, bounce: 0 });
+  const spring = useSpring(
+    motionValue,
+    reducedMotion ? { duration: 0, bounce: 0 } : { duration: 1500, bounce: 0 },
+  );
   const display = useTransform(spring, (current) =>
     decimals > 0 ? current.toFixed(decimals) : Math.floor(current).toString(),
   );

@@ -51,6 +51,26 @@ export function deckGoTo(id: string): void {
   goToIdImpl?.(id);
 }
 
+/**
+ * Read the deck's current slide index. Subscribes to the same
+ * "deck:change" event the Deck already emits on every navigation, so
+ * the nav highlights the active slide without any new shared state.
+ * (Missing the Deck's initial emit(0) is harmless — index defaults to
+ * 0; every subsequent change is captured.)
+ */
+export function useDeckIndex(): number {
+  const [index, setIndex] = useState(0);
+  useEffect(() => {
+    const onChange = (e: Event) => {
+      const detail = (e as CustomEvent<{ index: number }>).detail;
+      if (detail && typeof detail.index === "number") setIndex(detail.index);
+    };
+    window.addEventListener("deck:change", onChange);
+    return () => window.removeEventListener("deck:change", onChange);
+  }, []);
+  return index;
+}
+
 export function Deck({ slides }: { slides: DeckSlide[] }) {
   const [active, setActive] = useState(0);
   const activeRef = useRef(0);

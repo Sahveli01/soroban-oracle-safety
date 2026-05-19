@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect } from "react";
 import { motion } from "framer-motion";
 import { SectionShell } from "./section-shell";
+import { useReducedMotion } from "@/lib/use-reduced-motion";
 
 type ScenarioId = "happy" | "spike" | "thin" | "stale";
 
@@ -530,6 +531,7 @@ function Connector({
   failed?: boolean;
   label?: string;
 }) {
+  const reducedMotion = useReducedMotion();
   const lit = active && !failed;
   const lineColor = !active
     ? "var(--color-border-strong)"
@@ -550,7 +552,7 @@ function Connector({
           animate={{ scaleY: active ? 1 : 0 }}
           transition={{ duration: 0.35 }}
         />
-        {lit && (
+        {lit && !reducedMotion && (
           <motion.span
             className="absolute left-1/2 top-0 h-2 w-2 rounded-full"
             style={{

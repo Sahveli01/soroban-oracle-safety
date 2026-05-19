@@ -1,4 +1,5 @@
 import { Deck, type DeckSlide } from "@/components/deck";
+import { Nav } from "@/components/nav";
 import { Hero } from "@/components/hero";
 import { Attack } from "@/components/sections/attack";
 import { Solution } from "@/components/sections/solution";
@@ -29,8 +30,11 @@ const SLIDES: DeckSlide[] = [
 
 export default function Home() {
   return (
-    <main>
-      <Deck slides={SLIDES} />
-    </main>
+    <>
+      <Nav />
+      <main>
+        <Deck slides={SLIDES} />
+      </main>
+    </>
   );
 }
