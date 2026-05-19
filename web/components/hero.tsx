@@ -42,7 +42,7 @@ export function Hero() {
         }}
       />
 
-      <div className="screen-min relative mx-auto flex w-full max-w-5xl flex-col items-center justify-center px-6 py-[clamp(5rem,11vh,7.5rem)]">
+      <div className="screen-min relative mx-auto flex w-full max-w-5xl flex-col items-center justify-center px-6 py-[clamp(4rem,9vh,6rem)]">
         {/* Top slogan */}
         <motion.p
           initial={{ opacity: 0, y: 8 }}
@@ -141,12 +141,12 @@ export function Hero() {
         </motion.div>
 
         {/* Stats row */}
-        <div className="mt-[clamp(3rem,7vh,5rem)] w-full max-w-4xl">
+        <div className="mt-[clamp(2rem,5vh,3.5rem)] w-full max-w-4xl">
           <StatsRow />
         </div>
 
         {/* Marquee */}
-        <div className="mt-[clamp(3rem,7vh,5rem)] w-full">
+        <div className="mt-[clamp(2rem,5vh,3.5rem)] w-full">
           <Marquee />
         </div>
       </div>

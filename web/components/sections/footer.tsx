@@ -14,7 +14,7 @@ const EASE: [number, number, number, number] = [0.19, 1, 0.22, 1];
 export function Footer() {
   return (
     <footer className="page-foot relative h-full bg-[var(--color-background)]">
-      <div className="screen-min mx-auto flex w-full max-w-5xl flex-col justify-between px-6 py-[clamp(4rem,9vh,7rem)]">
+      <div className="screen-min mx-auto flex w-full max-w-5xl flex-col justify-between px-6 py-[clamp(3rem,7vh,5.5rem)]">
         {/* Big closing wordmark */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}

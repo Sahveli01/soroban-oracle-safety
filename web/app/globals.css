@@ -3,8 +3,8 @@
 @theme {
   /* Colors — locked in web/STACK.md */
   --color-background: #050507;
-  --color-surface: #0d0d12;
-  --color-surface-2: #131319;
+  --color-surface: #101017;
+  --color-surface-2: #17171f;
   --color-border: #1a1a24;
   --color-border-strong: #272733;
 
@@ -13,11 +13,11 @@
   --color-accent-glow: rgba(0, 255, 148, 0.2);
   --color-danger: #ff2d55;
   /* Cool void tint — atmosphere only, never a brand color */
-  --color-aurora: rgba(70, 90, 200, 0.1);
+  --color-aurora: rgba(70, 110, 230, 0.16);
 
   --color-text: #f5f5f7;
   --color-text-muted: #8e8e93;
-  --color-text-dim: #525258;
+  --color-text-dim: #7a7a82;
 
   /* Typography */
   --font-sans: var(--font-geist-sans);
@@ -57,14 +57,11 @@
     text-rendering: optimizeLegibility;
     scrollbar-width: none;
     -ms-overflow-style: none;
-    /* The whole system (Tailwind spacing + text, the clamp() type
-       scale, section padding) is rem-based. The design was tuned
-       while the browser sat at 80% zoom; 100% is the standard, so we
-       fold that 0.8 factor into the root font-size. Now a 100%-zoom
-       viewer sees the intended, viewport-fitting composition — sizes
-       scale uniformly, proportions untouched. (Viewport units svh/vw
-       are zoom-adaptive on their own.) */
-    font-size: 80%;
+    /* No root font-size override. The system renders at TRUE 100%
+       browser zoom: the clamp() type scale and section paddings below
+       are tuned for it directly, so rem utilities and px label literals
+       stay in sync (the old 80% hack desynced them and produced
+       sub-10px informational text). */
   }
 
   /* Hide every scrollbar (incl. the in-slide scroller for tall
@@ -173,7 +170,7 @@
 /* Primary section heading — bumped up a notch vs. the old
    text-4xl base, fluid to 3.5rem on wide screens. */
 .t-h2 {
-  font-size: clamp(2.35rem, 1.4rem + 3.4vw, 3.6rem);
+  font-size: clamp(1.9rem, 1.1rem + 2.7vw, 2.9rem);
   line-height: 1.08;
   letter-spacing: -0.02em;
   font-weight: 500;
@@ -181,7 +178,7 @@
 
 /* Statement heading — hero / Live / Solution voice, a step larger. */
 .t-h1 {
-  font-size: clamp(2.85rem, 1.3rem + 6vw, 5.25rem);
+  font-size: clamp(2.3rem, 1.05rem + 4.8vw, 4.2rem);
   line-height: 1.06;
   letter-spacing: -0.03em;
   font-weight: 500;
@@ -216,10 +213,10 @@
   /* Base void + a perspective depth grid that fades toward the center */
   background:
     linear-gradient(
-      rgba(255, 255, 255, 0.022) 1px,
+      rgba(255, 255, 255, 0.03) 1px,
       transparent 1px
     ),
-    linear-gradient(90deg, rgba(255, 255, 255, 0.022) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.03) 1px, transparent 1px),
     radial-gradient(
       120% 90% at 50% 0%,
       #0a0b12 0%,
@@ -255,7 +252,7 @@
     ),
     radial-gradient(
       34rem 34rem at 80% 22%,
-      rgba(70, 110, 230, 0.16),
+      var(--color-aurora),
       transparent 60%
     ),
     radial-gradient(
@@ -276,7 +273,7 @@
   background: radial-gradient(
     ellipse 120% 80% at 50% 50%,
     transparent 52%,
-    rgba(0, 0, 0, 0.62) 100%
+    rgba(0, 0, 0, 0.45) 100%
   );
 }
 
@@ -298,7 +295,7 @@
   inset: -200%;
   z-index: -1;
   pointer-events: none;
-  opacity: 0.02;
+  opacity: 0.035;
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)'/%3E%3C/svg%3E");
   animation: grain-shift 6s steps(6) infinite;
 }
