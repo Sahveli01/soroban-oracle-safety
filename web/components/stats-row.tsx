@@ -14,7 +14,7 @@ import { useRef, useEffect } from "react";
  *
  * Numbers are pulled from public sources / project state:
  *   - $10.2M: YieldBlox post-mortem (Feb 22, 2026)
- *   - 290: workspace test count at Phase 7 closure
+ *   - 310: workspace test count (current)
  *   - 0: critical findings (AR.H adversarial review)
  *   - 5: active guardrails (Layers 1+2)
  */
@@ -27,7 +27,7 @@ const STATS = [
     subtitle: "YieldBlox",
     decimals: 1,
   },
-  { value: 290, label: "Tests", subtitle: "Passing" },
+  { value: 310, label: "Tests", subtitle: "Passing" },
   { value: 0, label: "Critical", subtitle: "Findings" },
   { value: 5, label: "Guards", subtitle: "Active" },
 ];

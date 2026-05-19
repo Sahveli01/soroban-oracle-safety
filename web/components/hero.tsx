@@ -2,6 +2,7 @@
 
 import { motion } from "framer-motion";
 import { CodeSnippet } from "./code-snippet";
+import { CodeBlock } from "./code-block";
 import { StatsRow } from "./stats-row";
 import { Marquee } from "./marquee";
 
@@ -105,12 +106,22 @@ export function Hero() {
           {SUBLINE}
         </motion.p>
 
-        {/* Code snippet */}
+        {/* Eight-line proof — pays off the "Eight lines" slogan */}
         <motion.div
           initial={{ opacity: 0, y: 16 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.95, duration: 0.6, ease: EASE_OUT_EXPO }}
-          className="mt-9"
+          transition={{ delay: 0.9, duration: 0.6, ease: EASE_OUT_EXPO }}
+          className="mt-9 flex w-full justify-center"
+        >
+          <CodeBlock />
+        </motion.div>
+
+        {/* Install command */}
+        <motion.div
+          initial={{ opacity: 0, y: 16 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 1.0, duration: 0.6, ease: EASE_OUT_EXPO }}
+          className="mt-5"
         >
           <CodeSnippet code="cargo add safe-oracle" />
         </motion.div>

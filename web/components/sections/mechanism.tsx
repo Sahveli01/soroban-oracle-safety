@@ -57,7 +57,7 @@ export function Mechanism() {
         className="mt-8 max-w-2xl text-text-muted"
       >
         Every threshold below is calibrated for production deployment. Each is
-        configurable per-integrator. Defaults reflect mainnet-ready security
+        configurable per-integrator. Defaults reflect mainnet-grade security
         margins observed against real attack patterns.
       </motion.p>
 

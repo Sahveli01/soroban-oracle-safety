@@ -20,14 +20,14 @@ export function Attack() {
         <div className="font-mono text-sm uppercase tracking-[0.25em] text-text-muted">
           One $5 trade
         </div>
-        <div className="mt-4 flex items-end gap-4">
+        <h2 className="mt-4 flex items-end gap-4">
           <span className="text-danger text-[clamp(3rem,11vw,7rem)] font-semibold leading-[0.85] tracking-tight">
             $10.2M
           </span>
           <span className="mb-1.5 text-xl font-medium text-text md:mb-2.5 md:text-3xl">
             drained.
           </span>
-        </div>
+        </h2>
       </motion.div>
 
       <div className="mt-14 grid gap-10 md:grid-cols-12">
@@ -76,6 +76,42 @@ export function Attack() {
           </div>
         </motion.div>
       </div>
+
+      <motion.p
+        initial={{ opacity: 0 }}
+        whileInView={{ opacity: 1 }}
+        viewport={{ once: true, margin: "-50px" }}
+        transition={{ delay: 0.5, duration: 0.6 }}
+        className="mt-10 font-mono text-xs text-text-dim"
+      >
+        Sources:{" "}
+        <a
+          href="https://rekt.news/yieldblox-rekt"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="underline decoration-dotted underline-offset-4 transition-colors hover:text-accent"
+        >
+          Rekt News
+        </a>
+        {" · "}
+        <a
+          href="https://www.halborn.com/blog/post/explained-the-yieldblox-hack-february-2026"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="underline decoration-dotted underline-offset-4 transition-colors hover:text-accent"
+        >
+          Halborn analysis
+        </a>
+        {" · "}
+        <a
+          href="https://x.com/script3official/status/2025403423840141450"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="underline decoration-dotted underline-offset-4 transition-colors hover:text-accent"
+        >
+          Script3 official statement
+        </a>
+      </motion.p>
     </SectionShell>
   );
 }
