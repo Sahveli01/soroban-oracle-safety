@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import { motion } from "framer-motion";
 import { SectionShell } from "./section-shell";
 
@@ -102,7 +102,23 @@ export function Architecture() {
   const [state, setState] = useState<DiagramState>(INITIAL_STATE);
   const [showResult, setShowResult] = useState(false);
 
+  // Every setTimeout from a run is registered here so it can be torn
+  // down before a new run, on reset, and on unmount. Without this,
+  // rapid scenario switching overlaps timelines (diagram settles on a
+  // stale state), reset is fought by queued timers, and navigating the
+  // deck away mid-run leaks timers / setStates into an inert component.
+  const timersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
+
+  const clearAllTimers = () => {
+    timersRef.current.forEach(clearTimeout);
+    timersRef.current = [];
+  };
+
+  useEffect(() => clearAllTimers, []);
+
   const runScenario = (id: ScenarioId) => {
+    // Cancel any in-flight timeline before starting a new one.
+    clearAllTimers();
     const scenario = SCENARIOS.find((s) => s.id === id)!;
     setActiveScenario(id);
     setShowResult(false);
@@ -147,15 +163,20 @@ export function Architecture() {
     }
 
     timeline.forEach(([delay, change]) => {
-      setTimeout(() => {
-        setState((prev) => ({ ...prev, ...change }));
-      }, delay);
+      timersRef.current.push(
+        setTimeout(() => {
+          setState((prev) => ({ ...prev, ...change }));
+        }, delay),
+      );
     });
 
-    setTimeout(() => setShowResult(true), scenario.latencyMs + 200);
+    timersRef.current.push(
+      setTimeout(() => setShowResult(true), scenario.latencyMs + 200),
+    );
   };
 
   const reset = () => {
+    clearAllTimers();
     setActiveScenario(null);
     setState(INITIAL_STATE);
     setShowResult(false);
@@ -223,7 +244,6 @@ export function Architecture() {
               <button
                 key={s.id}
                 onClick={() => runScenario(s.id)}
-                disabled={activeScenario === s.id}
                 className={`cursor-pointer rounded-lg border px-3 py-2.5 text-left font-mono text-xs transition-all ${
                   activeScenario === s.id
                     ? "border-accent/50 bg-accent/10 text-accent"
