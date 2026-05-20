@@ -188,9 +188,14 @@
    than any other slide (slogan + 2-line h1 + subline + CodeBlock +
    install + CTAs + stats + marquee), so its headline is one step
    smaller than `.t-h1`. Calibrated to keep the slide single-viewport
-   at 1366×768 without sacrificing presence on larger screens. */
+   at 1366×768 without sacrificing presence on larger screens.
+   Pass 4A: bumped from clamp(1.75rem, 0.75rem + 3.5vw, 3rem) →
+   clamp(2rem, 0.85rem + 3.8vw, 3.4rem). The Pass 3 sizing left the
+   13px eyebrow visually competitive with the headline; the new ratio
+   restores the headline as the clear visual anchor (~4× the eyebrow
+   at 1366×768) without breaking single-viewport fit. */
 .t-hero-h1 {
-  font-size: clamp(1.75rem, 0.75rem + 3.5vw, 3rem);
+  font-size: clamp(2rem, 0.85rem + 3.8vw, 3.4rem);
   line-height: 1.05;
   letter-spacing: -0.03em;
   font-weight: 500;

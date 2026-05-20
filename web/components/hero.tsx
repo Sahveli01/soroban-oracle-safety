@@ -61,7 +61,14 @@ export function Hero() {
 
         {/* Big headline — word-by-word stagger. Hero-specific size
             (`t-hero-h1`) — smaller than body `.t-h1` since Hero is the
-            slide with the most competing vertical content. */}
+            slide with the most competing vertical content.
+
+            CRITICAL: each word is an `inline-block` motion.span. Browsers
+            strip trailing whitespace inside inline-block content, so a
+            literal `" "` after the word collapses and adjacent words run
+            together ("Trusttheoracle."). The fix is a font-relative
+            margin on every word except the last — the gap survives
+            because it is layout, not text. */}
         <h1 className="t-hero-h1 text-center">
           <span className="block">
             {HEADLINE_LINE_1.map((word, i) => (
@@ -74,12 +81,15 @@ export function Hero() {
                   duration: 0.7,
                   ease: EASE_OUT_EXPO,
                 }}
+                style={{
+                  marginRight:
+                    i < HEADLINE_LINE_1.length - 1 ? "0.28em" : undefined,
+                }}
                 className={`inline-block ${
                   word === "oracle." ? "text-[var(--color-accent)]" : ""
                 }`}
               >
                 {word}
-                {i < HEADLINE_LINE_1.length - 1 && " "}
               </motion.span>
             ))}
           </span>
@@ -94,10 +104,13 @@ export function Hero() {
                   duration: 0.7,
                   ease: EASE_OUT_EXPO,
                 }}
+                style={{
+                  marginRight:
+                    i < HEADLINE_LINE_2.length - 1 ? "0.28em" : undefined,
+                }}
                 className="inline-block"
               >
                 {word}
-                {i < HEADLINE_LINE_2.length - 1 && " "}
               </motion.span>
             ))}
           </span>
