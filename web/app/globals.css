@@ -118,11 +118,16 @@
 .deck-slide {
   position: absolute;
   inset: 0;
-  will-change: transform;
-  /* Snappy quint-out: quick to leave, gentle to settle — reads as fast
-     and premium, never "draggy". Kept in sync with SLIDE_MS in
-     deck.tsx (420 in Pass 4B, down from 520 for a snappier
-     keyboard/wheel response). */
+  /* Pass 4B: `will-change: transform` was previously set here — but it
+     was applied to ALL 11 slides simultaneously, permanently promoting
+     11 compositor layers. On Mac retina each layer is roughly
+     viewport-px² × 4 bytes × 2 (HiDPI) ≈ 20 MB, so the page paid
+     ~220 MB of GPU memory just for hint layers that are never
+     animating concurrently. The bare `translate3d(…)` in the inline
+     style still triggers GPU-accelerated transform during the actual
+     slide animation, so playback stays smooth; what is removed is the
+     permanent layer-promotion cost on every other (static) slide.
+     Kept in sync with SLIDE_MS in deck.tsx (420 ms). */
   transition: transform 420ms cubic-bezier(0.22, 1, 0.36, 1);
 }
 
@@ -346,10 +351,18 @@
     );
 }
 
-/* Film grain — animated, ultra-subtle, kills banding on the gradients */
+/* Film grain — animated, ultra-subtle, kills banding on the gradients.
+   Pass 4B: `inset: -200%` made the element ~5× the viewport in each
+   direction (≈25× viewport area). On Mac retina that is roughly
+   25 × 1366 × 768 × 4 × 2 ≈ 200 MB of GPU memory for a single
+   decorative noise layer — likely a primary driver of the reported
+   crashes past mid-deck on memory-constrained Macs. The grain-shift
+   animation translates by max ±6 %, so `inset: -10 %` (12 % oversize
+   on each axis) is plenty of slack to keep the moved element covering
+   the viewport. ~95 % memory reduction with identical visual. */
 .grain {
   position: fixed;
-  inset: -200%;
+  inset: -10%;
   z-index: -1;
   pointer-events: none;
   opacity: 0.035;
