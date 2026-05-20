@@ -13,7 +13,7 @@ const GUARDS = [
 
 export function Solution() {
   return (
-    <SectionShell id="solution" eyebrow="The Solution">
+    <SectionShell id="solution" eyebrow="The Solution" density="dense">
       <motion.h2
         initial={{ opacity: 0, y: 20 }}
         whileInView={{ opacity: 1, y: 0 }}
@@ -31,13 +31,13 @@ export function Solution() {
         whileInView={{ opacity: 1 }}
         viewport={{ once: true, margin: "-100px" }}
         transition={{ delay: 0.2, duration: 0.7 }}
-        className="mt-12 max-w-2xl text-lg leading-relaxed text-text-muted"
+        className="mt-7 max-w-2xl text-lg leading-relaxed text-text-muted"
       >
         Each guardrail closes a specific attack vector observed in real DeFi
         exploits. Mathematically validated, empirically tested.
       </motion.p>
 
-      <div className="mt-16 divide-y divide-border border-y border-border">
+      <div className="mt-9 divide-y divide-border border-y border-border">
         {GUARDS.map((guard, i) => (
           <motion.div
             key={guard.name}
@@ -49,7 +49,7 @@ export function Solution() {
               duration: 0.5,
               ease: [0.19, 1, 0.22, 1],
             }}
-            className="grid grid-cols-12 gap-4 py-6"
+            className="grid grid-cols-12 gap-4 py-4"
           >
             <div className="col-span-3 font-mono text-xs uppercase tracking-wider text-text-dim md:col-span-2">
               {guard.layer}
@@ -69,7 +69,7 @@ export function Solution() {
         whileInView={{ opacity: 1 }}
         viewport={{ once: true, margin: "-100px" }}
         transition={{ delay: 0.6, duration: 0.5 }}
-        className="mt-8 flex items-center gap-3 text-sm text-text-muted"
+        className="mt-6 flex items-center gap-3 text-sm text-text-muted"
       >
         <span className="inline-block h-px w-12 bg-accent" />
         <span className="font-mono">

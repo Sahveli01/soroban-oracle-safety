@@ -38,7 +38,7 @@ const THRESHOLDS = [
 
 export function Mechanism() {
   return (
-    <SectionShell id="mechanism" eyebrow="Mechanism">
+    <SectionShell id="mechanism" eyebrow="Mechanism" density="dense">
       <motion.h2
         initial={{ opacity: 0, y: 20 }}
         whileInView={{ opacity: 1, y: 0 }}
@@ -54,14 +54,14 @@ export function Mechanism() {
         whileInView={{ opacity: 1 }}
         viewport={{ once: true, margin: "-100px" }}
         transition={{ delay: 0.2, duration: 0.7 }}
-        className="mt-8 max-w-2xl text-text-muted"
+        className="mt-5 max-w-2xl text-text-muted"
       >
         Every threshold below is calibrated for production deployment. Each is
         configurable per-integrator. Defaults reflect mainnet-grade security
         margins observed against real attack patterns.
       </motion.p>
 
-      <div className="mt-16 divide-y divide-border border-y border-border">
+      <div className="mt-9 divide-y divide-border border-y border-border">
         {THRESHOLDS.map((t, i) => (
           <motion.div
             key={t.name}
@@ -69,7 +69,7 @@ export function Mechanism() {
             whileInView={{ opacity: 1 }}
             viewport={{ once: true, margin: "-50px" }}
             transition={{ delay: i * 0.05, duration: 0.4 }}
-            className="grid grid-cols-12 gap-4 py-5"
+            className="grid grid-cols-12 gap-4 py-4"
           >
             <div className="col-span-12 font-mono text-sm text-text md:col-span-5">
               {t.name}

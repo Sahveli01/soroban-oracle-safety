@@ -43,13 +43,13 @@ export function Hero() {
         }}
       />
 
-      <div className="screen-min relative mx-auto flex w-full max-w-5xl flex-col items-center justify-center px-6 py-[clamp(4rem,9vh,6rem)]">
+      <div className="screen-min relative mx-auto flex w-full max-w-5xl flex-col items-center justify-center px-6 py-[clamp(2rem,5vh,4rem)]">
         {/* Top slogan */}
         <motion.p
           initial={{ opacity: 0, y: 8 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.15, duration: 0.6, ease: EASE_OUT_EXPO }}
-          className="mb-8 font-mono text-sm uppercase tracking-[0.22em] text-[#a8a8b0]"
+          className="mb-6 font-mono text-sm uppercase tracking-[0.22em] text-[#a8a8b0]"
         >
           {TOP_SLOGAN}
         </motion.p>
@@ -101,7 +101,7 @@ export function Hero() {
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.75, duration: 0.7, ease: EASE_OUT_EXPO }}
-          className="mt-7 max-w-2xl whitespace-pre-line text-center text-lg leading-relaxed text-[var(--color-text-muted)]"
+          className="mt-5 max-w-2xl whitespace-pre-line text-center text-lg leading-relaxed text-[var(--color-text-muted)]"
         >
           {SUBLINE}
         </motion.p>
@@ -111,7 +111,7 @@ export function Hero() {
           initial={{ opacity: 0, y: 16 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.9, duration: 0.6, ease: EASE_OUT_EXPO }}
-          className="mt-9 flex w-full justify-center"
+          className="mt-6 flex w-full justify-center"
         >
           <CodeBlock />
         </motion.div>
@@ -121,7 +121,7 @@ export function Hero() {
           initial={{ opacity: 0, y: 16 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 1.0, duration: 0.6, ease: EASE_OUT_EXPO }}
-          className="mt-5"
+          className="mt-4"
         >
           <CodeSnippet code="cargo add safe-oracle" />
         </motion.div>
@@ -131,7 +131,7 @@ export function Hero() {
           initial={{ opacity: 0, y: 16 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 1.1, duration: 0.6, ease: EASE_OUT_EXPO }}
-          className="mt-7 flex flex-wrap items-center justify-center gap-4"
+          className="mt-5 flex flex-wrap items-center justify-center gap-4"
         >
           <a
             href="https://github.com/Sahveli01/soroban-oracle-safety"
@@ -152,12 +152,12 @@ export function Hero() {
         </motion.div>
 
         {/* Stats row */}
-        <div className="mt-[clamp(2rem,5vh,3.5rem)] w-full max-w-4xl">
+        <div className="mt-[clamp(1.5rem,3vh,2.5rem)] w-full max-w-4xl">
           <StatsRow />
         </div>
 
         {/* Marquee */}
-        <div className="mt-[clamp(2rem,5vh,3.5rem)] w-full">
+        <div className="mt-[clamp(1.25rem,2.5vh,2rem)] w-full">
           <Marquee />
         </div>
       </div>

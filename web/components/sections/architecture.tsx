@@ -188,7 +188,7 @@ export function Architecture() {
     : null;
 
   return (
-    <SectionShell id="architecture" eyebrow="Architecture">
+    <SectionShell id="architecture" eyebrow="Architecture" density="compact">
       <motion.h2
         initial={{ opacity: 0, y: 20 }}
         whileInView={{ opacity: 1, y: 0 }}
@@ -204,7 +204,7 @@ export function Architecture() {
         whileInView={{ opacity: 1 }}
         viewport={{ once: true, margin: "-100px" }}
         transition={{ delay: 0.15, duration: 0.7 }}
-        className="mt-5 max-w-xl text-text-muted"
+        className="mt-4 max-w-xl text-text-muted"
       >
         Run a scenario and watch a borrow request flow through five guards —
         validated before it ever reaches your business logic.
@@ -212,10 +212,10 @@ export function Architecture() {
 
       {/* Compact two-column console — fits one viewport, result always
           visible (no off-screen expand). Logic/state machine unchanged. */}
-      <div className="mt-10 grid gap-5 lg:grid-cols-12">
+      <div className="mt-7 grid gap-5 lg:grid-cols-12">
         {/* Flow diagram */}
-        <div className="surface-card p-6 md:p-8 lg:col-span-7">
-          <div className="mb-7 flex items-center justify-between gap-4">
+        <div className="surface-card p-5 md:p-6 lg:col-span-7">
+          <div className="mb-5 flex items-center justify-between gap-4">
             <span className="font-mono text-[11px] uppercase tracking-[0.2em] text-text-dim">
               Request flow
             </span>
@@ -225,7 +225,7 @@ export function Architecture() {
         </div>
 
         {/* Console: scenarios + always-visible result */}
-        <div className="surface-card flex flex-col p-6 md:p-7 lg:col-span-5">
+        <div className="surface-card flex flex-col p-5 md:p-6 lg:col-span-5">
           <div className="flex items-center justify-between">
             <div className="font-mono text-[11px] uppercase tracking-[0.2em] text-text-dim">
               Run scenario
@@ -257,7 +257,7 @@ export function Architecture() {
           </div>
 
           {/* Result — reserved space so it never pushes layout / off-screen */}
-          <div className="mt-5 min-h-[210px] overflow-hidden rounded-xl border border-border bg-[var(--color-background)]">
+          <div className="mt-4 min-h-[190px] overflow-hidden rounded-xl border border-border bg-[var(--color-background)]">
             {showResult && currentScenario ? (
               <motion.div
                 initial={{ opacity: 0, y: 6 }}
@@ -327,7 +327,7 @@ export function Architecture() {
                 </div>
               </motion.div>
             ) : (
-              <div className="flex min-h-[210px] flex-col items-center justify-center gap-2 px-4 text-center">
+              <div className="flex min-h-[190px] flex-col items-center justify-center gap-2 px-4 text-center">
                 <span
                   className={`font-mono text-xs uppercase tracking-[0.2em] ${
                     activeScenario ? "text-accent" : "text-text-dim"
@@ -540,9 +540,9 @@ function Connector({
     : "var(--color-accent)";
 
   return (
-    <div className="flex flex-col items-center gap-1.5 py-2">
+    <div className="flex flex-col items-center gap-1 py-1">
       <span
-        className="relative h-9 w-px"
+        className="relative h-7 w-px"
         style={{ background: "var(--color-border)" }}
       >
         <motion.span
@@ -559,8 +559,8 @@ function Connector({
               background: "var(--color-accent)",
               boxShadow: "0 0 10px 2px rgba(0,255,148,0.65)",
             }}
-            initial={{ x: "-50%", y: -10, opacity: 0 }}
-            animate={{ x: "-50%", y: [-10, 36], opacity: [0, 1, 1, 0] }}
+            initial={{ x: "-50%", y: -8, opacity: 0 }}
+            animate={{ x: "-50%", y: [-8, 28], opacity: [0, 1, 1, 0] }}
             transition={{ duration: 0.85, repeat: Infinity, ease: "easeIn" }}
           />
         )}
