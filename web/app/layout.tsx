@@ -54,12 +54,12 @@ export default function RootLayout({
     >
       <body>
         {/* Atmosphere — fixed depth layers behind all content.
-            Order: base mesh → 3 corner blooms → horizon line → grain. */}
+            Pass 4B: the 4 separate Pass-3 atmosphere divs (each its own
+            position:fixed = its own compositor layer) are now a single
+            multi-background div (.atmosphere-blooms). One layer instead
+            of four — measurable on Mac retina compositor cost. */}
         <div className="atmosphere" aria-hidden="true" />
-        <div className="atmosphere-bloom-tl" aria-hidden="true" />
-        <div className="atmosphere-bloom-tr" aria-hidden="true" />
-        <div className="atmosphere-bloom-br" aria-hidden="true" />
-        <div className="atmosphere-accent" aria-hidden="true" />
+        <div className="atmosphere-blooms" aria-hidden="true" />
         <div className="grain" aria-hidden="true" />
         {children}
       </body>

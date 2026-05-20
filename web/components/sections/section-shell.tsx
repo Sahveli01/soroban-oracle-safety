@@ -9,17 +9,19 @@ import { type ReactNode } from "react";
  * single one-size-fits-all padding/spacing leaves dense sections
  * clipping at the bottom and light sections drowning in dead space.
  *
- *   comfortable — short content that needs to sit lower in the
- *                 viewport (Live: 2 short lists, otherwise bottom-heavy)
- *   default     — light/medium content (Attack, How-It-Works, Infra…)
- *   dense       — 5–6 rows or 5+ cards (Solution, Mechanism, Trust)
- *   compact     — the heaviest single sections (Architecture)
+ *   default — light/medium content (Attack, How-It-Works, Infra…)
+ *   dense   — 5–6 rows or 5+ cards (Solution, Mechanism, Trust, Live)
+ *   compact — the heaviest single sections (Architecture)
  *
  * Top padding is always larger than bottom — a top-biased baseline reads
  * as deliberate composition (Vercel/Linear voice) rather than vertical
  * centring, and matches the rest of the system.
+ *
+ * (Pass-3 added a 'comfortable' tier with MORE top padding for Live;
+ * Pass 4A discovered Live was overflowing and switched it to 'dense',
+ * which left 'comfortable' unused. Removed in Pass 4B.)
  */
-type Density = "comfortable" | "default" | "dense" | "compact";
+type Density = "default" | "dense" | "compact";
 
 interface SectionShellProps {
   id: string;
@@ -29,10 +31,6 @@ interface SectionShellProps {
 }
 
 const DENSITY: Record<Density, { pad: string; gap: string }> = {
-  comfortable: {
-    pad: "pt-[clamp(5.5rem,18vh,9rem)] pb-[clamp(3rem,7vh,5rem)]",
-    gap: "mb-9",
-  },
   default: {
     pad: "pt-[clamp(4.5rem,15vh,8rem)] pb-[clamp(2.5rem,6vh,4rem)]",
     gap: "mb-8",

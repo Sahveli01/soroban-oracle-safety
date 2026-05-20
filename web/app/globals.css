@@ -23,13 +23,8 @@
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
 
-  /* Spacing */
-  --spacing-section: 8rem;
-  --spacing-section-lg: 12.5rem;
-
   /* Animation easings */
   --ease-out-expo: cubic-bezier(0.19, 1, 0.22, 1);
-  --ease-in-out-expo: cubic-bezier(0.87, 0, 0.13, 1);
 
   /* Elevation — used by the stacked-section page-turn */
   --shadow-page: 0 -1px 0 0 rgba(255, 255, 255, 0.04),
@@ -307,71 +302,47 @@
 }
 
 /* ============================================================
-   Multi-layer premium atmosphere — four static gradient panes that
-   break the flat-black perception without GPU cost. All layers are
-   `position: fixed; pointer-events: none; aria-hidden` and pure CSS
-   radial gradients — no transform, no animation, no will-change.
-   Reduced-motion safe by construction.
-
-   The single horizon-line from Pass 2 was too subtle on its own; this
-   set adds 3 corner blooms (TL/TR/BR) plus a strengthened central
-   horizon. Composition: predominantly accent green (brand) with one
-   cool blue at bottom-right for temperature variation.
+   Multi-layer premium atmosphere — Pass-3 split this across four
+   separate `position: fixed` divs (TL bloom, TR wisp, BR cool-blue,
+   horizon accent). On Mac retina each fixed div promotes its own
+   compositor layer, so the page paid 4× the GPU surface cost for what
+   visually composites to a single tinted background. Pass 4B collapses
+   them into one div with four background-image layers — visually
+   identical, one compositor layer instead of four. Reduced-motion safe
+   by construction (no transform, no animation).
    ============================================================ */
 
-/* Top-left bloom — accent green focal */
-.atmosphere-bloom-tl {
+.atmosphere-blooms {
   position: fixed;
   inset: 0;
   pointer-events: none;
   z-index: -1;
-  background: radial-gradient(
-    ellipse 60% 50% at 18% 22%,
-    rgba(0, 255, 148, 0.08) 0%,
-    transparent 65%
-  );
-}
-
-/* Top-right wisp — subtle green counterweight */
-.atmosphere-bloom-tr {
-  position: fixed;
-  inset: 0;
-  pointer-events: none;
-  z-index: -1;
-  background: radial-gradient(
-    ellipse 50% 45% at 82% 24%,
-    rgba(0, 255, 148, 0.05) 0%,
-    transparent 70%
-  );
-}
-
-/* Bottom-right cool-blue bloom — temperature variation, the only
-   non-green layer. Keeps the composition from reading monotone. */
-.atmosphere-bloom-br {
-  position: fixed;
-  inset: 0;
-  pointer-events: none;
-  z-index: -1;
-  background: radial-gradient(
-    ellipse 65% 55% at 80% 80%,
-    rgba(70, 110, 230, 0.07) 0%,
-    transparent 65%
-  );
-}
-
-/* Central horizon accent — strengthened from Pass 2 (0.07 → 0.12)
-   and the line is a hair thicker (1px → 1.5px) so it survives next
-   to the 3 corner blooms. Still reads as a horizon, not a stripe. */
-.atmosphere-accent {
-  position: fixed;
-  inset: 0;
-  pointer-events: none;
-  z-index: -1;
-  background: radial-gradient(
-    130% 1.5px at 50% 62%,
-    rgba(0, 255, 148, 0.12) 0%,
-    transparent 60%
-  );
+  background:
+    /* Top-left accent-green focal */
+    radial-gradient(
+      ellipse 60% 50% at 18% 22%,
+      rgba(0, 255, 148, 0.08) 0%,
+      transparent 65%
+    ),
+    /* Top-right subtle green counterweight */
+    radial-gradient(
+      ellipse 50% 45% at 82% 24%,
+      rgba(0, 255, 148, 0.05) 0%,
+      transparent 70%
+    ),
+    /* Bottom-right cool-blue — temperature variation, the only
+       non-green layer; keeps the composition from reading monotone */
+    radial-gradient(
+      ellipse 65% 55% at 80% 80%,
+      rgba(70, 110, 230, 0.07) 0%,
+      transparent 65%
+    ),
+    /* Central horizon accent — thin band at 62%, reads as horizon */
+    radial-gradient(
+      130% 1.5px at 50% 62%,
+      rgba(0, 255, 148, 0.12) 0%,
+      transparent 60%
+    );
 }
 
 /* Film grain — animated, ultra-subtle, kills banding on the gradients */
