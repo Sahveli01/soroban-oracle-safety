@@ -14,7 +14,7 @@ const ITEMS = [
   "ED25519",
   "SOROBAN",
   "STELLAR SDEX",
-  "AUDITED",
+  "VERIFIED",
   "OPEN SOURCE",
   "310 TESTS PASSING",
 ];
