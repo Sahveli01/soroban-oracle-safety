@@ -53,8 +53,12 @@ export default function RootLayout({
       className={`${geistSans.variable} ${geistMono.variable}`}
     >
       <body>
-        {/* Atmosphere — fixed depth layers behind all content */}
+        {/* Atmosphere — fixed depth layers behind all content.
+            Order: base mesh → 3 corner blooms → horizon line → grain. */}
         <div className="atmosphere" aria-hidden="true" />
+        <div className="atmosphere-bloom-tl" aria-hidden="true" />
+        <div className="atmosphere-bloom-tr" aria-hidden="true" />
+        <div className="atmosphere-bloom-br" aria-hidden="true" />
         <div className="atmosphere-accent" aria-hidden="true" />
         <div className="grain" aria-hidden="true" />
         {children}

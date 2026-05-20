@@ -302,28 +302,71 @@
 }
 
 /* ============================================================
-   Premium accent — a single, static, near-invisible green horizon
-   line. Adds depth and a hint of "engineered" atmosphere without
-   GPU cost: pure CSS, no transform, no animation, no will-change.
-   At alpha 0.07 it is perceptible only when looked for — Linear /
-   Stripe docs bar voice, not marketing-gradient voice.
-   Reduced-motion safe by construction (no motion to suppress).
+   Multi-layer premium atmosphere — four static gradient panes that
+   break the flat-black perception without GPU cost. All layers are
+   `position: fixed; pointer-events: none; aria-hidden` and pure CSS
+   radial gradients — no transform, no animation, no will-change.
+   Reduced-motion safe by construction.
+
+   The single horizon-line from Pass 2 was too subtle on its own; this
+   set adds 3 corner blooms (TL/TR/BR) plus a strengthened central
+   horizon. Composition: predominantly accent green (brand) with one
+   cool blue at bottom-right for temperature variation.
    ============================================================ */
+
+/* Top-left bloom — accent green focal */
+.atmosphere-bloom-tl {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: -1;
+  background: radial-gradient(
+    ellipse 60% 50% at 18% 22%,
+    rgba(0, 255, 148, 0.08) 0%,
+    transparent 65%
+  );
+}
+
+/* Top-right wisp — subtle green counterweight */
+.atmosphere-bloom-tr {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: -1;
+  background: radial-gradient(
+    ellipse 50% 45% at 82% 24%,
+    rgba(0, 255, 148, 0.05) 0%,
+    transparent 70%
+  );
+}
+
+/* Bottom-right cool-blue bloom — temperature variation, the only
+   non-green layer. Keeps the composition from reading monotone. */
+.atmosphere-bloom-br {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: -1;
+  background: radial-gradient(
+    ellipse 65% 55% at 80% 80%,
+    rgba(70, 110, 230, 0.07) 0%,
+    transparent 65%
+  );
+}
+
+/* Central horizon accent — strengthened from Pass 2 (0.07 → 0.12)
+   and the line is a hair thicker (1px → 1.5px) so it survives next
+   to the 3 corner blooms. Still reads as a horizon, not a stripe. */
 .atmosphere-accent {
   position: fixed;
   inset: 0;
-  z-index: -1;
   pointer-events: none;
-  /* Thin elliptical bar at 62% from top — below the headline aurora
-     focal point, above the lower bloom; reads as a horizon, not a
-     stripe. The bar fades to transparent on both ends, so there is
-     no visible edge against the page chrome. */
-  background:
-    radial-gradient(
-      130% 1px at 50% 62%,
-      rgba(0, 255, 148, 0.07) 0%,
-      transparent 70%
-    );
+  z-index: -1;
+  background: radial-gradient(
+    130% 1.5px at 50% 62%,
+    rgba(0, 255, 148, 0.12) 0%,
+    transparent 60%
+  );
 }
 
 /* Film grain — animated, ultra-subtle, kills banding on the gradients */
