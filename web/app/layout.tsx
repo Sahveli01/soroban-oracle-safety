@@ -55,6 +55,7 @@ export default function RootLayout({
       <body>
         {/* Atmosphere — fixed depth layers behind all content */}
         <div className="atmosphere" aria-hidden="true" />
+        <div className="atmosphere-accent" aria-hidden="true" />
         <div className="grain" aria-hidden="true" />
         {children}
       </body>

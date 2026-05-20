@@ -289,6 +289,31 @@
   }
 }
 
+/* ============================================================
+   Premium accent — a single, static, near-invisible green horizon
+   line. Adds depth and a hint of "engineered" atmosphere without
+   GPU cost: pure CSS, no transform, no animation, no will-change.
+   At alpha 0.07 it is perceptible only when looked for — Linear /
+   Stripe docs bar voice, not marketing-gradient voice.
+   Reduced-motion safe by construction (no motion to suppress).
+   ============================================================ */
+.atmosphere-accent {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  /* Thin elliptical bar at 62% from top — below the headline aurora
+     focal point, above the lower bloom; reads as a horizon, not a
+     stripe. The bar fades to transparent on both ends, so there is
+     no visible edge against the page chrome. */
+  background:
+    radial-gradient(
+      130% 1px at 50% 62%,
+      rgba(0, 255, 148, 0.07) 0%,
+      transparent 70%
+    );
+}
+
 /* Film grain — animated, ultra-subtle, kills banding on the gradients */
 .grain {
   position: fixed;
