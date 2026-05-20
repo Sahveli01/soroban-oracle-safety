@@ -66,23 +66,23 @@ function Stat({
   }, [inView, motionValue, value]);
 
   return (
-    <div ref={ref} className="flex flex-col items-center gap-1">
-      <div className="font-mono text-4xl font-medium tabular md:text-5xl">
+    <div ref={ref} className="flex flex-col items-center gap-0.5">
+      <div className="font-mono text-3xl font-medium tabular md:text-4xl">
         <span className="text-text-dim">{prefix}</span>
         <motion.span className="text-text">{display}</motion.span>
         <span className="text-text-dim">{suffix}</span>
       </div>
-      <div className="font-mono text-xs uppercase tracking-wider text-text-muted">
+      <div className="font-mono text-[11px] uppercase tracking-wider text-text-muted">
         {label}
       </div>
-      <div className="font-mono text-xs text-text-dim">{subtitle}</div>
+      <div className="font-mono text-[11px] text-text-dim">{subtitle}</div>
     </div>
   );
 }
 
 export function StatsRow() {
   return (
-    <div className="grid grid-cols-2 gap-8 md:grid-cols-4">
+    <div className="grid grid-cols-2 gap-6 md:grid-cols-4">
       {STATS.map((stat, i) => (
         <Stat key={i} {...stat} />
       ))}

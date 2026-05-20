@@ -184,6 +184,18 @@
   font-weight: 500;
 }
 
+/* Hero-only headline — Hero carries more competing vertical content
+   than any other slide (slogan + 2-line h1 + subline + CodeBlock +
+   install + CTAs + stats + marquee), so its headline is one step
+   smaller than `.t-h1`. Calibrated to keep the slide single-viewport
+   at 1366×768 without sacrificing presence on larger screens. */
+.t-hero-h1 {
+  font-size: clamp(1.75rem, 0.75rem + 3.5vw, 3rem);
+  line-height: 1.05;
+  letter-spacing: -0.03em;
+  font-weight: 500;
+}
+
 /* Inner content frame. The panel (.page-panel/.page-foot) is now an
    exact one-viewport snap unit, so this fills it (height: 100%) and
    centres the content. If a section's content is ever taller than the

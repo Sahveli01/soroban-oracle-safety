@@ -96,15 +96,15 @@ export function CodeBlock() {
       transition={{ duration: 0.25 }}
       className="code-block w-full max-w-xl overflow-hidden text-left"
     >
-      <div className="flex items-center justify-between border-b border-border px-4 py-2">
-        <span className="font-mono text-[var(--color-text-dim)] text-xs">
+      <div className="flex items-center justify-between border-b border-border px-4 py-1.5">
+        <span className="font-mono text-[var(--color-text-dim)] text-[11px]">
           src/lib.rs
         </span>
         <button
           type="button"
           onClick={copy}
           aria-label="Copy code to clipboard"
-          className="flex cursor-pointer items-center gap-1.5 font-mono text-xs text-[var(--color-text-dim)] transition-colors hover:text-[var(--color-text)]"
+          className="flex cursor-pointer items-center gap-1.5 font-mono text-[11px] text-[var(--color-text-dim)] transition-colors hover:text-[var(--color-text)]"
         >
           <AnimatePresence mode="wait" initial={false}>
             {copied ? (
@@ -149,7 +149,7 @@ export function CodeBlock() {
           </AnimatePresence>
         </button>
       </div>
-      <pre className="overflow-x-auto px-4 py-4 font-mono text-sm leading-relaxed">
+      <pre className="overflow-x-auto px-4 py-2.5 font-mono text-[13px] leading-[1.45]">
         <code>
           {LINES.map((line, i) => (
             <div key={i}>{line}</div>
