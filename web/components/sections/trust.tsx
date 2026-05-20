@@ -6,22 +6,22 @@ import { SectionShell } from "./section-shell";
 const REPO = "https://github.com/Sahveli01/soroban-oracle-safety";
 
 /**
- * Proof-at-a-glance. User feedback on the pass-2 dashboard: 'çok teknik
- * bulguların olmadığı gösterilmeli yok kapandı yok şöyle böyle şeklinde
- * olmamalı.' Strip everything that reads as audit-report (M1/M2/M3,
- * commit hashes, AR.H sub-labels, hardness grade) and leave a clean
- * three-card statement: scenarios attacked, critical, high.
+ * Trust — text-driven prose, not a big-number dashboard.
  *
- * Numbers verified against README.md#adversarial-review:
- *   20 scenarios — AR.H executive summary
- *    0 critical  — AR.H Findings section
- *    0 high      — AR.H Findings section
+ * Pass 3 simplified Trust to three large green numbers (20 / 0 / 0).
+ * User feedback: 'çok çocukça gözüküyor' — it read as a video-game
+ * score board, not a premium engineering trust page.
+ *
+ * Pass 4A: rebuilt following Stripe / Linear / Resend / Anthropic
+ * trust-page patterns. The shift is from "look at our score" to "here
+ * is what we did, in our own words, with caveats". Numbers are still
+ * present (and unchanged: 20 scenarios, 0 critical, 0 high, 310
+ * tests) but integrated into sentences instead of standing alone as
+ * card-sized digits — that is the difference between sophistication
+ * and maximalism.
+ *
+ * Numerical accuracy verified against README.md#adversarial-review.
  */
-const PROOF = [
-  { label: "Scenarios Attacked", value: "20" },
-  { label: "Critical Findings", value: "0" },
-  { label: "High Findings", value: "0" },
-];
 
 const METADATA = [
   {
@@ -35,7 +35,7 @@ const METADATA = [
     href: `${REPO}/blob/main/LICENSE`,
   },
   {
-    label: "Tests",
+    label: "Test Coverage",
     value: "310 passing",
     href: `${REPO}/actions`,
   },
@@ -49,6 +49,11 @@ const METADATA = [
     value: "soroban-oracle-safety",
     href: REPO,
   },
+  {
+    label: "Network",
+    value: "Stellar Soroban",
+    // Static — no link, balances the 3-col grid as the 6th cell.
+  },
 ];
 
 const EASE: [number, number, number, number] = [0.19, 1, 0.22, 1];
@@ -61,89 +66,82 @@ export function Trust() {
         whileInView={{ opacity: 1, y: 0 }}
         viewport={{ once: true, margin: "-100px" }}
         transition={{ duration: 0.6, ease: EASE }}
-        className="t-h1 max-w-3xl"
+        className="t-h1 max-w-4xl"
       >
-        Self-audited.{" "}
-        <span className="text-accent">No external badge.</span>
+        Honest about what we are.
+        <br />
+        <span className="text-accent">And what we are not.</span>
       </motion.h2>
 
       <motion.p
-        initial={{ opacity: 0 }}
-        whileInView={{ opacity: 1 }}
-        viewport={{ once: true, margin: "-100px" }}
-        transition={{ delay: 0.12, duration: 0.6 }}
-        className="mt-5 max-w-2xl text-lg leading-relaxed text-text-muted"
+        initial={{ opacity: 0, y: 10 }}
+        whileInView={{ opacity: 1, y: 0 }}
+        viewport={{ once: true, margin: "-80px" }}
+        transition={{ delay: 0.12, duration: 0.6, ease: EASE }}
+        className="mt-7 max-w-3xl text-lg leading-relaxed text-text-muted"
       >
-        Internal adversarial replay review. Public, verifiable, honest.
+        safe-oracle has been subjected to an internal adversarial replay
+        review across{" "}
+        <span className="font-medium text-text">20 attack scenarios</span> —
+        covering deviation manipulation, staleness, cross-source disagreement,
+        liquidity-floor evasion, and circuit-breaker bypass. No critical or
+        high findings remain open.
       </motion.p>
 
-      {/* Three proof cards — just the numbers, no audit-report detail */}
-      <div className="mt-10 grid gap-5 md:grid-cols-3">
-        {PROOF.map((p, i) => (
-          <motion.div
-            key={p.label}
-            initial={{ opacity: 0, y: 10 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            viewport={{ once: true, margin: "-50px" }}
-            transition={{ delay: 0.1 + i * 0.06, duration: 0.5, ease: EASE }}
-            className="surface-card p-7 text-center"
-          >
-            <div className="font-mono text-[11px] uppercase tracking-[0.2em] text-text-muted">
-              {p.label}
-            </div>
-            <div className="mt-4 font-mono text-5xl font-medium text-accent tabular-nums">
-              {p.value}
-            </div>
-          </motion.div>
-        ))}
-      </div>
-
-      {/* Verifiable metadata — five compact pills */}
-      <div className="mt-6 grid gap-2 sm:grid-cols-2 md:grid-cols-5">
-        {METADATA.map((m, i) => (
-          <motion.a
-            key={m.label}
-            href={m.href}
-            target="_blank"
-            rel="noopener noreferrer"
-            initial={{ opacity: 0, y: 8 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            viewport={{ once: true, margin: "-50px" }}
-            transition={{ delay: 0.3 + i * 0.04, duration: 0.4, ease: EASE }}
-            className="surface-card block p-3.5"
-          >
-            <div className="font-mono text-[10px] uppercase tracking-[0.16em] text-text-dim">
-              {m.label}
-            </div>
-            <div className="mt-1 font-mono text-sm text-text">{m.value}</div>
-          </motion.a>
-        ))}
-      </div>
-
-      {/* Honesty footer — non-negotiable, mottomuza uyum.
-          Prevents the dashboard from being misread as third-party
-          attestation. Methodology link points to the public README
-          section, not the un-tracked AR_H_REVIEW.md. */}
       <motion.p
-        initial={{ opacity: 0 }}
-        whileInView={{ opacity: 1 }}
-        viewport={{ once: true, margin: "-50px" }}
-        transition={{ delay: 0.55, duration: 0.5 }}
-        className="mt-7 max-w-3xl text-sm leading-relaxed text-text-dim"
+        initial={{ opacity: 0, y: 10 }}
+        whileInView={{ opacity: 1, y: 0 }}
+        viewport={{ once: true, margin: "-80px" }}
+        transition={{ delay: 0.2, duration: 0.6, ease: EASE }}
+        className="mt-5 max-w-3xl text-lg leading-relaxed text-text-muted"
       >
-        Self-conducted adversarial review — not a third-party audit. Findings
-        and methodology are public in the{" "}
+        This is not a third-party audit. The methodology, the findings, and
+        the patches are{" "}
         <a
           href={`${REPO}#adversarial-review`}
           target="_blank"
           rel="noopener noreferrer"
-          className="text-text-muted underline-offset-2 hover:text-accent hover:underline"
+          className="text-accent underline decoration-dotted underline-offset-4 transition hover:decoration-solid"
         >
-          repository
+          public in the repository
         </a>
-        . External audit recommended before mainnet deployment with material
-        funds.
+        . External audit is recommended before mainnet deployment with
+        material funds.
       </motion.p>
+
+      {/* Metadata — inline key/value pairs, border-separated. NOT a
+          surface-card grid: cards add weight and read as dashboard
+          tiles. The hairline separator above + pure-typography pairs
+          read as document chrome, which is the premium tell. */}
+      <motion.div
+        initial={{ opacity: 0, y: 10 }}
+        whileInView={{ opacity: 1, y: 0 }}
+        viewport={{ once: true, margin: "-50px" }}
+        transition={{ delay: 0.3, duration: 0.5, ease: EASE }}
+        className="mt-12 grid max-w-4xl grid-cols-1 gap-x-12 gap-y-5 border-t border-border pt-8 sm:grid-cols-2 md:grid-cols-3"
+      >
+        {METADATA.map((m) => (
+          <div key={m.label}>
+            <div className="font-mono text-[11px] uppercase tracking-[0.2em] text-text-dim">
+              {m.label}
+            </div>
+            {m.href ? (
+              <a
+                href={m.href}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="mt-1.5 block font-mono text-sm text-text transition-colors hover:text-accent"
+              >
+                {m.value}
+              </a>
+            ) : (
+              <div className="mt-1.5 font-mono text-sm text-text">
+                {m.value}
+              </div>
+            )}
+          </div>
+        ))}
+      </motion.div>
     </SectionShell>
   );
 }
