@@ -121,8 +121,9 @@
   will-change: transform;
   /* Snappy quint-out: quick to leave, gentle to settle — reads as fast
      and premium, never "draggy". Kept in sync with SLIDE_MS in
-     deck.tsx (520). */
-  transition: transform 520ms cubic-bezier(0.22, 1, 0.36, 1);
+     deck.tsx (420 in Pass 4B, down from 520 for a snappier
+     keyboard/wheel response). */
+  transition: transform 420ms cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 @utility tabular {

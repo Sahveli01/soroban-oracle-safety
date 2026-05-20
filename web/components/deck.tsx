@@ -20,12 +20,27 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
  * going back the current slide slides down to reveal the previous one
  * underneath. Same visual as the old sticky cover, now deterministic.
  *
- * Gesture model (one gesture = one slide, mouse AND trackpad):
- * the first wheel event of an idle moment fires once; everything after
- * (the rest of a trackpad burst + its inertia tail) is swallowed until
- * the transition has finished AND the wheel has been quiet — released
- * by a timestamp poll that cannot deadlock (hard failsafe). A mouse
- * notch and a trackpad flick therefore both advance exactly one slide.
+ * GESTURE MODEL — Pass 4B rewrite.
+ *
+ * The Pass-3 model treated lock release as `animDone && cooled &&
+ * (now - lastWheel >= QUIET_GAP)`, where lastWheel was bumped by EVERY
+ * wheel event including inertia. On a Mac trackpad, continuous use
+ * emits a wheel event every ~16ms, so the quiet gap NEVER elapsed and
+ * the lock only released on the 1600ms FAILSAFE — producing the
+ * reported "7 swipes barely advances 2 pages" bug.
+ *
+ * The new model uses GESTURE BOUNDARIES: a fresh gesture is any wheel
+ * event preceded by ≥GESTURE_GAP ms of silence. The inertia tail of a
+ * previous swipe is a continuous stream (no gap) and is recognised as
+ * the same gesture — silently swallowed. A second physical flick is
+ * preceded by the brief lift between strokes (typically 60–200ms) and
+ * is recognised as a new gesture.
+ *
+ * Behaviour during lock:
+ *   - inertia tail of the in-flight gesture: ignored (no gap)
+ *   - a NEW gesture (gap then event): direction queued
+ * On lock release: queued direction fires immediately. Mouse notches
+ * always read as new gestures (each notch is preceded by full silence).
  *
  * Tall slides are never clipped: content lives in a `.screen-min`
  * scroller; if it overflows, the wheel/touch scrolls *within it* until
@@ -33,10 +48,10 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
  * prefers-reduced-motion (instant slide change).
  */
 
-const SLIDE_MS = 520; // transition length (kept in sync with .deck-slide)
-const QUIET_GAP = 80; // wheel silent this long ⇒ trackpad inertia ended
+const SLIDE_MS = 420; // transition length (kept in sync with .deck-slide)
+const GESTURE_GAP = 80; // wheel silent ≥ this ⇒ next event is a new gesture
 const MIN_LOCK = 60; // tiny floor so one burst can't double-fire
-const FAILSAFE = 1600; // absolute max lock — cannot deadlock
+const FAILSAFE = 1400; // absolute max lock — cannot deadlock
 const WHEEL_MIN = 4;
 const TOUCH_MIN = 45;
 
@@ -85,6 +100,8 @@ export function Deck({ slides }: { slides: DeckSlide[] }) {
     let lockedAt = 0;
     let animEnd = 0;
     let lastWheel = 0;
+    let lastDelta = 0; // last |deltaY|, for velocity-spike new-gesture detection
+    let pendingDir: 1 | -1 | 0 = 0; // queued direction (one slot, latest wins)
     let endTimer: ReturnType<typeof setTimeout> | undefined;
 
     const emit = (i: number) => {
@@ -123,15 +140,25 @@ export function Deck({ slides }: { slides: DeckSlide[] }) {
     };
 
     // Lock release: timestamp poll, no resettable timer ⇒ no deadlock.
+    // No 'quiet' check here — inertia tail is filtered at the wheel
+    // handler via gesture-gap detection, so the lock can release the
+    // instant the animation finishes. If a fresh gesture queued during
+    // the lock, fire it immediately on release.
     let pollRaf = 0;
     const poll = () => {
       if (locked) {
         const now = performance.now();
         const animDone = animEnd !== 0 && now - animEnd >= 0;
         const cooled = now - lockedAt >= MIN_LOCK;
-        const quiet = now - lastWheel >= QUIET_GAP;
         const failsafe = now - lockedAt >= FAILSAFE;
-        if ((animDone && cooled && quiet) || failsafe) locked = false;
+        if ((animDone && cooled) || failsafe) {
+          locked = false;
+          if (pendingDir !== 0) {
+            const d = pendingDir;
+            pendingDir = 0;
+            step(d);
+          }
+        }
       }
       pollRaf = requestAnimationFrame(poll);
     };
@@ -159,8 +186,32 @@ export function Deck({ slides }: { slides: DeckSlide[] }) {
       // Let a tall slide scroll within itself first.
       if (scrollerCanMove(e.target, dir)) return;
       e.preventDefault();
-      lastWheel = performance.now();
-      if (locked) return;
+
+      const now = performance.now();
+      const dy = Math.abs(e.deltaY);
+      const gap = now - lastWheel;
+      // A fresh physical gesture is detected EITHER by silence (a
+      // mouse notch, or the brief lift between two trackpad flicks
+      // typically ≥80 ms) OR by a velocity spike (this event's
+      // |deltaY| is ≥2× the last one — characteristic of a new flick
+      // landing on top of the previous gesture's decaying inertia
+      // tail). Inertia tail is uniformly small + monotonically
+      // decaying, so neither rule fires for it.
+      const isFreshGesture =
+        gap >= GESTURE_GAP || (gap >= 20 && dy >= lastDelta * 2 && dy >= 6);
+      lastWheel = now;
+      lastDelta = dy;
+
+      if (!isFreshGesture) return; // inertia tail — silently ignored
+
+      if (locked) {
+        // A fresh gesture during a transition isn't lost: latest one
+        // wins (so user spamming flicks ends up advancing the right
+        // way), and fires the moment the lock releases.
+        pendingDir = dir;
+        return;
+      }
+
       if (Math.abs(e.deltaY) < WHEEL_MIN) return;
       step(dir);
     };
@@ -169,18 +220,22 @@ export function Deck({ slides }: { slides: DeckSlide[] }) {
       if (e.metaKey || e.ctrlKey || e.altKey) return;
       const tag = (e.target as HTMLElement | null)?.tagName;
       if (tag === "INPUT" || tag === "TEXTAREA") return;
+      const queue = (dir: 1 | -1) => {
+        if (locked) pendingDir = dir;
+        else step(dir);
+      };
       switch (e.key) {
         case "ArrowDown":
         case "PageDown":
         case " ":
         case "Spacebar":
           e.preventDefault();
-          if (!locked) step(1);
+          queue(1);
           break;
         case "ArrowUp":
         case "PageUp":
           e.preventDefault();
-          if (!locked) step(-1);
+          queue(-1);
           break;
         case "Home":
           e.preventDefault();
@@ -207,12 +262,19 @@ export function Deck({ slides }: { slides: DeckSlide[] }) {
       e.preventDefault();
     };
     const onTouchEnd = (e: TouchEvent) => {
-      lastWheel = performance.now();
-      if (locked) return;
       const dy = touchY - e.changedTouches[0].clientY;
       if (Math.abs(dy) < TOUCH_MIN) return;
       if (scrollerCanMove(e.changedTouches[0].target, touchDir)) return;
-      step(dy > 0 ? 1 : -1);
+      const dir: 1 | -1 = dy > 0 ? 1 : -1;
+      // Each touchend is a discrete gesture by construction (the
+      // browser only emits one per finger lift) — no inertia filter
+      // needed. During a transition, queue the direction so a quick
+      // double-swipe doesn't drop the second flick.
+      if (locked) {
+        pendingDir = dir;
+        return;
+      }
+      step(dir);
     };
 
     window.addEventListener("wheel", onWheel, { passive: false });
@@ -261,7 +323,7 @@ function DeckRail({ active, total }: { active: number; total: number }) {
       className="scroll-rail"
       style={{
         transform: `scaleX(${total > 1 ? active / (total - 1) : 0})`,
-        transition: "transform 520ms cubic-bezier(0.22, 1, 0.36, 1)",
+        transition: "transform 420ms cubic-bezier(0.22, 1, 0.36, 1)",
       }}
     />
   );
