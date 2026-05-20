@@ -103,7 +103,7 @@ function Row({
       href={href}
       target="_blank"
       rel="noopener noreferrer"
-      className="group flex items-center justify-between gap-6 border-b border-border py-5 transition-colors hover:border-accent/40"
+      className="group flex items-center justify-between gap-6 border-b border-border py-3.5 transition-colors hover:border-accent/40"
     >
       <div className="min-w-0">
         <div className="flex items-center gap-3">
@@ -132,7 +132,7 @@ function Row({
 
 export function Live() {
   return (
-    <SectionShell id="live" eyebrow="Live on Stellar" density="comfortable">
+    <SectionShell id="live" eyebrow="Live on Stellar" density="dense">
       <motion.div
         initial={{ opacity: 0, y: 12 }}
         whileInView={{ opacity: 1, y: 0 }}
@@ -152,7 +152,7 @@ export function Live() {
         whileInView={{ opacity: 1, y: 0 }}
         viewport={{ once: true, margin: "-100px" }}
         transition={{ delay: 0.1, duration: 0.7, ease: EASE }}
-        className="mt-6 t-h1"
+        className="mt-5 t-h1"
       >
         Proven on-chain.
       </motion.h2>
@@ -162,14 +162,14 @@ export function Live() {
         whileInView={{ opacity: 1 }}
         viewport={{ once: true, margin: "-100px" }}
         transition={{ delay: 0.2, duration: 0.7 }}
-        className="mt-6 max-w-2xl text-lg leading-relaxed text-text-muted"
+        className="mt-5 max-w-2xl text-base leading-relaxed text-text-muted md:text-lg"
       >
         Three contracts deployed. 17 oracle-watch attestations. The first
         adversarial replay rejected at the protocol layer — every hash public
         and verifiable.
       </motion.p>
 
-      <div className="mt-14 grid gap-x-16 gap-y-12 lg:grid-cols-2">
+      <div className="mt-9 grid gap-x-16 gap-y-10 lg:grid-cols-2">
         <div>
           <h3 className="font-mono text-xs uppercase tracking-[0.25em] text-text-dim">
             Deployed Contracts
