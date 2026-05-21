@@ -87,11 +87,16 @@ export function Deck({ slides }: { slides: DeckSlide[] }) {
       // Snap to slides (no drag-free), don't skip past on hard flick.
       skipSnaps: false,
       dragFree: false,
-      // Lower = snappier. 22 is one tick below Embla's default 25,
-      // calibrated for the "Reels" feel the user asked for. Bump down
-      // toward 18 if it still feels too slow once deployed.
-      duration: reduce ? 0 : 22,
+      // Lower = snappier. Pass 8: 22 → 14 after user + friends reported
+      // perceptible gesture→snap lag on BOTH Windows and Mac. 14 is
+      // ~35 % faster than Pass 6's 22; Reels/TikTok-class snap feel.
+      // If it ever reads as too aggressive, 16 is the next stop up.
+      duration: reduce ? 0 : 14,
       containScroll: "trimSnaps",
+      // Treat a slide as in-view (and thus 'selected') once 70 % of it
+      // crosses the viewport — tightens active-index reporting so
+      // listeners like Nav highlight the right slide during the snap.
+      inViewThreshold: 0.7,
     },
     [
       WheelGesturesPlugin({
