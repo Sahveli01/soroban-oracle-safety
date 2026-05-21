@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
-import { motion } from "framer-motion";
+import { motion, useInView } from "framer-motion";
 import { SectionShell } from "./section-shell";
 import { useReducedMotion } from "@/lib/use-reduced-motion";
 
@@ -103,6 +103,16 @@ export function Architecture() {
   const [state, setState] = useState<DiagramState>(INITIAL_STATE);
   const [showResult, setShowResult] = useState(false);
 
+  // Pass 5B: Happy Path auto-runs once when the section first enters
+  // the viewport. Replaces the dead "Pick a scenario" placeholder so
+  // the most-used presentation slide is alive on first sight. Gated
+  // by `hasAutoRun` so navigating back to the slide doesn't restart.
+  // The ref hangs on the title (which IS a real element with a box —
+  // `display: contents` wrappers are invisible to IntersectionObserver).
+  const titleRef = useRef<HTMLHeadingElement>(null);
+  const inView = useInView(titleRef, { once: true, margin: "-100px" });
+  const [hasAutoRun, setHasAutoRun] = useState(false);
+
   // Every setTimeout from a run is registered here so it can be torn
   // down before a new run, on reset, and on unmount. Without this,
   // rapid scenario switching overlaps timelines (diagram settles on a
@@ -183,13 +193,31 @@ export function Architecture() {
     setShowResult(false);
   };
 
+  // Auto-run trigger. We deliberately omit `runScenario` from the
+  // deps — it's recreated every render and would refire the effect;
+  // hasAutoRun is the real one-shot gate.
+  useEffect(() => {
+    if (inView && !hasAutoRun) {
+      setHasAutoRun(true);
+      runScenario("happy");
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [inView, hasAutoRun]);
+
   const currentScenario = activeScenario
     ? SCENARIOS.find((s) => s.id === activeScenario)
     : null;
 
+  // Pulse animation gate: only while a scenario is in flight. Once
+  // showResult flips true, all connector pulses stop — fixes the
+  // Pass 4F-style "infinite animation forever" bug where lit
+  // connectors kept pulsing indefinitely after the scenario settled.
+  const isRunning = activeScenario !== null && !showResult;
+
   return (
     <SectionShell id="architecture" eyebrow="Architecture" density="compact">
       <motion.h2
+        ref={titleRef}
         initial={{ opacity: 0, y: 20 }}
         whileInView={{ opacity: 1, y: 0 }}
         viewport={{ once: true, margin: "-100px" }}
@@ -221,7 +249,7 @@ export function Architecture() {
             </span>
             <Legend />
           </div>
-          <Flow state={state} />
+          <Flow state={state} isRunning={isRunning} />
         </div>
 
         {/* Console: scenarios + always-visible result */}
@@ -241,19 +269,52 @@ export function Architecture() {
           </div>
 
           <div className="mt-4 grid grid-cols-2 gap-2">
-            {SCENARIOS.map((s) => (
-              <button
-                key={s.id}
-                onClick={() => runScenario(s.id)}
-                className={`cursor-pointer rounded-lg border px-3 py-2.5 text-left font-mono text-xs transition-all ${
-                  activeScenario === s.id
-                    ? "border-accent/50 bg-accent/10 text-accent"
-                    : "border-border text-text-muted hover:border-text-muted hover:text-text"
-                }`}
-              >
-                {s.shortLabel}
-              </button>
-            ))}
+            {SCENARIOS.map((s) => {
+              const isActive = activeScenario === s.id;
+              const outcomeBadge = s.result === "ok" ? "pass" : "reject";
+              return (
+                <button
+                  key={s.id}
+                  onClick={() => runScenario(s.id)}
+                  className={`group cursor-pointer rounded-lg border p-3 text-left transition-colors ${
+                    isActive
+                      ? "border-accent bg-accent/10"
+                      : "border-border bg-surface/20 hover:border-accent/50 hover:bg-surface/40"
+                  }`}
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <span
+                      className={`font-mono text-xs font-medium ${
+                        isActive ? "text-accent" : "text-text"
+                      }`}
+                    >
+                      {s.shortLabel}
+                    </span>
+                    {isActive ? (
+                      <span className="flex items-center gap-1 font-mono text-[9px] uppercase tracking-[0.18em] text-accent">
+                        <span className="h-1.5 w-1.5 rounded-full bg-accent" />
+                        Active
+                      </span>
+                    ) : (
+                      <span
+                        className={`font-mono text-[9px] uppercase tracking-[0.18em] ${
+                          s.result === "ok" ? "text-text-dim" : "text-text-dim"
+                        }`}
+                      >
+                        {outcomeBadge}
+                      </span>
+                    )}
+                  </div>
+                  <div
+                    className={`mt-1 text-[10px] leading-snug ${
+                      isActive ? "text-text-muted" : "text-text-dim"
+                    }`}
+                  >
+                    {s.description}
+                  </div>
+                </button>
+              );
+            })}
           </div>
 
           {/* Result — reserved space so it never pushes layout / off-screen */}
@@ -395,14 +456,25 @@ function glow(s: NodeState): string | undefined {
   return undefined;
 }
 
-function Flow({ state }: { state: DiagramState }) {
+function Flow({
+  state,
+  isRunning,
+}: {
+  state: DiagramState;
+  isRunning: boolean;
+}) {
   return (
     <div className="mx-auto flex w-full max-w-[20rem] flex-col items-stretch font-mono">
       <Box label="USER" state={state.user} />
-      <Connector active={state.user !== "idle"} label="borrow()" />
+      <Connector
+        active={state.user !== "idle"}
+        isRunning={isRunning}
+        label="borrow()"
+      />
       <Box label="mock-lending" state={state.lending} />
       <Connector
         active={state.lending !== "idle"}
+        isRunning={isRunning}
         label="safe_oracle::lastprice()"
       />
 
@@ -433,6 +505,7 @@ function Flow({ state }: { state: DiagramState }) {
 
       <Connector
         active={state.result !== "idle"}
+        isRunning={isRunning}
         failed={state.result === "failed"}
       />
 
@@ -524,10 +597,12 @@ function Guard({
  */
 function Connector({
   active,
+  isRunning,
   failed = false,
   label,
 }: {
   active: boolean;
+  isRunning: boolean;
   failed?: boolean;
   label?: string;
 }) {
@@ -552,7 +627,14 @@ function Connector({
           animate={{ scaleY: active ? 1 : 0 }}
           transition={{ duration: 0.35 }}
         />
-        {lit && !reducedMotion && (
+        {/* Travelling data-pulse — only animates while the scenario
+            is in flight (Pass 5B). Pre-5B this was `repeat: Infinity`
+            and stayed lit forever once a connector activated, which
+            burned the GPU after the scenario settled. `isRunning` is
+            false once `showResult` flips true, so the pulse stops on
+            its own and React unmounts the motion.span; zero ongoing
+            cost matches the rest of the Pass 4B perf model. */}
+        {lit && isRunning && !reducedMotion && (
           <motion.span
             className="absolute left-1/2 top-0 h-2 w-2 rounded-full"
             style={{
