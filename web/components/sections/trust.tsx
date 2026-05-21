@@ -130,7 +130,7 @@ export function Trust() {
               href={m.href}
               target="_blank"
               rel="noopener noreferrer"
-              className="group flex items-center justify-between rounded-md border border-border/60 bg-surface/30 px-4 py-3 transition-colors hover:border-accent/50 hover:bg-surface/60"
+              className="group flex cursor-pointer items-center justify-between rounded-md border border-border/60 bg-surface/30 px-4 py-3 transition-all hover:-translate-y-0.5 hover:border-accent/60 hover:bg-surface/60"
             >
               <div>
                 <div className="font-mono text-[10px] uppercase tracking-[0.2em] text-text-dim">

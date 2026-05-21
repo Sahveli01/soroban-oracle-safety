@@ -103,7 +103,7 @@ function Row({
       href={href}
       target="_blank"
       rel="noopener noreferrer"
-      className="group flex items-center justify-between gap-6 border-b border-border py-3.5 transition-colors hover:border-accent/40"
+      className="group flex cursor-pointer items-center justify-between gap-6 border-b border-border py-3.5 transition-all hover:translate-x-1 hover:border-accent/50"
     >
       <div className="min-w-0">
         <div className="flex items-center gap-3">

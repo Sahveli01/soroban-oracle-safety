@@ -277,10 +277,10 @@ export function Architecture() {
                 <button
                   key={s.id}
                   onClick={() => runScenario(s.id)}
-                  className={`group flex cursor-pointer items-center justify-between gap-2 rounded-lg border px-3 py-3 text-left transition-colors ${
+                  className={`group flex cursor-pointer items-center justify-between gap-2 rounded-lg border px-3 py-3 text-left transition-all ${
                     isActive
                       ? "border-accent bg-accent/10"
-                      : "border-border bg-surface/20 hover:border-accent/50 hover:bg-surface/40"
+                      : "border-border bg-surface/20 hover:-translate-y-0.5 hover:border-accent/60 hover:bg-surface/50 active:translate-y-0"
                   }`}
                 >
                   <span

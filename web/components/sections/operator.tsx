@@ -130,10 +130,10 @@ export function Operator() {
                 whileInView={{ opacity: 1, x: 0 }}
                 viewport={{ once: true, margin: "-50px" }}
                 transition={{ delay: i * 0.04, duration: 0.4, ease: EASE }}
-                className={`flex w-full cursor-pointer items-center justify-between gap-3 rounded-md border px-4 py-3 text-left transition-colors ${
+                className={`group flex w-full cursor-pointer items-center justify-between gap-3 rounded-md border px-4 py-3 text-left transition-all ${
                   isActive
                     ? "border-accent bg-accent/10"
-                    : "border-border/60 bg-surface/30 hover:border-accent/40 hover:bg-surface/50"
+                    : "border-border/60 bg-surface/30 hover:translate-x-0.5 hover:border-accent/60 hover:bg-surface/50 active:translate-x-0"
                 }`}
               >
                 <div className="min-w-0">
@@ -154,7 +154,7 @@ export function Operator() {
                     Active
                   </span>
                 ) : (
-                  <span className="flex-shrink-0 font-mono text-xs text-text-dim">
+                  <span className="flex-shrink-0 font-mono text-xs text-text-dim transition-colors group-hover:text-accent">
                     →
                   </span>
                 )}
