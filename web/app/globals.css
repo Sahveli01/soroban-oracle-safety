@@ -85,8 +85,10 @@
     border-radius: 4px;
   }
 
-  /* Honor reduced-motion globally: kill long/looping transitions but
-     keep scroll-linked transforms (those ARE the navigation, not decor). */
+  /* Honor reduced-motion globally: kill long/looping transitions. The
+     deck itself honors reduced-motion via Embla's `duration: 0` option
+     (see components/deck.tsx) — there's no CSS transition on the slide
+     transform anymore, so no CSS override is needed for the deck. */
   @media (prefers-reduced-motion: reduce) {
     *,
     *::before,
@@ -95,40 +97,37 @@
       animation-iteration-count: 1 !important;
       transition-duration: 0.001ms !important;
     }
-    /* Deck still changes slide, but jumps instantly (no glide). */
-    .deck-slide {
-      transition: none !important;
-    }
   }
 }
 
 /* ============================================================
-   Presentation deck — fixed full-viewport stage; slides stacked,
-   moved by integer index. The incoming slide (higher z-index) rises
-   from translateY(100%) and COVERS the current one (which stays put);
-   going back, the current slide drops away to reveal the previous one
-   beneath. This is the exact page-turn cover, now deterministic.
+   Presentation deck — vertical Embla carousel (Pass 6).
+   The viewport is a fixed 100svh window; the container holds the
+   slides sequentially in a column and Embla translates it on the Y
+   axis to bring each slide into view. Replaces the Pass 3–5 stacked
+   page-turn (slide rising from translateY(100%) on top of previous)
+   with a Reels-style carriage — the trade is the page-turn cover
+   visual for a production gesture engine that handles trackpad
+   inertia, wheel scrolling, and touch swipe natively on every OS.
    ============================================================ */
-.deck-root {
-  position: fixed;
-  inset: 0;
+.deck-viewport {
+  height: 100svh;
   overflow: hidden;
+  position: relative;
+}
+
+.deck-container {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
 }
 
 .deck-slide {
-  position: absolute;
-  inset: 0;
-  /* Pass 4B: `will-change: transform` was previously set here — but it
-     was applied to ALL 11 slides simultaneously, permanently promoting
-     11 compositor layers. On Mac retina each layer is roughly
-     viewport-px² × 4 bytes × 2 (HiDPI) ≈ 20 MB, so the page paid
-     ~220 MB of GPU memory just for hint layers that are never
-     animating concurrently. The bare `translate3d(…)` in the inline
-     style still triggers GPU-accelerated transform during the actual
-     slide animation, so playback stays smooth; what is removed is the
-     permanent layer-promotion cost on every other (static) slide.
-     Kept in sync with SLIDE_MS in deck.tsx (420 ms). */
-  transition: transform 420ms cubic-bezier(0.22, 1, 0.36, 1);
+  flex: 0 0 100%;
+  min-height: 0;
+  position: relative;
+  /* No CSS transition here — Embla animates the container transform
+     in JS using its own easing engine. The slide itself is static. */
 }
 
 @utility tabular {

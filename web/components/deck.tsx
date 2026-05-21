@@ -1,92 +1,64 @@
 "use client";
 
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
+import useEmblaCarousel from "embla-carousel-react";
+import { WheelGesturesPlugin } from "embla-carousel-wheel-gestures";
 
 /**
- * Presentation deck — the PowerPoint model.
+ * Presentation deck — vertical carousel powered by Embla.
  *
- * Why this finally ends the recurring "can't go up / lands halfway"
- * saga: there is NO document scroll anymore. The source of truth is an
- * integer slide index. Every input (mouse wheel, trackpad swipe,
- * arrow/PageUp·Down/Home/End, touch swipe, nav click) just does
- * `index ± 1`. A CSS transform animates to that slide and always runs
- * to completion. An index cannot be "half", and "up" is literally the
- * same code as "down" with the sign flipped — so backward is provably
- * identical to forward and the old asymmetry is impossible.
+ * Pass 6 rewrite. After Pass 4B–5C spent five iterations tuning a
+ * custom wheel/touch handler against trackpad inertia and never
+ * fully resolving Mac under-advance + Windows over-advance, the
+ * gesture-detection approach was abandoned in favour of a
+ * production gesture engine. Embla is the carousel used by Vercel,
+ * Shopify, Linear, and Resend — its wheel-gestures plugin captures
+ * native momentum on every platform and applies a single, consistent
+ * animation curve. Custom gesture code = custom gesture bugs;
+ * Embla = zero custom gesture code.
  *
- * The beloved page-turn is preserved verbatim: slides are stacked
- * absolutely; the incoming slide (higher z-index) slides up from
- * translateY(100%) and COVERS the current one (which stays put), and
- * going back the current slide slides down to reveal the previous one
- * underneath. Same visual as the old sticky cover, now deterministic.
+ * The public API is unchanged so Nav and any other consumer keeps
+ * working untouched:
+ *   - DeckSlide { id, node }
+ *   - Deck({ slides }) component
+ *   - deckGoTo(id)  — module-level bridge for Nav clicks
+ *   - useDeckIndex() — listens to the `deck:change` event we re-emit
  *
- * GESTURE MODEL — Pass 4B rewrite.
+ * What's gone vs Pass 5C:
+ *   GESTURE_GAP, SLIDE_MS, MIN_LOCK, FAILSAFE, WHEEL_MIN, TOUCH_MIN
+ *   lastWheel / lastDelta / pendingDir / isFreshGesture
+ *   the requestAnimationFrame poll loop and lock state machine
+ *   manual touchstart/touchmove/touchend handlers
+ *   the "Pass 4F gap > 150 ms" guard at lock release
+ *   per-slide translateY(0|100%) inline transform
  *
- * The Pass-3 model treated lock release as `animDone && cooled &&
- * (now - lastWheel >= QUIET_GAP)`, where lastWheel was bumped by EVERY
- * wheel event including inertia. On a Mac trackpad, continuous use
- * emits a wheel event every ~16ms, so the quiet gap NEVER elapsed and
- * the lock only released on the 1600ms FAILSAFE — producing the
- * reported "7 swipes barely advances 2 pages" bug.
- *
- * The new model uses GESTURE BOUNDARIES: a fresh gesture is any wheel
- * event preceded by ≥GESTURE_GAP ms of silence. The inertia tail of a
- * previous swipe is a continuous stream (no gap) and is recognised as
- * the same gesture — silently swallowed. A second physical flick is
- * preceded by the brief lift between strokes (typically 60–200ms) and
- * is recognised as a new gesture.
- *
- * Behaviour during lock:
- *   - inertia tail of the in-flight gesture: ignored (no gap)
- *   - a NEW gesture (gap then event): direction queued
- * On lock release (Pass 4F): queued direction fires ONLY if the wheel
- * has been silent ≥150 ms — Pass 4E console traces revealed that
- * inertia tails emit 50–100 wheel events that velocity-spike-detect
- * as "fresh" and contaminate pendingDir; the gap check at release
- * drops those phantoms while a real second swipe (preceded by a
- * finger-lift between strokes) sails through. Mouse notches always
- * read as new gestures (each notch is preceded by full silence).
- *
- * Pass 5C status: deliberately UNCHANGED. Pass 5B fixed an unrelated
- * infinite-loop pulse animation in architecture.tsx that was burning
- * the GPU compositor continuously after every scenario settled — that
- * GPU contention is the kind of frame-budget pressure that amplifies
- * touchpad gesture-detection latency. Whether Pass 4F's gap guard is
- * now sufficient on its own, or whether the velocity-spike rule still
- * needs tightening (gap ≥ 30 ms / dy ≥ 2.5× / dy ≥ 10 are the
- * candidate values), requires empirical user + Mac retest against
- * the Pass 5B build. Don't iterate on this until that data exists.
- *
- * Tall slides are never clipped: content lives in a `.screen-min`
- * scroller; if it overflows, the wheel/touch scrolls *within it* until
- * it hits the edge, then the next gesture changes slide. Honors
- * prefers-reduced-motion (instant slide change).
+ * What's preserved:
+ *   - DeckRail top progress bar (still emits scaleX based on index)
+ *   - Keyboard navigation (Arrow/Page/Home/End/Space)
+ *   - Nested .screen-min scroll for sections that overflow — handled
+ *     by a capture-phase wheel listener that stops propagation when
+ *     the inner scroller has slack in the gesture direction (so the
+ *     browser scrolls .screen-min instead of Embla changing slide).
+ *   - prefers-reduced-motion → duration: 0 (instant snap)
  */
-
-const SLIDE_MS = 420; // transition length (kept in sync with .deck-slide)
-const GESTURE_GAP = 80; // wheel silent ≥ this ⇒ next event is a new gesture
-const MIN_LOCK = 60; // tiny floor so one burst can't double-fire
-const FAILSAFE = 1400; // absolute max lock — cannot deadlock
-const WHEEL_MIN = 4;
-const TOUCH_MIN = 45;
 
 export interface DeckSlide {
   id: string;
   node: ReactNode;
 }
 
-// Imperative bridge so the nav can drive the deck.
-let goToIdImpl: ((id: string) => void) | null = null;
+// Module-level bridge so external components (Nav) can drive the
+// carousel without prop-drilling or context. The current Deck instance
+// installs the impl on mount and clears it on unmount.
+let scrollToIdImpl: ((id: string) => void) | null = null;
 export function deckGoTo(id: string): void {
-  goToIdImpl?.(id);
+  scrollToIdImpl?.(id);
 }
 
 /**
  * Read the deck's current slide index. Subscribes to the same
- * "deck:change" event the Deck already emits on every navigation, so
- * the nav highlights the active slide without any new shared state.
- * (Missing the Deck's initial emit(0) is harmless — index defaults to
- * 0; every subsequent change is captured.)
+ * "deck:change" event the Deck emits on every navigation, so the nav
+ * highlights the active slide without any shared state.
  */
 export function useDeckIndex(): number {
   const [index, setIndex] = useState(0);
@@ -102,245 +74,150 @@ export function useDeckIndex(): number {
 }
 
 export function Deck({ slides }: { slides: DeckSlide[] }) {
-  const [active, setActive] = useState(0);
-  const activeRef = useRef(0);
-  const count = slides.length;
-
+  const [reduce, setReduce] = useState(false);
   useEffect(() => {
-    const reduce = window.matchMedia(
-      "(prefers-reduced-motion: reduce)"
-    ).matches;
+    setReduce(window.matchMedia("(prefers-reduced-motion: reduce)").matches);
+  }, []);
 
-    let locked = false;
-    let lockedAt = 0;
-    let animEnd = 0;
-    let lastWheel = 0;
-    let lastDelta = 0; // last |deltaY|, for velocity-spike new-gesture detection
-    let pendingDir: 1 | -1 | 0 = 0; // queued direction (one slot, latest wins)
-    let endTimer: ReturnType<typeof setTimeout> | undefined;
+  const [emblaRef, emblaApi] = useEmblaCarousel(
+    {
+      axis: "y",
+      loop: false,
+      align: "start",
+      // Snap to slides (no drag-free), don't skip past on hard flick.
+      skipSnaps: false,
+      dragFree: false,
+      // Lower = snappier. 22 is one tick below Embla's default 25,
+      // calibrated for the "Reels" feel the user asked for. Bump down
+      // toward 18 if it still feels too slow once deployed.
+      duration: reduce ? 0 : 22,
+      containScroll: "trimSnaps",
+    },
+    [
+      WheelGesturesPlugin({
+        forceWheelAxis: "y",
+      }),
+    ]
+  );
 
-    const emit = (i: number) => {
+  const [activeIndex, setActiveIndex] = useState(0);
+
+  // Subscribe to Embla's selection events and re-emit as `deck:change`
+  // so useDeckIndex (and any other listener) sees a stable contract.
+  useEffect(() => {
+    if (!emblaApi) return;
+    const onSelect = () => {
+      const idx = emblaApi.selectedScrollSnap();
+      setActiveIndex(idx);
       window.dispatchEvent(
         new CustomEvent("deck:change", {
-          detail: { index: i, id: slides[i]?.id, total: count },
+          detail: { index: idx, id: slides[idx]?.id, total: slides.length },
         })
       );
     };
-    emit(0);
-
-    const go = (next: number) => {
-      const cur = activeRef.current;
-      const target = Math.min(count - 1, Math.max(0, next));
-      locked = true;
-      lockedAt = performance.now();
-      animEnd = 0;
-      if (endTimer) clearTimeout(endTimer);
-      endTimer = setTimeout(
-        () => {
-          animEnd = performance.now();
-        },
-        reduce ? 0 : SLIDE_MS
-      );
-      if (target === cur) return; // at an edge — still swallow inertia
-      activeRef.current = target;
-      setActive(target);
-      emit(target);
+    emblaApi.on("select", onSelect);
+    onSelect();
+    return () => {
+      emblaApi.off("select", onSelect);
     };
+  }, [emblaApi, slides]);
 
-    const step = (dir: 1 | -1) => go(activeRef.current + dir);
-
-    goToIdImpl = (id: string) => {
+  // Install the deckGoTo bridge so Nav clicks resolve to Embla.scrollTo.
+  useEffect(() => {
+    if (!emblaApi) return;
+    scrollToIdImpl = (id: string) => {
       const idx = slides.findIndex((s) => s.id === id);
-      if (idx >= 0) go(idx);
+      if (idx >= 0) emblaApi.scrollTo(idx);
     };
-
-    // Lock release: timestamp poll, no resettable timer ⇒ no deadlock.
-    // No 'quiet' check here — inertia tail is filtered at the wheel
-    // handler via gesture-gap detection, so the lock can release the
-    // instant the animation finishes. If a fresh gesture queued during
-    // the lock, fire it immediately on release.
-    let pollRaf = 0;
-    const poll = () => {
-      if (locked) {
-        const now = performance.now();
-        const animDone = animEnd !== 0 && now - animEnd >= 0;
-        const cooled = now - lockedAt >= MIN_LOCK;
-        const failsafe = now - lockedAt >= FAILSAFE;
-        if ((animDone && cooled) || failsafe) {
-          locked = false;
-          if (pendingDir !== 0) {
-            const d = pendingDir;
-            pendingDir = 0;
-            // Inertia-tail guard: pendingDir may have been set by the
-            // tail of the JUST-finished gesture (Pass 4E logs showed
-            // 50–100 wheel events per swipe filling the queue during
-            // the lock window). If wheel is still firing right now
-            // (gap < RELEASE_GAP), this was almost certainly inertia,
-            // not a fresh intent — drop it. A real second swipe is
-            // preceded by the brief lift between strokes, so its last
-            // wheel event sits well behind us by the time the lock
-            // opens. Keyboard/touch paths bypass this naturally:
-            // touchend updates nothing on lastWheel, and onKey doesn't
-            // touch lastWheel either, so gap = now - lastWheel will be
-            // large and the queued direction fires.
-            const gapSinceLastWheel = performance.now() - lastWheel;
-            if (gapSinceLastWheel > 150) step(d);
-          }
-        }
-      }
-      pollRaf = requestAnimationFrame(poll);
+    return () => {
+      scrollToIdImpl = null;
     };
-    pollRaf = requestAnimationFrame(poll);
+  }, [emblaApi, slides]);
 
-    // Find an overflowing in-slide scroller under the pointer, so tall
-    // sections scroll internally before the gesture flips the slide.
-    const scrollerCanMove = (
-      target: EventTarget | null,
-      dir: 1 | -1
-    ): boolean => {
-      let el = target as HTMLElement | null;
-      while (el && !el.classList?.contains("screen-min")) {
-        el = el.parentElement;
-      }
-      if (!el) return false;
-      const slack = el.scrollHeight - el.clientHeight;
-      if (slack <= 2) return false;
-      if (dir === 1) return el.scrollTop < slack - 1;
-      return el.scrollTop > 1;
-    };
-
-    const onWheel = (e: WheelEvent) => {
-      const dir: 1 | -1 = e.deltaY > 0 ? 1 : -1;
-      // Let a tall slide scroll within itself first.
-      if (scrollerCanMove(e.target, dir)) return;
-      e.preventDefault();
-
-      const now = performance.now();
-      const dy = Math.abs(e.deltaY);
-      const gap = now - lastWheel;
-      // A fresh physical gesture is detected EITHER by silence (a
-      // mouse notch, or the brief lift between two trackpad flicks
-      // typically ≥80 ms) OR by a velocity spike (this event's
-      // |deltaY| is ≥2× the last one — characteristic of a new flick
-      // landing on top of the previous gesture's decaying inertia
-      // tail). Inertia tail is uniformly small + monotonically
-      // decaying, so neither rule fires for it.
-      const isFreshGesture =
-        gap >= GESTURE_GAP || (gap >= 20 && dy >= lastDelta * 2 && dy >= 6);
-      lastWheel = now;
-      lastDelta = dy;
-
-      if (!isFreshGesture) return; // inertia tail — silently ignored
-
-      if (locked) {
-        // A fresh gesture during a transition isn't lost: latest one
-        // wins (so user spamming flicks ends up advancing the right
-        // way), and fires the moment the lock releases.
-        pendingDir = dir;
-        return;
-      }
-
-      if (Math.abs(e.deltaY) < WHEEL_MIN) return;
-      step(dir);
-    };
-
+  // Keyboard navigation. Mirrors the old API exactly.
+  useEffect(() => {
+    if (!emblaApi) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.metaKey || e.ctrlKey || e.altKey) return;
       const tag = (e.target as HTMLElement | null)?.tagName;
       if (tag === "INPUT" || tag === "TEXTAREA") return;
-      const queue = (dir: 1 | -1) => {
-        if (locked) pendingDir = dir;
-        else step(dir);
-      };
       switch (e.key) {
         case "ArrowDown":
         case "PageDown":
         case " ":
         case "Spacebar":
           e.preventDefault();
-          queue(1);
+          emblaApi.scrollNext();
           break;
         case "ArrowUp":
         case "PageUp":
           e.preventDefault();
-          queue(-1);
+          emblaApi.scrollPrev();
           break;
         case "Home":
           e.preventDefault();
-          if (!locked) go(0);
+          emblaApi.scrollTo(0);
           break;
         case "End":
           e.preventDefault();
-          if (!locked) go(count - 1);
+          emblaApi.scrollTo(slides.length - 1);
           break;
         default:
           break;
       }
     };
-
-    let touchY = 0;
-    let touchDir: 1 | -1 = 1;
-    const onTouchStart = (e: TouchEvent) => {
-      touchY = e.touches[0].clientY;
-    };
-    const onTouchMove = (e: TouchEvent) => {
-      const dir: 1 | -1 = e.touches[0].clientY < touchY ? 1 : -1;
-      touchDir = dir;
-      if (scrollerCanMove(e.target, dir)) return;
-      e.preventDefault();
-    };
-    const onTouchEnd = (e: TouchEvent) => {
-      const dy = touchY - e.changedTouches[0].clientY;
-      if (Math.abs(dy) < TOUCH_MIN) return;
-      if (scrollerCanMove(e.changedTouches[0].target, touchDir)) return;
-      const dir: 1 | -1 = dy > 0 ? 1 : -1;
-      // Each touchend is a discrete gesture by construction (the
-      // browser only emits one per finger lift) — no inertia filter
-      // needed. During a transition, queue the direction so a quick
-      // double-swipe doesn't drop the second flick.
-      if (locked) {
-        pendingDir = dir;
-        return;
-      }
-      step(dir);
-    };
-
-    window.addEventListener("wheel", onWheel, { passive: false });
     window.addEventListener("keydown", onKey);
-    window.addEventListener("touchstart", onTouchStart, { passive: true });
-    window.addEventListener("touchmove", onTouchMove, { passive: false });
-    window.addEventListener("touchend", onTouchEnd);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [emblaApi, slides.length]);
 
-    return () => {
-      goToIdImpl = null;
-      cancelAnimationFrame(pollRaf);
-      if (endTimer) clearTimeout(endTimer);
-      window.removeEventListener("wheel", onWheel);
-      window.removeEventListener("keydown", onKey);
-      window.removeEventListener("touchstart", onTouchStart);
-      window.removeEventListener("touchmove", onTouchMove);
-      window.removeEventListener("touchend", onTouchEnd);
+  // Nested-scroll respect. The Embla wheel plugin listens at the
+  // viewport; child wheel events bubble up to it. When a wheel happens
+  // inside a `.screen-min` scroller that still has slack in the gesture
+  // direction, stop propagation so the browser scrolls the inner
+  // element natively and Embla never sees the event. We DO NOT
+  // preventDefault — the native scroll must still happen.
+  useEffect(() => {
+    if (!emblaApi) return;
+    const onWheelCapture = (e: WheelEvent) => {
+      let el = e.target as HTMLElement | null;
+      while (el && !el.classList?.contains("screen-min")) {
+        el = el.parentElement;
+      }
+      if (!el) return;
+      const slack = el.scrollHeight - el.clientHeight;
+      if (slack <= 2) return;
+      const dir = e.deltaY > 0 ? 1 : -1;
+      const canScrollWithin =
+        dir === 1 ? el.scrollTop < slack - 1 : el.scrollTop > 1;
+      if (canScrollWithin) e.stopPropagation();
     };
-  }, [count, slides]);
+    window.addEventListener("wheel", onWheelCapture, {
+      capture: true,
+      passive: true,
+    });
+    return () => {
+      window.removeEventListener("wheel", onWheelCapture, { capture: true });
+    };
+  }, [emblaApi]);
 
   return (
-    <div className="deck-root">
-      {slides.map((s, i) => (
-        <div
-          key={s.id}
-          className="deck-slide"
-          aria-hidden={i !== active}
-          inert={i !== active ? true : undefined}
-          style={{
-            zIndex: i,
-            transform: `translate3d(0, ${i <= active ? 0 : 100}%, 0)`,
-          }}
-        >
-          {s.node}
+    <>
+      <div className="deck-viewport" ref={emblaRef}>
+        <div className="deck-container">
+          {slides.map((s, i) => (
+            <div
+              key={s.id}
+              className="deck-slide"
+              aria-hidden={i !== activeIndex}
+              inert={i !== activeIndex ? true : undefined}
+            >
+              {s.node}
+            </div>
+          ))}
         </div>
-      ))}
-      <DeckRail active={active} total={count} />
-    </div>
+      </div>
+      <DeckRail active={activeIndex} total={slides.length} />
+    </>
   );
 }
 
@@ -351,7 +228,7 @@ function DeckRail({ active, total }: { active: number; total: number }) {
       className="scroll-rail"
       style={{
         transform: `scaleX(${total > 1 ? active / (total - 1) : 0})`,
-        transition: "transform 420ms cubic-bezier(0.22, 1, 0.36, 1)",
+        transition: "transform 320ms cubic-bezier(0.22, 1, 0.36, 1)",
       }}
     />
   );
