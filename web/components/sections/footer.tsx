@@ -78,7 +78,7 @@ function AnimatedTerminal() {
               transition: "opacity 220ms ease-out",
             }}
           >
-            <span className="text-text-dim/70 select-none">{line.prompt}</span>
+            <span className="select-none text-text-muted">{line.prompt}</span>
             <span className={line.accent ? "text-accent" : "text-text"}>
               {line.text}
             </span>
@@ -156,7 +156,7 @@ export function Footer() {
             </a>
           </div>
 
-          <div className="flex flex-col gap-2 font-mono text-xs text-text-dim sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex flex-col gap-2 font-mono text-xs text-text-muted sm:flex-row sm:items-center sm:justify-between">
             <span>Built for Stellar Soroban · © 2026</span>
             <span className="text-text-muted">
               Trust the oracle.{" "}

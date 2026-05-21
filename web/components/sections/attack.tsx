@@ -96,7 +96,7 @@ export function Attack() {
           Rekt News
           <span className="text-xs opacity-60 transition-opacity group-hover:opacity-100">↗</span>
         </a>
-        <span className="text-text-dim/40">·</span>
+        <span className="text-text-dim">·</span>
         <a
           href="https://www.halborn.com/blog/post/explained-the-yieldblox-hack-february-2026"
           target="_blank"
@@ -106,7 +106,7 @@ export function Attack() {
           Halborn analysis
           <span className="text-xs opacity-60 transition-opacity group-hover:opacity-100">↗</span>
         </a>
-        <span className="text-text-dim/40">·</span>
+        <span className="text-text-dim">·</span>
         <a
           href="https://x.com/script3official/status/2025403423840141450"
           target="_blank"

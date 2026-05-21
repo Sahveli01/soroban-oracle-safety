@@ -140,7 +140,7 @@ export function Trust() {
                   {m.value}
                 </div>
               </div>
-              <span className="font-mono text-xs text-text-dim/60 transition-colors group-hover:text-accent">
+              <span className="font-mono text-xs text-text-muted transition-colors group-hover:text-accent">
                 ↗
               </span>
             </a>

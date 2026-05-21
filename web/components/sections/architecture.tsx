@@ -296,20 +296,12 @@ export function Architecture() {
                         Active
                       </span>
                     ) : (
-                      <span
-                        className={`font-mono text-[9px] uppercase tracking-[0.18em] ${
-                          s.result === "ok" ? "text-text-dim" : "text-text-dim"
-                        }`}
-                      >
+                      <span className="font-mono text-[9px] uppercase tracking-[0.18em] text-text-muted">
                         {outcomeBadge}
                       </span>
                     )}
                   </div>
-                  <div
-                    className={`mt-1 text-[10px] leading-snug ${
-                      isActive ? "text-text-muted" : "text-text-dim"
-                    }`}
-                  >
+                  <div className="mt-1 text-[10px] leading-snug text-text-muted">
                     {s.description}
                   </div>
                 </button>
