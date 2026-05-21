@@ -39,8 +39,23 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
  * Behaviour during lock:
  *   - inertia tail of the in-flight gesture: ignored (no gap)
  *   - a NEW gesture (gap then event): direction queued
- * On lock release: queued direction fires immediately. Mouse notches
- * always read as new gestures (each notch is preceded by full silence).
+ * On lock release (Pass 4F): queued direction fires ONLY if the wheel
+ * has been silent ≥150 ms — Pass 4E console traces revealed that
+ * inertia tails emit 50–100 wheel events that velocity-spike-detect
+ * as "fresh" and contaminate pendingDir; the gap check at release
+ * drops those phantoms while a real second swipe (preceded by a
+ * finger-lift between strokes) sails through. Mouse notches always
+ * read as new gestures (each notch is preceded by full silence).
+ *
+ * Pass 5C status: deliberately UNCHANGED. Pass 5B fixed an unrelated
+ * infinite-loop pulse animation in architecture.tsx that was burning
+ * the GPU compositor continuously after every scenario settled — that
+ * GPU contention is the kind of frame-budget pressure that amplifies
+ * touchpad gesture-detection latency. Whether Pass 4F's gap guard is
+ * now sufficient on its own, or whether the velocity-spike rule still
+ * needs tightening (gap ≥ 30 ms / dy ≥ 2.5× / dy ≥ 10 are the
+ * candidate values), requires empirical user + Mac retest against
+ * the Pass 5B build. Don't iterate on this until that data exists.
  *
  * Tall slides are never clipped: content lives in a `.screen-min`
  * scroller; if it overflows, the wheel/touch scrolls *within it* until
