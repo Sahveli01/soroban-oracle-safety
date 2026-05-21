@@ -40,7 +40,7 @@ const EASE: [number, number, number, number] = [0.19, 1, 0.22, 1];
 
 export function Infrastructure() {
   return (
-    <SectionShell id="infrastructure" eyebrow="Infrastructure">
+    <SectionShell id="infrastructure" eyebrow="Infrastructure" density="dense">
       <motion.h2
         initial={{ opacity: 0, y: 20 }}
         whileInView={{ opacity: 1, y: 0 }}
