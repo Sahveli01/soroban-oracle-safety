@@ -103,8 +103,8 @@ export function CodeBlock() {
         <button
           type="button"
           onClick={copy}
-          aria-label="Copy code to clipboard"
-          className="flex cursor-pointer items-center gap-1.5 font-mono text-[11px] text-[var(--color-text-dim)] transition-colors hover:text-[var(--color-text)]"
+          aria-label={copied ? "Code copied to clipboard" : "Copy code to clipboard"}
+          className="flex cursor-pointer items-center justify-center font-mono text-[var(--color-text-dim)] transition-colors hover:text-[var(--color-text)]"
         >
           <AnimatePresence mode="wait" initial={false}>
             {copied ? (
@@ -114,15 +114,15 @@ export function CodeBlock() {
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -3 }}
                 transition={{ duration: 0.2 }}
-                className="flex items-center gap-1 text-[var(--color-accent)]"
+                className="flex items-center text-[var(--color-accent)]"
               >
                 <svg
-                  width="13"
-                  height="13"
+                  width="16"
+                  height="16"
                   viewBox="0 0 24 24"
                   fill="none"
                   stroke="currentColor"
-                  strokeWidth="3"
+                  strokeWidth="2.5"
                   strokeLinecap="round"
                   strokeLinejoin="round"
                 >
@@ -133,7 +133,6 @@ export function CodeBlock() {
                     transition={{ duration: 0.35, ease: "easeOut" }}
                   />
                 </svg>
-                copied
               </motion.span>
             ) : (
               <motion.span
@@ -142,8 +141,21 @@ export function CodeBlock() {
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
                 transition={{ duration: 0.15 }}
+                className="flex items-center"
               >
-                copy
+                <svg
+                  width="16"
+                  height="16"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <rect x="9" y="9" width="13" height="13" rx="2" />
+                  <path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1" />
+                </svg>
               </motion.span>
             )}
           </AnimatePresence>
