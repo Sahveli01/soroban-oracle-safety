@@ -101,7 +101,7 @@ export function Trust() {
           href={`${REPO}#adversarial-review`}
           target="_blank"
           rel="noopener noreferrer"
-          className="text-accent underline decoration-dotted underline-offset-4 transition hover:decoration-solid"
+          className="font-medium text-accent underline decoration-accent/60 underline-offset-4 transition-colors hover:decoration-accent"
         >
           public in the repository
         </a>
@@ -109,38 +109,57 @@ export function Trust() {
         material funds.
       </motion.p>
 
-      {/* Metadata — inline key/value pairs, border-separated. NOT a
-          surface-card grid: cards add weight and read as dashboard
-          tiles. The hairline separator above + pure-typography pairs
-          read as document chrome, which is the premium tell. */}
+      {/* Metadata — bordered cards with explicit affordance.
+          Pass 4A used borderless inline key/value pairs; user feedback
+          read them as 'çocuksu' because the clickability was invisible.
+          The new cells have a hairline border, a hover lift (border
+          accent + bg increase), and a small ↗ icon so the link is
+          obvious without resorting to button chrome. Mono typography
+          and surface/30 background preserve the document-chrome feel. */}
       <motion.div
         initial={{ opacity: 0, y: 10 }}
         whileInView={{ opacity: 1, y: 0 }}
         viewport={{ once: true, margin: "-50px" }}
         transition={{ delay: 0.3, duration: 0.5, ease: EASE }}
-        className="mt-12 grid max-w-4xl grid-cols-1 gap-x-12 gap-y-5 border-t border-border pt-8 sm:grid-cols-2 md:grid-cols-3"
+        className="mt-12 grid max-w-4xl grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-3"
       >
-        {METADATA.map((m) => (
-          <div key={m.label}>
-            <div className="font-mono text-[11px] uppercase tracking-[0.2em] text-text-dim">
-              {m.label}
-            </div>
-            {m.href ? (
-              <a
-                href={m.href}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="mt-1.5 block font-mono text-sm text-text transition-colors hover:text-accent"
-              >
-                {m.value}
-              </a>
-            ) : (
-              <div className="mt-1.5 font-mono text-sm text-text">
-                {m.value}
+        {METADATA.map((m) =>
+          m.href ? (
+            <a
+              key={m.label}
+              href={m.href}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="group flex items-center justify-between rounded-md border border-border/60 bg-surface/30 px-4 py-3 transition-colors hover:border-accent/50 hover:bg-surface/60"
+            >
+              <div>
+                <div className="font-mono text-[10px] uppercase tracking-[0.2em] text-text-dim">
+                  {m.label}
+                </div>
+                <div className="mt-1 font-mono text-sm text-text transition-colors group-hover:text-accent">
+                  {m.value}
+                </div>
               </div>
-            )}
-          </div>
-        ))}
+              <span className="font-mono text-xs text-text-dim/60 transition-colors group-hover:text-accent">
+                ↗
+              </span>
+            </a>
+          ) : (
+            <div
+              key={m.label}
+              className="flex items-center rounded-md border border-border/30 bg-surface/10 px-4 py-3"
+            >
+              <div>
+                <div className="font-mono text-[10px] uppercase tracking-[0.2em] text-text-dim">
+                  {m.label}
+                </div>
+                <div className="mt-1 font-mono text-sm text-text">
+                  {m.value}
+                </div>
+              </div>
+            </div>
+          )
+        )}
       </motion.div>
     </SectionShell>
   );
