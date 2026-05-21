@@ -95,7 +95,12 @@ function AnimatedTerminal() {
 export function Footer() {
   return (
     <footer className="page-foot relative h-full bg-[var(--color-background)]">
-      <div className="screen-min mx-auto flex w-full max-w-5xl flex-col px-6 py-[clamp(2.5rem,6vh,4.5rem)]">
+      {/* Pass 7 fix: the three blocks now justify-center as a tight
+          group instead of {top, flex-1 middle, bottom}, which was making
+          the terminal float alone in a big middle band with empty space
+          above the wordmark. Removed flex-1 on middle, added
+          justify-center on the screen-min, tightened gaps. */}
+      <div className="screen-min mx-auto flex w-full max-w-5xl flex-col justify-center gap-7 px-6 py-[clamp(2rem,5vh,3.5rem)]">
         {/* Block 1 — huge wordmark + tagline */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
@@ -117,7 +122,7 @@ export function Footer() {
         </motion.div>
 
         {/* Block 2 — animated terminal */}
-        <div className="mt-8 flex flex-1 items-center justify-center md:mt-10">
+        <div className="flex justify-center">
           <AnimatedTerminal />
         </div>
 
@@ -127,7 +132,7 @@ export function Footer() {
           whileInView={{ opacity: 1 }}
           viewport={{ once: true, margin: "-30px" }}
           transition={{ delay: 0.3, duration: 0.6 }}
-          className="mt-8 flex flex-col gap-6 border-t border-border pt-6 md:mt-10"
+          className="flex flex-col gap-6 border-t border-border pt-6"
         >
           <div className="flex flex-wrap gap-x-8 gap-y-3 font-mono text-sm">
             <a
