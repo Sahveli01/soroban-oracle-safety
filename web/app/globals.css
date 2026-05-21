@@ -257,7 +257,11 @@
 
 .atmosphere::before {
   /* Living web3 mesh — three large blooms slowly drifting. The motion is
-     transform-only (GPU), opacity-stable, so it never janks the scroll. */
+     transform-only (GPU), opacity-stable, so it never janks the scroll.
+     Pass 8: dropped `will-change: transform` — the mesh-drift keyframes
+     already use translate3d which promotes this to its own compositor
+     layer for the lifetime of the animation, without will-change
+     permanently reserving GPU memory (Pass 4B hygiene completion). */
   content: "";
   position: absolute;
   inset: -25%;
@@ -279,7 +283,6 @@
     );
   filter: blur(8px);
   animation: mesh-drift 26s ease-in-out infinite alternate;
-  will-change: transform;
 }
 
 .atmosphere::after {
@@ -322,6 +325,13 @@
   inset: 0;
   pointer-events: none;
   z-index: -1;
+  /* Pass 8 Windows-perf hint: promote this static gradient to its own
+     compositor layer so the main thread doesn't repaint it on every
+     deck slide change. translate3d(0,0,0) is the no-op-3D-transform
+     idiom — same visual, but the browser hoists the layer to the GPU
+     for the lifetime of the element. Cheaper than will-change because
+     no permanent GPU memory reservation (Pass 4B hygiene preserved). */
+  transform: translate3d(0, 0, 0);
   background:
     /* Top-left accent-green focal */
     radial-gradient(
@@ -370,23 +380,28 @@
 }
 
 @keyframes grain-shift {
+  /* Pass 8: keyframes use translate3d (was translate) so the grain
+     layer is GPU-composited for the whole animation. On Windows the
+     2D translate fallback was being scheduled by the main thread,
+     repainting alongside slide changes; the 3D form forces the layer
+     onto the compositor and decouples it from slide work. */
   0% {
-    transform: translate(0, 0);
+    transform: translate3d(0, 0, 0);
   }
   20% {
-    transform: translate(-6%, 4%);
+    transform: translate3d(-6%, 4%, 0);
   }
   40% {
-    transform: translate(4%, -6%);
+    transform: translate3d(4%, -6%, 0);
   }
   60% {
-    transform: translate(-3%, 5%);
+    transform: translate3d(-3%, 5%, 0);
   }
   80% {
-    transform: translate(5%, -2%);
+    transform: translate3d(5%, -2%, 0);
   }
   100% {
-    transform: translate(0, 0);
+    transform: translate3d(0, 0, 0);
   }
 }
 
