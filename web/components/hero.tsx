@@ -54,7 +54,7 @@ export function Hero() {
           initial={{ opacity: 0, y: 8 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.15, duration: 0.6, ease: EASE_OUT_EXPO }}
-          className="mb-3 font-mono text-xs uppercase tracking-[0.22em] text-[#a8a8b0] md:text-sm"
+          className="mb-3 font-mono text-[11px] uppercase tracking-[0.26em] text-[#a8a8b0] md:text-xs"
         >
           {TOP_SLOGAN}
         </motion.p>
@@ -121,7 +121,7 @@ export function Hero() {
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.75, duration: 0.7, ease: EASE_OUT_EXPO }}
-          className="mt-4 max-w-2xl text-center text-base leading-snug text-[var(--color-text-muted)] md:text-lg"
+          className="mt-4 max-w-2xl text-center text-sm leading-snug text-[var(--color-text-muted)] md:text-base"
         >
           {SUBLINE}
         </motion.p>
