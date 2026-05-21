@@ -260,8 +260,9 @@ export function Architecture() {
             </div>
             {activeScenario && (
               <button
+                type="button"
                 onClick={reset}
-                className="cursor-pointer font-mono text-[11px] uppercase tracking-wider text-text-dim transition-colors hover:text-text"
+                className="inline-flex cursor-pointer items-center gap-1.5 rounded-md border border-border/60 bg-surface/30 px-3 py-1 font-mono text-[10px] uppercase tracking-[0.18em] text-text-muted transition-colors hover:border-accent/50 hover:bg-surface/50 hover:text-accent"
               >
                 Reset
               </button>
@@ -276,34 +277,29 @@ export function Architecture() {
                 <button
                   key={s.id}
                   onClick={() => runScenario(s.id)}
-                  className={`group cursor-pointer rounded-lg border p-3 text-left transition-colors ${
+                  className={`group flex cursor-pointer items-center justify-between gap-2 rounded-lg border px-3 py-3 text-left transition-colors ${
                     isActive
                       ? "border-accent bg-accent/10"
                       : "border-border bg-surface/20 hover:border-accent/50 hover:bg-surface/40"
                   }`}
                 >
-                  <div className="flex items-center justify-between gap-2">
-                    <span
-                      className={`font-mono text-xs font-medium ${
-                        isActive ? "text-accent" : "text-text"
-                      }`}
-                    >
-                      {s.shortLabel}
+                  <span
+                    className={`font-mono text-xs font-medium ${
+                      isActive ? "text-accent" : "text-text"
+                    }`}
+                  >
+                    {s.shortLabel}
+                  </span>
+                  {isActive ? (
+                    <span className="flex items-center gap-1 font-mono text-[9px] uppercase tracking-[0.18em] text-accent">
+                      <span className="h-1.5 w-1.5 rounded-full bg-accent" />
+                      Active
                     </span>
-                    {isActive ? (
-                      <span className="flex items-center gap-1 font-mono text-[9px] uppercase tracking-[0.18em] text-accent">
-                        <span className="h-1.5 w-1.5 rounded-full bg-accent" />
-                        Active
-                      </span>
-                    ) : (
-                      <span className="font-mono text-[9px] uppercase tracking-[0.18em] text-text-muted">
-                        {outcomeBadge}
-                      </span>
-                    )}
-                  </div>
-                  <div className="mt-1 text-[10px] leading-snug text-text-muted">
-                    {s.description}
-                  </div>
+                  ) : (
+                    <span className="font-mono text-[9px] uppercase tracking-[0.18em] text-text-muted">
+                      {outcomeBadge}
+                    </span>
+                  )}
                 </button>
               );
             })}
@@ -620,22 +616,27 @@ function Connector({
           transition={{ duration: 0.35 }}
         />
         {/* Travelling data-pulse — only animates while the scenario
-            is in flight (Pass 5B). Pre-5B this was `repeat: Infinity`
-            and stayed lit forever once a connector activated, which
-            burned the GPU after the scenario settled. `isRunning` is
-            false once `showResult` flips true, so the pulse stops on
-            its own and React unmounts the motion.span; zero ongoing
-            cost matches the rest of the Pass 4B perf model. */}
+            is in flight (Pass 5B finite-pulse gate). `isRunning` flips
+            false the moment `showResult` becomes true, so the pulse
+            stops on its own and React unmounts the motion.span; zero
+            ongoing cost matches the Pass 4B perf model.
+
+            Pass 7 visibility bump: dot size 2 → 2.5 (8 → 10 px),
+            stronger glow (10 px → 14 px spread, 0.65 → 0.8 alpha),
+            and a hair faster cadence (0.85 s → 0.7 s) so each pulse
+            reads as a clearly energetic data-packet rather than a
+            subtle drift. The pulse path and finite-gate behaviour are
+            unchanged. */}
         {lit && isRunning && !reducedMotion && (
           <motion.span
-            className="absolute left-1/2 top-0 h-2 w-2 rounded-full"
+            className="absolute left-1/2 top-0 h-2.5 w-2.5 rounded-full"
             style={{
               background: "var(--color-accent)",
-              boxShadow: "0 0 10px 2px rgba(0,255,148,0.65)",
+              boxShadow: "0 0 14px 3px rgba(0,255,148,0.8)",
             }}
             initial={{ x: "-50%", y: -8, opacity: 0 }}
             animate={{ x: "-50%", y: [-8, 28], opacity: [0, 1, 1, 0] }}
-            transition={{ duration: 0.85, repeat: Infinity, ease: "easeIn" }}
+            transition={{ duration: 0.7, repeat: Infinity, ease: "easeIn" }}
           />
         )}
       </span>
