@@ -13,6 +13,12 @@ const TERMINAL_LINES: { prompt: string; text: string; accent?: boolean }[] = [
   { prompt: " ", text: "  ✓ Ready to defend", accent: true },
 ];
 
+// Pass 8 typewriter timings. CHAR_DELAY ≈ 45 chars/sec — fast enough
+// to feel real, slow enough to read each character land. LINE_GAP is
+// the pause after a line completes before the next line begins typing.
+const CHAR_DELAY_MS = 22;
+const LINE_GAP_MS = 180;
+
 /**
  * Closing slide — final page of the deck.
  *
@@ -22,37 +28,88 @@ const TERMINAL_LINES: { prompt: string; text: string; accent?: boolean }[] = [
  *
  * Layout (Pass 5A): three vertically-distributed blocks.
  *   1. Huge wordmark + tagline (anchor)
- *   2. Animated terminal (cargo add demo, runs ONCE on viewport entry)
+ *   2. Typewriter terminal (cargo add demo, RE-PLAYS on every
+ *      viewport entry — Pass 8 user request)
  *   3. Links + copyright + closing slogan ('Verify the integrator.'
  *      — mirrors the Hero headline, bookending the deck)
  *
- * Performance: the terminal animation is gated by `useInView({ once:
- * true })` and consists of a setTimeout chain that exhausts after
- * ~3 seconds. No infinite loops, no continuous CSS animations after
- * typing completes, no `will-change` (Pass 4B GPU-memory hygiene).
- * Total ongoing cost after the first viewport entry: zero.
+ * Performance: the typewriter is a single recursive setTimeout chain
+ * (NOT setInterval) with a `cancelled` flag + clearTimeout on cleanup.
+ * Rapid back-and-forth scroll between Footer and the previous slide
+ * cancels in-flight work cleanly: the next entry restarts from zero
+ * via an animationKey bump. After the last character types, the
+ * chain exits; ongoing cost is zero until the next viewport entry.
+ * No `will-change`, no infinite CSS animation (cursor blink uses
+ * Tailwind's `animate-pulse` which respects prefers-reduced-motion
+ * via the globals.css override).
  */
 
-function AnimatedTerminal() {
+function TypewriterTerminal() {
   const ref = useRef<HTMLDivElement>(null);
-  const inView = useInView(ref, { once: true, margin: "-50px" });
-  const [visibleLines, setVisibleLines] = useState(0);
+  // No `once: true` — user wants the typewriter to replay every
+  // time the Footer slide enters the viewport.
+  const inView = useInView(ref, { margin: "-50px" });
 
+  // visibleChars[i] = how many characters of line i are currently typed
+  const [visibleChars, setVisibleChars] = useState<number[]>(() =>
+    TERMINAL_LINES.map(() => 0)
+  );
+  const [activeLineIdx, setActiveLineIdx] = useState(0);
+  // Bumped on every fresh inView=true so the typing useEffect re-fires
+  // with a known-clean slate, even if React would otherwise have
+  // skipped the effect (same deps as last run).
+  const [animationKey, setAnimationKey] = useState(0);
+
+  // Reset + bump key whenever the slide enters the viewport.
   useEffect(() => {
     if (!inView) return;
-    const timers: ReturnType<typeof setTimeout>[] = [];
-    TERMINAL_LINES.forEach((_, i) => {
-      const delay = i === 0 ? 350 : 350 + i * 520;
-      timers.push(
-        setTimeout(() => {
-          setVisibleLines(i + 1);
-        }, delay)
-      );
-    });
-    return () => {
-      for (const t of timers) clearTimeout(t);
-    };
+    setVisibleChars(TERMINAL_LINES.map(() => 0));
+    setActiveLineIdx(0);
+    setAnimationKey((k) => k + 1);
   }, [inView]);
+
+  // Driver: one recursive setTimeout that walks (lineIdx, charIdx).
+  // Single timer at a time, cancelled flag + clearTimeout on unmount /
+  // re-trigger keeps the chain safe under rapid slide changes.
+  useEffect(() => {
+    if (!inView) return;
+
+    let cancelled = false;
+    let timeoutId: ReturnType<typeof setTimeout> | null = null;
+
+    const typeNextChar = (lineIdx: number, charIdx: number) => {
+      if (cancelled) return;
+      if (lineIdx >= TERMINAL_LINES.length) return;
+
+      const line = TERMINAL_LINES[lineIdx];
+      if (charIdx > line.text.length) {
+        // Line just finished — short gap, then advance to next line.
+        timeoutId = setTimeout(() => {
+          if (cancelled) return;
+          setActiveLineIdx(lineIdx + 1);
+          typeNextChar(lineIdx + 1, 0);
+        }, LINE_GAP_MS);
+        return;
+      }
+
+      setVisibleChars((prev) => {
+        const next = [...prev];
+        next[lineIdx] = charIdx;
+        return next;
+      });
+
+      timeoutId = setTimeout(() => {
+        typeNextChar(lineIdx, charIdx + 1);
+      }, CHAR_DELAY_MS);
+    };
+
+    typeNextChar(0, 0);
+
+    return () => {
+      cancelled = true;
+      if (timeoutId !== null) clearTimeout(timeoutId);
+    };
+  }, [animationKey, inView]);
 
   return (
     <div
@@ -65,26 +122,23 @@ function AnimatedTerminal() {
         <span className="h-2.5 w-2.5 rounded-full bg-text-dim/40" />
       </div>
       {TERMINAL_LINES.map((line, i) => {
-        const visible = i < visibleLines;
-        const isLastTyped = i === visibleLines - 1;
-        const isAllDone = visibleLines >= TERMINAL_LINES.length;
+        const charsShown = visibleChars[i];
+        const isComplete = charsShown >= line.text.length;
+        const isActiveLine = i === activeLineIdx && i < TERMINAL_LINES.length;
+        const displayedText = line.text.slice(0, charsShown);
         return (
           <div
             key={i}
             className="flex items-center gap-2 leading-relaxed"
-            style={{
-              minHeight: "1.6em",
-              opacity: visible ? 1 : 0,
-              transition: "opacity 220ms ease-out",
-            }}
+            style={{ minHeight: "1.6em" }}
           >
             <span className="select-none text-text-muted">{line.prompt}</span>
             <span className={line.accent ? "text-accent" : "text-text"}>
-              {line.text}
+              {displayedText}
+              {isActiveLine && !isComplete && (
+                <span className="ml-0.5 inline-block h-3.5 w-1.5 animate-pulse bg-accent/80 align-middle" />
+              )}
             </span>
-            {visible && isLastTyped && !isAllDone && (
-              <span className="ml-0.5 inline-block h-3.5 w-1.5 animate-pulse bg-accent/80" />
-            )}
           </div>
         );
       })}
@@ -121,9 +175,9 @@ export function Footer() {
           </p>
         </motion.div>
 
-        {/* Block 2 — animated terminal */}
+        {/* Block 2 — typewriter terminal (Pass 8: replays every entry) */}
         <div className="flex justify-center">
-          <AnimatedTerminal />
+          <TypewriterTerminal />
         </div>
 
         {/* Block 3 — links + copyright + closing slogan */}
