@@ -132,17 +132,7 @@ export function Deck({ slides }: { slides: DeckSlide[] }) {
       emit(target);
     };
 
-    const step = (dir: 1 | -1) => {
-      // ===== INSTRUMENTATION START (Pass 4E — remove in 4F) =====
-      console.log("[STEP]", {
-        t: Math.round(performance.now()),
-        dir,
-        fromIndex: activeRef.current,
-        toIndex: activeRef.current + dir,
-      });
-      // ===== INSTRUMENTATION END =====
-      go(activeRef.current + dir);
-    };
+    const step = (dir: 1 | -1) => go(activeRef.current + dir);
 
     goToIdImpl = (id: string) => {
       const idx = slides.findIndex((s) => s.id === id);
@@ -163,18 +153,23 @@ export function Deck({ slides }: { slides: DeckSlide[] }) {
         const failsafe = now - lockedAt >= FAILSAFE;
         if ((animDone && cooled) || failsafe) {
           locked = false;
-          // ===== INSTRUMENTATION START (Pass 4E — remove in 4F) =====
-          console.log("[LOCK_RELEASE]", {
-            t: Math.round(now),
-            pendingDir,
-            via: failsafe ? "failsafe" : "animDone+cooled",
-            willFire: pendingDir !== 0 ? `pending step(${pendingDir})` : "idle",
-          });
-          // ===== INSTRUMENTATION END =====
           if (pendingDir !== 0) {
             const d = pendingDir;
             pendingDir = 0;
-            step(d);
+            // Inertia-tail guard: pendingDir may have been set by the
+            // tail of the JUST-finished gesture (Pass 4E logs showed
+            // 50–100 wheel events per swipe filling the queue during
+            // the lock window). If wheel is still firing right now
+            // (gap < RELEASE_GAP), this was almost certainly inertia,
+            // not a fresh intent — drop it. A real second swipe is
+            // preceded by the brief lift between strokes, so its last
+            // wheel event sits well behind us by the time the lock
+            // opens. Keyboard/touch paths bypass this naturally:
+            // touchend updates nothing on lastWheel, and onKey doesn't
+            // touch lastWheel either, so gap = now - lastWheel will be
+            // large and the queued direction fires.
+            const gapSinceLastWheel = performance.now() - lastWheel;
+            if (gapSinceLastWheel > 150) step(d);
           }
         }
       }
@@ -217,28 +212,6 @@ export function Deck({ slides }: { slides: DeckSlide[] }) {
       // decaying, so neither rule fires for it.
       const isFreshGesture =
         gap >= GESTURE_GAP || (gap >= 20 && dy >= lastDelta * 2 && dy >= 6);
-
-      // ===== INSTRUMENTATION START (Pass 4E — remove in 4F) =====
-      console.log("[WHEEL]", {
-        t: Math.round(now),
-        dy: Math.round(dy),
-        dir,
-        gap: Math.round(gap),
-        lastDelta: Math.round(lastDelta),
-        locked,
-        pendingDir,
-        active: activeRef.current,
-        isFresh: isFreshGesture,
-        decision: !isFreshGesture
-          ? "IGNORE-inertia"
-          : locked
-            ? `QUEUE→${dir}`
-            : dy < WHEEL_MIN
-              ? "IGNORE-tiny"
-              : `STEP(${dir})`,
-      });
-      // ===== INSTRUMENTATION END =====
-
       lastWheel = now;
       lastDelta = dy;
 
