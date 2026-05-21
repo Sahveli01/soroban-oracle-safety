@@ -82,7 +82,7 @@ export function Attack() {
         whileInView={{ opacity: 1 }}
         viewport={{ once: true, margin: "-50px" }}
         transition={{ delay: 0.5, duration: 0.6 }}
-        className="mt-10 flex flex-wrap items-center gap-x-3 gap-y-2"
+        className="mt-10 flex flex-wrap items-center gap-x-4 gap-y-2"
       >
         <span className="font-mono text-[11px] uppercase tracking-[0.2em] text-text-dim">
           Sources
@@ -91,30 +91,30 @@ export function Attack() {
           href="https://rekt.news/yieldblox-rekt"
           target="_blank"
           rel="noopener noreferrer"
-          className="group inline-flex items-center gap-1 font-mono text-sm text-text-muted underline decoration-text-muted/40 underline-offset-4 transition-colors hover:text-accent hover:decoration-accent"
+          className="group inline-flex items-center gap-1.5 font-mono text-base font-medium text-text underline decoration-text-muted/60 decoration-2 underline-offset-4 transition-colors hover:text-accent hover:decoration-accent"
         >
           Rekt News
-          <span className="text-xs opacity-60 transition-opacity group-hover:opacity-100">↗</span>
+          <span className="text-sm opacity-70 transition-opacity group-hover:opacity-100">↗</span>
         </a>
         <span className="text-text-dim">·</span>
         <a
           href="https://www.halborn.com/blog/post/explained-the-yieldblox-hack-february-2026"
           target="_blank"
           rel="noopener noreferrer"
-          className="group inline-flex items-center gap-1 font-mono text-sm text-text-muted underline decoration-text-muted/40 underline-offset-4 transition-colors hover:text-accent hover:decoration-accent"
+          className="group inline-flex items-center gap-1.5 font-mono text-base font-medium text-text underline decoration-text-muted/60 decoration-2 underline-offset-4 transition-colors hover:text-accent hover:decoration-accent"
         >
           Halborn analysis
-          <span className="text-xs opacity-60 transition-opacity group-hover:opacity-100">↗</span>
+          <span className="text-sm opacity-70 transition-opacity group-hover:opacity-100">↗</span>
         </a>
         <span className="text-text-dim">·</span>
         <a
           href="https://x.com/script3official/status/2025403423840141450"
           target="_blank"
           rel="noopener noreferrer"
-          className="group inline-flex items-center gap-1 font-mono text-sm text-text-muted underline decoration-text-muted/40 underline-offset-4 transition-colors hover:text-accent hover:decoration-accent"
+          className="group inline-flex items-center gap-1.5 font-mono text-base font-medium text-text underline decoration-text-muted/60 decoration-2 underline-offset-4 transition-colors hover:text-accent hover:decoration-accent"
         >
           Script3 official statement
-          <span className="text-xs opacity-60 transition-opacity group-hover:opacity-100">↗</span>
+          <span className="text-sm opacity-70 transition-opacity group-hover:opacity-100">↗</span>
         </a>
       </motion.div>
     </SectionShell>
