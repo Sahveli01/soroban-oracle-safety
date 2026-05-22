@@ -103,14 +103,25 @@ function Row({
       href={href}
       target="_blank"
       rel="noopener noreferrer"
-      className="group flex cursor-pointer items-center justify-between gap-6 border-b border-border py-3.5 transition-all hover:translate-x-1 hover:border-accent/50"
+      // Editorial row, not a button: no fill, no rounded chip, no
+      // shadow. Affordance comes from (a) the always-visible ↗ glyph
+      // on the right, (b) a hairline accent rail that fades in on the
+      // left edge on hover, and (c) the primary title easing toward
+      // the accent colour. Together they read as "this line opens".
+      className="group relative flex cursor-pointer items-center justify-between gap-6 border-b border-border py-3.5 pl-3 -ml-3 transition-[transform,border-color] hover:translate-x-1 hover:border-accent/60"
     >
+      {/* Left-edge accent rail — idle: invisible. Hover: a thin
+          vertical line slides in. Editorial signal, not a button. */}
+      <span
+        aria-hidden="true"
+        className="pointer-events-none absolute left-0 top-1/2 h-6 w-px -translate-y-1/2 origin-center scale-y-0 bg-accent opacity-0 transition-[opacity,transform] duration-300 ease-out group-hover:scale-y-100 group-hover:opacity-100"
+      />
       <div className="min-w-0">
         <div className="flex items-center gap-3">
           {dot && (
             <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${dot}`} />
           )}
-          <span className="truncate text-lg font-medium md:text-xl">
+          <span className="truncate text-lg font-medium text-text transition-colors group-hover:text-accent md:text-xl">
             {primary}
           </span>
           {badge && (
@@ -123,7 +134,10 @@ function Row({
           {secondary}
         </div>
       </div>
-      <span className="shrink-0 font-mono text-sm text-text-dim transition-all group-hover:translate-x-0.5 group-hover:text-accent">
+      {/* Open-in-new glyph. Bumped from text-dim → text-muted +
+          text-sm → text-base so it carries enough weight in the idle
+          state to read as a link affordance on dark surfaces. */}
+      <span className="shrink-0 font-mono text-base text-text-muted transition-[color,transform] group-hover:translate-x-0.5 group-hover:text-accent">
         ↗
       </span>
     </motion.a>

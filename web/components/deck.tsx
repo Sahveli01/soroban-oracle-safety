@@ -33,7 +33,6 @@ import { WheelGesturesPlugin } from "embla-carousel-wheel-gestures";
  *   per-slide translateY(0|100%) inline transform
  *
  * What's preserved:
- *   - DeckRail top progress bar (still emits scaleX based on index)
  *   - Keyboard navigation (Arrow/Page/Home/End/Space)
  *   - Nested .screen-min scroll for sections that overflow — handled
  *     by a capture-phase wheel listener that stops propagation when
@@ -206,35 +205,19 @@ export function Deck({ slides }: { slides: DeckSlide[] }) {
   }, [emblaApi]);
 
   return (
-    <>
-      <div className="deck-viewport" ref={emblaRef}>
-        <div className="deck-container">
-          {slides.map((s, i) => (
-            <div
-              key={s.id}
-              className="deck-slide"
-              aria-hidden={i !== activeIndex}
-              inert={i !== activeIndex ? true : undefined}
-            >
-              {s.node}
-            </div>
-          ))}
-        </div>
+    <div className="deck-viewport" ref={emblaRef}>
+      <div className="deck-container">
+        {slides.map((s, i) => (
+          <div
+            key={s.id}
+            className="deck-slide"
+            aria-hidden={i !== activeIndex}
+            inert={i !== activeIndex ? true : undefined}
+          >
+            {s.node}
+          </div>
+        ))}
       </div>
-      <DeckRail active={activeIndex} total={slides.length} />
-    </>
-  );
-}
-
-/** Top progress rail — driven by slide index, not scroll. */
-function DeckRail({ active, total }: { active: number; total: number }) {
-  return (
-    <div
-      className="scroll-rail"
-      style={{
-        transform: `scaleX(${total > 1 ? active / (total - 1) : 0})`,
-        transition: "transform 320ms cubic-bezier(0.22, 1, 0.36, 1)",
-      }}
-    />
+    </div>
   );
 }

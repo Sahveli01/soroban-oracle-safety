@@ -43,27 +43,6 @@ export function Nav() {
         safe-oracle
       </button>
 
-      {/* Desktop: compact dot rail with per-slide tooltip */}
-      <div className="hidden items-center gap-2 md:flex">
-        {SLIDES.map((slide, i) => (
-          <button
-            key={slide.id}
-            onClick={() => deckGoTo(slide.id)}
-            aria-label={`Go to ${slide.label}`}
-            aria-current={i === currentIndex ? "true" : undefined}
-            className={`group relative h-1.5 rounded-full transition-all ${
-              i === currentIndex
-                ? "w-10 bg-accent"
-                : "w-5 bg-border hover:bg-text-muted"
-            }`}
-          >
-            <span className="pointer-events-none absolute left-1/2 top-full mt-2 -translate-x-1/2 whitespace-nowrap font-mono text-[10px] uppercase tracking-wider text-text-muted opacity-0 transition-opacity group-hover:opacity-100">
-              {slide.label}
-            </span>
-          </button>
-        ))}
-      </div>
-
       {/* Mobile: hamburger */}
       <button
         onClick={() => setIsOpen((v) => !v)}

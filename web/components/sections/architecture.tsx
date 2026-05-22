@@ -102,6 +102,11 @@ export function Architecture() {
   const [activeScenario, setActiveScenario] = useState<ScenarioId | null>(null);
   const [state, setState] = useState<DiagramState>(INITIAL_STATE);
   const [showResult, setShowResult] = useState(false);
+  // Tracks whether a timeline is currently in flight — covers both the
+  // first run AND every premium replay. Drives the connector pulses so
+  // they stay alive across the continuous loop.
+  const [isAnimating, setIsAnimating] = useState(false);
+  const reducedMotion = useReducedMotion();
 
   // Pass 5B: Happy Path auto-runs once when the section first enters
   // the viewport. Replaces the dead "Pick a scenario" placeholder so
@@ -119,21 +124,38 @@ export function Architecture() {
   // stale state), reset is fought by queued timers, and navigating the
   // deck away mid-run leaks timers / setStates into an inert component.
   const timersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
+  // Separate handle for the post-completion "premium hold → replay"
+  // timer. Kept apart from timersRef so it survives the timeline
+  // cleanup that fires when a fresh replay starts.
+  const replayTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const clearAllTimers = () => {
     timersRef.current.forEach(clearTimeout);
     timersRef.current = [];
+    if (replayTimerRef.current) {
+      clearTimeout(replayTimerRef.current);
+      replayTimerRef.current = null;
+    }
   };
 
   useEffect(() => clearAllTimers, []);
 
-  const runScenario = (id: ScenarioId) => {
+  // Continuous premium loop. After a scenario settles, the right-side
+  // result panel (tx hash, ledger, latency, description) stays mounted
+  // and untouched — only the left diagram quietly replays so the
+  // section never feels frozen. Replay is suppressed under
+  // `prefers-reduced-motion`.
+  const runScenario = (id: ScenarioId, opts: { replay?: boolean } = {}) => {
+    const isReplay = opts.replay === true;
     // Cancel any in-flight timeline before starting a new one.
     clearAllTimers();
     const scenario = SCENARIOS.find((s) => s.id === id)!;
-    setActiveScenario(id);
-    setShowResult(false);
+    if (!isReplay) {
+      setActiveScenario(id);
+      setShowResult(false);
+    }
     setState(INITIAL_STATE);
+    setIsAnimating(true);
 
     // Sequence: user → lending → safe-oracle → layer1 → layer2 → cb → result
     const timeline: Array<[number, Partial<DiagramState>]> = [
@@ -182,7 +204,20 @@ export function Architecture() {
     });
 
     timersRef.current.push(
-      setTimeout(() => setShowResult(true), scenario.latencyMs + 200),
+      setTimeout(() => {
+        if (!isReplay) setShowResult(true);
+        setIsAnimating(false);
+        // Premium hold: let the final lit state breathe for a calm
+        // beat, then quietly restart the diagram. The result panel
+        // is never touched, so tx hash / ledger / latency never
+        // flicker. CSS `transition-colors` on each box handles the
+        // soft fade back to idle when INITIAL_STATE is set.
+        if (!reducedMotion) {
+          replayTimerRef.current = setTimeout(() => {
+            runScenario(id, { replay: true });
+          }, 3200);
+        }
+      }, scenario.latencyMs + 200),
     );
   };
 
@@ -191,6 +226,7 @@ export function Architecture() {
     setActiveScenario(null);
     setState(INITIAL_STATE);
     setShowResult(false);
+    setIsAnimating(false);
   };
 
   // Auto-run trigger. We deliberately omit `runScenario` from the
@@ -208,11 +244,12 @@ export function Architecture() {
     ? SCENARIOS.find((s) => s.id === activeScenario)
     : null;
 
-  // Pulse animation gate: only while a scenario is in flight. Once
-  // showResult flips true, all connector pulses stop — fixes the
-  // Pass 4F-style "infinite animation forever" bug where lit
-  // connectors kept pulsing indefinitely after the scenario settled.
-  const isRunning = activeScenario !== null && !showResult;
+  // Pulse animation gate: true only while a timeline is actively
+  // running (covers both the first run and every premium replay).
+  // Goes false during the calm hold between cycles, which keeps the
+  // Pass 5B/4F finite-pulse contract — pulses stop when nothing is
+  // in flight, so we never regress into "infinite animation forever".
+  const isRunning = isAnimating;
 
   return (
     <SectionShell id="architecture" eyebrow="Architecture" density="compact">

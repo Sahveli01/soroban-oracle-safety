@@ -405,24 +405,6 @@
   }
 }
 
-/* Scroll progress — thin top rail, accent fill scales with page progress */
-.scroll-rail {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: 2px;
-  z-index: 60;
-  transform-origin: 0 50%;
-  background: linear-gradient(
-    90deg,
-    var(--color-accent),
-    rgba(0, 255, 148, 0.4)
-  );
-  box-shadow: 0 0 12px var(--color-accent-glow);
-  pointer-events: none;
-}
-
 /* ============================================================
    Surfaces — one elevation system, not ad-hoc borders.
    ============================================================ */
