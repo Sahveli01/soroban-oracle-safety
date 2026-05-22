@@ -1,7 +1,20 @@
 "use client";
 
 import { motion } from "framer-motion";
+import type { MouseEvent as ReactMouseEvent } from "react";
 import { SectionShell } from "./section-shell";
+
+/**
+ * Cursor-tracking handler for the .spotlight class — writes the
+ * cursor position into --mx / --my so the CSS radial gradient
+ * tracks the mouse. Used on every editorial link in this section.
+ */
+function trackSpotlight(e: ReactMouseEvent<HTMLElement>) {
+  const el = e.currentTarget;
+  const rect = el.getBoundingClientRect();
+  el.style.setProperty("--mx", `${e.clientX - rect.left}px`);
+  el.style.setProperty("--my", `${e.clientY - rect.top}px`);
+}
 
 /**
  * Values pulled from `deployment/testnet.json`. Hashes link to
@@ -103,12 +116,16 @@ function Row({
       href={href}
       target="_blank"
       rel="noopener noreferrer"
-      // Editorial row, not a button: no fill, no rounded chip, no
-      // shadow. Affordance comes from (a) the always-visible ↗ glyph
-      // on the right, (b) a hairline accent rail that fades in on the
-      // left edge on hover, and (c) the primary title easing toward
-      // the accent colour. Together they read as "this line opens".
-      className="group relative flex cursor-pointer items-center justify-between gap-6 border-b border-border py-3.5 pl-3 -ml-3 transition-[transform,border-color] hover:translate-x-1 hover:border-accent/60"
+      onMouseMove={trackSpotlight}
+      // Editorial row, not a button. Affordance stack:
+      //   1. .spotlight cursor-tracking glow (premium magnetism)
+      //   2. Always-visible ↗ glyph w/ soft accent halo (idle signal)
+      //   3. Hairline left rail that slides in on hover
+      //   4. Primary title eases toward accent + 1px nudge right
+      // Together they pull the eye and reward the click without
+      // any of the fill / rounded-chip / shadow that would read
+      // as a button.
+      className="spotlight group relative flex cursor-pointer items-center justify-between gap-6 border-b border-border py-3.5 pl-3 -ml-3 transition-[transform,border-color] hover:translate-x-1 hover:border-accent/60"
     >
       {/* Left-edge accent rail — idle: invisible. Hover: a thin
           vertical line slides in. Editorial signal, not a button. */}
@@ -134,10 +151,11 @@ function Row({
           {secondary}
         </div>
       </div>
-      {/* Open-in-new glyph. Bumped from text-dim → text-muted +
-          text-sm → text-base so it carries enough weight in the idle
-          state to read as a link affordance on dark surfaces. */}
-      <span className="shrink-0 font-mono text-base text-text-muted transition-[color,transform] group-hover:translate-x-0.5 group-hover:text-accent">
+      {/* Open-in-new glyph. `link-glyph` gives it a soft accent halo
+          so the idle state already whispers "doorway" before the
+          user hovers. On hover it shifts to full accent and steps
+          right 0.5×. */}
+      <span className="link-glyph shrink-0 font-mono text-base text-text-muted transition-[color,transform] group-hover:translate-x-0.5 group-hover:text-accent">
         ↗
       </span>
     </motion.a>

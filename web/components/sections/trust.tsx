@@ -1,7 +1,20 @@
 "use client";
 
 import { motion } from "framer-motion";
+import type { MouseEvent as ReactMouseEvent } from "react";
 import { SectionShell } from "./section-shell";
+
+/**
+ * Cursor-tracking handler for the .spotlight class — writes the
+ * cursor position into --mx / --my so the CSS radial gradient
+ * tracks the mouse. Same util used in live.tsx.
+ */
+function trackSpotlight(e: ReactMouseEvent<HTMLElement>) {
+  const el = e.currentTarget;
+  const rect = el.getBoundingClientRect();
+  el.style.setProperty("--mx", `${e.clientX - rect.left}px`);
+  el.style.setProperty("--my", `${e.clientY - rect.top}px`);
+}
 
 const REPO = "https://github.com/Sahveli01/soroban-oracle-safety";
 
@@ -109,13 +122,13 @@ export function Trust() {
         material funds.
       </motion.p>
 
-      {/* Metadata — bordered cards with explicit affordance.
-          Pass 4A used borderless inline key/value pairs; user feedback
-          read them as 'çocuksu' because the clickability was invisible.
-          The new cells have a hairline border, a hover lift (border
-          accent + bg increase), and a small ↗ icon so the link is
-          obvious without resorting to button chrome. Mono typography
-          and surface/30 background preserve the document-chrome feel. */}
+      {/* Metadata — bordered cards with editorial-link affordance.
+          Linked cards get the .spotlight cursor-tracking glow plus a
+          tiny persistent corner accent at top-right, so even before
+          the user hovers there is a clear visual hint that these
+          cells open something. Non-linked cells (Network) keep their
+          dimmer border and have no glyph, so the distinction reads
+          at a glance without button chrome. */}
       <motion.div
         initial={{ opacity: 0, y: 10 }}
         whileInView={{ opacity: 1, y: 0 }}
@@ -130,8 +143,21 @@ export function Trust() {
               href={m.href}
               target="_blank"
               rel="noopener noreferrer"
-              className="group flex cursor-pointer items-center justify-between rounded-md border border-border/60 bg-surface/30 px-4 py-3 transition-all hover:-translate-y-0.5 hover:border-accent/60 hover:bg-surface/60"
+              onMouseMove={trackSpotlight}
+              className="spotlight group relative flex cursor-pointer items-center justify-between overflow-hidden rounded-md border border-border/60 bg-surface/30 px-4 py-3 transition-all hover:-translate-y-0.5 hover:border-accent/60 hover:bg-surface/60"
             >
+              {/* Persistent corner accent — 6px hairline gleam at the
+                  top-right, idle: text-dim opacity, hover: accent.
+                  Reads as a "this cell has a destination" indicator
+                  without adding a chunky badge. */}
+              <span
+                aria-hidden="true"
+                className="pointer-events-none absolute right-0 top-0 h-px w-3 bg-text-dim transition-colors group-hover:bg-accent"
+              />
+              <span
+                aria-hidden="true"
+                className="pointer-events-none absolute right-0 top-0 h-3 w-px bg-text-dim transition-colors group-hover:bg-accent"
+              />
               <div>
                 <div className="font-mono text-[10px] uppercase tracking-[0.2em] text-text-dim">
                   {m.label}
@@ -140,7 +166,7 @@ export function Trust() {
                   {m.value}
                 </div>
               </div>
-              <span className="font-mono text-xs text-text-muted transition-colors group-hover:text-accent">
+              <span className="link-glyph shrink-0 font-mono text-sm text-text-muted transition-[color,transform] group-hover:translate-x-0.5 group-hover:text-accent">
                 ↗
               </span>
             </a>

@@ -406,6 +406,44 @@
 }
 
 /* ============================================================
+   Spotlight — Vercel/Linear/Anthropic-style cursor-tracking glow.
+   Adds "alive interactive surface" magnetism to editorial links
+   and metadata cards WITHOUT resorting to button chrome. The
+   gradient follows the cursor via --mx / --my CSS variables set
+   by an onMouseMove handler in JS. Idle state shows nothing.
+   ============================================================ */
+.spotlight {
+  position: relative;
+  isolation: isolate;
+}
+.spotlight::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: radial-gradient(
+    260px circle at var(--mx, 50%) var(--my, 50%),
+    rgba(0, 255, 148, 0.11),
+    transparent 55%
+  );
+  opacity: 0;
+  transition: opacity 240ms ease;
+  pointer-events: none;
+  z-index: -1;
+}
+.spotlight:hover::before,
+.spotlight:focus-visible::before {
+  opacity: 1;
+}
+
+/* Soft accent halo on link-affordance glyphs. Idle: barely-there
+   green aura that signals "this character is a doorway" without
+   bumping the glyph colour to full accent. Pairs with .spotlight. */
+.link-glyph {
+  text-shadow: 0 0 10px rgba(0, 255, 148, 0.22);
+}
+
+/* ============================================================
    Surfaces — one elevation system, not ad-hoc borders.
    ============================================================ */
 .surface-card {
