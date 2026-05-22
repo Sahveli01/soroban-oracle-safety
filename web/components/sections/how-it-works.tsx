@@ -2,6 +2,7 @@
 
 import { motion } from "framer-motion";
 import { SectionShell } from "./section-shell";
+import { EASE_OUT_EXPO } from "@/lib/easings";
 
 const STEPS = [
   {
@@ -31,8 +32,6 @@ const STEPS = [
   },
 ];
 
-const EASE: [number, number, number, number] = [0.19, 1, 0.22, 1];
-
 export function HowItWorks() {
   return (
     <SectionShell id="how-it-works" eyebrow="How It Works">
@@ -40,7 +39,7 @@ export function HowItWorks() {
         initial={{ opacity: 0, y: 20 }}
         whileInView={{ opacity: 1, y: 0 }}
         viewport={{ once: true, margin: "-100px" }}
-        transition={{ duration: 0.7, ease: EASE }}
+        transition={{ duration: 0.7, ease: EASE_OUT_EXPO }}
         className="t-h2"
       >
         Five steps.{" "}
@@ -55,7 +54,7 @@ export function HowItWorks() {
             initial={{ opacity: 0, y: 18 }}
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true, margin: "-50px" }}
-            transition={{ delay: i * 0.08, duration: 0.55, ease: EASE }}
+            transition={{ delay: i * 0.08, duration: 0.55, ease: EASE_OUT_EXPO }}
             className="group relative flex flex-col rounded-xl border border-border bg-surface p-5 transition-colors hover:border-accent/40"
           >
             <div className="flex items-center justify-between">

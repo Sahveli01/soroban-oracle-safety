@@ -2,8 +2,7 @@
 
 import { motion, useInView } from "framer-motion";
 import { useEffect, useRef, useState } from "react";
-
-const EASE: [number, number, number, number] = [0.19, 1, 0.22, 1];
+import { EASE_OUT_EXPO } from "@/lib/easings";
 
 const TERMINAL_LINES: { prompt: string; text: string; accent?: boolean }[] = [
   { prompt: "$", text: "cargo add safe-oracle" },
@@ -160,7 +159,7 @@ export function Footer() {
           initial={{ opacity: 0, y: 20 }}
           whileInView={{ opacity: 1, y: 0 }}
           viewport={{ once: true, margin: "-80px" }}
-          transition={{ duration: 0.7, ease: EASE }}
+          transition={{ duration: 0.7, ease: EASE_OUT_EXPO }}
         >
           <div
             className="font-mono font-medium tracking-tight text-text"

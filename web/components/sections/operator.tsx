@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { motion } from "framer-motion";
 import { SectionShell } from "./section-shell";
+import { EASE_OUT_EXPO } from "@/lib/easings";
 
 /**
  * Operator — interactive sink preview.
@@ -76,8 +77,6 @@ const SINKS: Sink[] = [
   },
 ];
 
-const EASE: [number, number, number, number] = [0.19, 1, 0.22, 1];
-
 // Shared payload — every preview renders the same logical alert in
 // the host platform's shape. Numbers cross-reference architecture.tsx
 // and the integration tests; do not drift these without updating both.
@@ -100,7 +99,7 @@ export function Operator() {
         initial={{ opacity: 0, y: 20 }}
         whileInView={{ opacity: 1, y: 0 }}
         viewport={{ once: true, margin: "-100px" }}
-        transition={{ duration: 0.7, ease: EASE }}
+        transition={{ duration: 0.7, ease: EASE_OUT_EXPO }}
         className="t-h2"
       >
         Plug in your stack.
@@ -129,7 +128,7 @@ export function Operator() {
                 initial={{ opacity: 0, x: -8 }}
                 whileInView={{ opacity: 1, x: 0 }}
                 viewport={{ once: true, margin: "-50px" }}
-                transition={{ delay: i * 0.04, duration: 0.4, ease: EASE }}
+                transition={{ delay: i * 0.04, duration: 0.4, ease: EASE_OUT_EXPO }}
                 className={`group flex w-full cursor-pointer items-center justify-between gap-3 rounded-md border px-4 py-3 text-left transition-all ${
                   isActive
                     ? "border-accent bg-accent/10"

@@ -5,6 +5,7 @@ import { CodeSnippet } from "./code-snippet";
 import { CodeBlock } from "./code-block";
 import { StatsRow } from "./stats-row";
 import { Marquee } from "./marquee";
+import { EASE_OUT_EXPO } from "@/lib/easings";
 
 const TOP_SLOGAN = "Eight lines. Five guards. Zero exploits.";
 
@@ -13,8 +14,6 @@ const HEADLINE_LINE_2 = ["Verify", "the", "integrator."];
 
 const SUBLINE =
   "Five mathematically-verified guardrails between your protocol and the next oracle manipulation attack.";
-
-const EASE_OUT_EXPO: [number, number, number, number] = [0.19, 1, 0.22, 1];
 
 /**
  * Hero — the first stacked panel.

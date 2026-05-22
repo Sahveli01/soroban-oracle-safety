@@ -1,20 +1,9 @@
 "use client";
 
 import { motion } from "framer-motion";
-import type { MouseEvent as ReactMouseEvent } from "react";
 import { SectionShell } from "./section-shell";
-
-/**
- * Cursor-tracking handler for the .spotlight class — writes the
- * cursor position into --mx / --my so the CSS radial gradient
- * tracks the mouse. Used on every editorial link in this section.
- */
-function trackSpotlight(e: ReactMouseEvent<HTMLElement>) {
-  const el = e.currentTarget;
-  const rect = el.getBoundingClientRect();
-  el.style.setProperty("--mx", `${e.clientX - rect.left}px`);
-  el.style.setProperty("--my", `${e.clientY - rect.top}px`);
-}
+import { EASE_OUT_EXPO } from "@/lib/easings";
+import { trackSpotlight } from "@/lib/spotlight";
 
 /**
  * Values pulled from `deployment/testnet.json`. Hashes link to
@@ -85,8 +74,6 @@ const STATUS_LABEL: Record<TxStatus, string> = {
   recovery: "RECOVERY",
 };
 
-const EASE: [number, number, number, number] = [0.19, 1, 0.22, 1];
-
 function shortHash(hash: string): string {
   return `${hash.slice(0, 8)}…${hash.slice(-6)}`;
 }
@@ -112,7 +99,7 @@ function Row({
       initial={{ opacity: 0, y: 10 }}
       whileInView={{ opacity: 1, y: 0 }}
       viewport={{ once: true, margin: "-40px" }}
-      transition={{ delay, duration: 0.5, ease: EASE }}
+      transition={{ delay, duration: 0.5, ease: EASE_OUT_EXPO }}
       href={href}
       target="_blank"
       rel="noopener noreferrer"
@@ -169,7 +156,7 @@ export function Live() {
         initial={{ opacity: 0, y: 12 }}
         whileInView={{ opacity: 1, y: 0 }}
         viewport={{ once: true, margin: "-100px" }}
-        transition={{ duration: 0.6, ease: EASE }}
+        transition={{ duration: 0.6, ease: EASE_OUT_EXPO }}
         className="flex items-center gap-2.5 font-mono text-xs uppercase tracking-[0.25em] text-text-muted"
       >
         <span className="relative flex h-2 w-2">
@@ -183,7 +170,7 @@ export function Live() {
         initial={{ opacity: 0, y: 20 }}
         whileInView={{ opacity: 1, y: 0 }}
         viewport={{ once: true, margin: "-100px" }}
-        transition={{ delay: 0.1, duration: 0.7, ease: EASE }}
+        transition={{ delay: 0.1, duration: 0.7, ease: EASE_OUT_EXPO }}
         className="mt-5 t-h1"
       >
         Proven on-chain.

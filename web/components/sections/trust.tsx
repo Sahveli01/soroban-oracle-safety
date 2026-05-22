@@ -1,20 +1,9 @@
 "use client";
 
 import { motion } from "framer-motion";
-import type { MouseEvent as ReactMouseEvent } from "react";
 import { SectionShell } from "./section-shell";
-
-/**
- * Cursor-tracking handler for the .spotlight class — writes the
- * cursor position into --mx / --my so the CSS radial gradient
- * tracks the mouse. Same util used in live.tsx.
- */
-function trackSpotlight(e: ReactMouseEvent<HTMLElement>) {
-  const el = e.currentTarget;
-  const rect = el.getBoundingClientRect();
-  el.style.setProperty("--mx", `${e.clientX - rect.left}px`);
-  el.style.setProperty("--my", `${e.clientY - rect.top}px`);
-}
+import { EASE_OUT_EXPO } from "@/lib/easings";
+import { trackSpotlight } from "@/lib/spotlight";
 
 const REPO = "https://github.com/Sahveli01/soroban-oracle-safety";
 
@@ -69,8 +58,6 @@ const METADATA = [
   },
 ];
 
-const EASE: [number, number, number, number] = [0.19, 1, 0.22, 1];
-
 export function Trust() {
   return (
     <SectionShell id="trust" eyebrow="Trust" density="dense">
@@ -78,7 +65,7 @@ export function Trust() {
         initial={{ opacity: 0, y: 20 }}
         whileInView={{ opacity: 1, y: 0 }}
         viewport={{ once: true, margin: "-100px" }}
-        transition={{ duration: 0.6, ease: EASE }}
+        transition={{ duration: 0.6, ease: EASE_OUT_EXPO }}
         className="t-h1 max-w-4xl"
       >
         Honest about what we are.
@@ -90,7 +77,7 @@ export function Trust() {
         initial={{ opacity: 0, y: 10 }}
         whileInView={{ opacity: 1, y: 0 }}
         viewport={{ once: true, margin: "-80px" }}
-        transition={{ delay: 0.12, duration: 0.6, ease: EASE }}
+        transition={{ delay: 0.12, duration: 0.6, ease: EASE_OUT_EXPO }}
         className="mt-7 max-w-3xl text-lg leading-relaxed text-text-muted"
       >
         safe-oracle has been subjected to an internal adversarial replay
@@ -105,7 +92,7 @@ export function Trust() {
         initial={{ opacity: 0, y: 10 }}
         whileInView={{ opacity: 1, y: 0 }}
         viewport={{ once: true, margin: "-80px" }}
-        transition={{ delay: 0.2, duration: 0.6, ease: EASE }}
+        transition={{ delay: 0.2, duration: 0.6, ease: EASE_OUT_EXPO }}
         className="mt-5 max-w-3xl text-lg leading-relaxed text-text-muted"
       >
         This is not a third-party audit. The methodology, the findings, and
@@ -133,7 +120,7 @@ export function Trust() {
         initial={{ opacity: 0, y: 10 }}
         whileInView={{ opacity: 1, y: 0 }}
         viewport={{ once: true, margin: "-50px" }}
-        transition={{ delay: 0.3, duration: 0.5, ease: EASE }}
+        transition={{ delay: 0.3, duration: 0.5, ease: EASE_OUT_EXPO }}
         className="mt-12 grid max-w-4xl grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-3"
       >
         {METADATA.map((m) =>

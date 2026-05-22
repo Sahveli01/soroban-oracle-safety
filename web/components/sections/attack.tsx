@@ -2,10 +2,9 @@
 
 import { motion } from "framer-motion";
 import { SectionShell } from "./section-shell";
+import { EASE_OUT_EXPO } from "@/lib/easings";
 
 const PILLS = ["Thin Liquidity", "No Deviation Guard", "No Volume Check"];
-
-const EASE: [number, number, number, number] = [0.19, 1, 0.22, 1];
 
 export function Attack() {
   return (
@@ -15,7 +14,7 @@ export function Attack() {
         initial={{ opacity: 0, y: 24 }}
         whileInView={{ opacity: 1, y: 0 }}
         viewport={{ once: true, margin: "-100px" }}
-        transition={{ duration: 0.8, ease: EASE }}
+        transition={{ duration: 0.8, ease: EASE_OUT_EXPO }}
       >
         <div className="font-mono text-sm uppercase tracking-[0.25em] text-text-muted">
           One $5 trade

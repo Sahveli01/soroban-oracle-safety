@@ -2,6 +2,7 @@
 
 import { motion } from "framer-motion";
 import { SectionShell } from "./section-shell";
+import { EASE_OUT_EXPO } from "@/lib/easings";
 
 const CARDS = [
   {
@@ -36,8 +37,6 @@ const CARDS = [
   },
 ];
 
-const EASE: [number, number, number, number] = [0.19, 1, 0.22, 1];
-
 export function Infrastructure() {
   return (
     <SectionShell id="infrastructure" eyebrow="Infrastructure" density="dense">
@@ -45,7 +44,7 @@ export function Infrastructure() {
         initial={{ opacity: 0, y: 20 }}
         whileInView={{ opacity: 1, y: 0 }}
         viewport={{ once: true, margin: "-100px" }}
-        transition={{ duration: 0.7, ease: EASE }}
+        transition={{ duration: 0.7, ease: EASE_OUT_EXPO }}
         className="t-h2"
       >
         Modular by design.
@@ -69,7 +68,7 @@ export function Infrastructure() {
             initial={{ opacity: 0, y: 18 }}
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true, margin: "-50px" }}
-            transition={{ delay: i * 0.06, duration: 0.5, ease: EASE }}
+            transition={{ delay: i * 0.06, duration: 0.5, ease: EASE_OUT_EXPO }}
             className="surface-card group flex flex-col p-6"
           >
             <div className="flex items-center justify-between">
