@@ -7,13 +7,13 @@ import { StatsRow } from "./stats-row";
 import { Marquee } from "./marquee";
 import { EASE_OUT_EXPO } from "@/lib/easings";
 
-const TOP_SLOGAN = "Eight lines. Five guards. Zero exploits.";
+const TOP_SLOGAN = "Eight lines. Trustless by default.";
 
 const HEADLINE_LINE_1 = ["Trust", "the", "oracle."];
 const HEADLINE_LINE_2 = ["Verify", "the", "integrator."];
 
 const SUBLINE =
-  "Five mathematically-verified guardrails between your protocol and the next oracle manipulation attack.";
+  "Trustless Layer 1 validates every Reflector read on-chain — deviation, staleness, cross-source. Two more guards activate with opt-in Layer 2.";
 
 /**
  * Hero — the first stacked panel.

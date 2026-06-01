@@ -7,7 +7,7 @@ import { EASE_OUT_EXPO } from "@/lib/easings";
 const TERMINAL_LINES: { prompt: string; text: string; accent?: boolean }[] = [
   { prompt: "$", text: "cargo add safe-oracle" },
   { prompt: " ", text: "  Adding safe-oracle v0.2.0 to dependencies" },
-  { prompt: " ", text: "  Verifying guardrails... 5 / 5 active" },
+  { prompt: " ", text: "  Layer 1 guards active · Layer 2 opt-in" },
   { prompt: " ", text: "  Tests: 310 passed; 0 failed" },
   { prompt: " ", text: "  ✓ Ready to defend", accent: true },
 ];

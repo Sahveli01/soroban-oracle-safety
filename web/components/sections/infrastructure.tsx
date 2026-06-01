@@ -8,12 +8,12 @@ const CARDS = [
   {
     tag: "On-chain",
     title: "Layer 1 Guardrails",
-    desc: "Deviation, staleness, cross-source. Validates oracle output before it reaches your logic.",
+    desc: "Deviation, staleness, cross-source. Trustless on-chain Reflector math — on by default, no attester.",
   },
   {
-    tag: "On-chain",
+    tag: "Opt-in",
     title: "Layer 2 Guardrails",
-    desc: "Liquidity volume + thin sampling. Validates market microstructure on-chain.",
+    desc: "Liquidity volume + thin sampling. Opt-in (layer2_enabled); validates attested SDEX snapshots.",
   },
   {
     tag: "On-chain",

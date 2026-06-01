@@ -33,7 +33,7 @@ const SCENARIOS: Scenario[] = [
     ledger: "2,450,314",
     latencyMs: 3200,
     description:
-      "All five guardrails pass. Oracle price validated. Borrow approved.",
+      "All five guards pass with Layer 2 enabled. Oracle price validated. Borrow approved.",
   },
   {
     id: "spike",
@@ -58,7 +58,7 @@ const SCENARIOS: Scenario[] = [
     rejectStage: "layer2-liquidity",
     latencyMs: 2400,
     description:
-      "30m SDEX volume below threshold. Layer 2 rejects. Real-world testnet replay coming.",
+      "30m SDEX volume below threshold. Layer 2 (opt-in) rejects. Real-world testnet replay coming.",
   },
   {
     id: "stale",
@@ -271,8 +271,9 @@ export function Architecture() {
         transition={{ delay: 0.15, duration: 0.7 }}
         className="mt-4 max-w-xl text-text-muted"
       >
-        Run a scenario and watch a borrow request flow through five guards —
-        validated before it ever reaches your business logic.
+        Run a scenario and watch a borrow request flow through every guard —
+        three trustless by default, plus Layer 2 when enabled — validated
+        before it ever reaches your business logic.
       </motion.p>
 
       {/* Compact two-column console — fits one viewport, result always
@@ -522,8 +523,8 @@ function Flow({
           safe-oracle
         </div>
         <div className="grid grid-cols-3 gap-2">
-          <Guard label="Layer 1" sub="Oracle" state={state.layer1} />
-          <Guard label="Layer 2" sub="Market" state={state.layer2} />
+          <Guard label="Layer 1" sub="Default" state={state.layer1} />
+          <Guard label="Layer 2" sub="Opt-in" state={state.layer2} />
           <Guard label="Breaker" sub="Auto-halt" state={state.cb} />
         </div>
       </motion.div>

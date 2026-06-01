@@ -10,6 +10,10 @@ import { AnimatePresence, motion } from "framer-motion";
  *
  * The Hero slogan promises "Eight lines"; this renders the actual
  * eight-line integration as the proof of that claim.
+ *
+ * Uses `SafeOracleConfig::default()`, which ships `layer2_enabled: false`
+ * (lib.rs:379) — so the trailing comment claims Layer 1 only, NOT all
+ * five guards. Layer 2 (liquidity + thin sampling) is a deliberate opt-in.
  */
 
 const KW = "text-[var(--color-accent)]";
@@ -18,7 +22,7 @@ const FN = "text-text";
 const PUNCT = "text-text-muted";
 const DIM = "text-[var(--color-text-dim)]";
 
-// Exactly eight lines — the payoff for "Eight lines. Five guards."
+// Exactly eight lines — the payoff for "Eight lines."
 const RAW = `use safe_oracle::{lastprice, SafeOracleConfig};
 
 let price = lastprice(
@@ -26,7 +30,7 @@ let price = lastprice(
     &reflector, &registry,
     &SafeOracleConfig::default(),
 )?;
-// 5 guards validated before this line.`;
+// Layer 1 validated. Layer 2 opt-in.`;
 
 const LINES: ReactNode[] = [
   <>
@@ -69,7 +73,7 @@ const LINES: ReactNode[] = [
     <span className={PUNCT}>)?;</span>
   </>,
   <>
-    <span className={DIM}>// 5 guards validated before this line.</span>
+    <span className={DIM}>// Layer 1 validated. Layer 2 opt-in.</span>
   </>,
 ];
 

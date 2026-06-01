@@ -109,6 +109,21 @@ export function Trust() {
         material funds.
       </motion.p>
 
+      <motion.p
+        initial={{ opacity: 0, y: 10 }}
+        whileInView={{ opacity: 1, y: 0 }}
+        viewport={{ once: true, margin: "-80px" }}
+        transition={{ delay: 0.26, duration: 0.6, ease: EASE_OUT_EXPO }}
+        className="mt-5 max-w-3xl text-lg leading-relaxed text-text-muted"
+      >
+        And on trust: Layer 1 is fully trustless — pure on-chain Reflector
+        math. Layer 2 is{" "}
+        <span className="font-medium text-text">opt-in (off by default)</span>{" "}
+        precisely because it introduces a second trust vector: the off-chain
+        attesters that sign liquidity snapshots. We won&apos;t pretend that
+        cost away.
+      </motion.p>
+
       {/* Metadata — bordered cards with editorial-link affordance.
           Linked cards get the .spotlight cursor-tracking glow plus a
           tiny persistent corner accent at top-right, so even before
@@ -121,7 +136,7 @@ export function Trust() {
         whileInView={{ opacity: 1, y: 0 }}
         viewport={{ once: true, margin: "-50px" }}
         transition={{ delay: 0.3, duration: 0.5, ease: EASE_OUT_EXPO }}
-        className="mt-12 grid max-w-4xl grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-3"
+        className="mt-8 grid max-w-4xl grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-3"
       >
         {METADATA.map((m) =>
           m.href ? (

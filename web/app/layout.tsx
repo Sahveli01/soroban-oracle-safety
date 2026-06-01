@@ -15,7 +15,7 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "safe-oracle — Trust the oracle. Verify the integrator.",
   description:
-    "Drop-in oracle protection for Stellar Soroban. Five mathematically-verified guardrails between your protocol and the next oracle manipulation attack.",
+    "Drop-in oracle protection for Stellar Soroban. Trustless by default — three on-chain Layer 1 guardrails between your protocol and the next oracle manipulation attack, plus two opt-in Layer 2 checks.",
   metadataBase: new URL("https://soroban-oracle-safety.vercel.app"),
   keywords: [
     "Stellar",

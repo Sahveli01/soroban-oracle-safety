@@ -13,12 +13,12 @@ const STEPS = [
   {
     num: "02",
     title: "Layer 1 — Oracle Checks",
-    body: "Deviation, staleness and cross-source disagreement validated against feed mechanics.",
+    body: "Default, trustless. Deviation, staleness and cross-source disagreement validated with on-chain Reflector math — no off-chain dependency.",
   },
   {
     num: "03",
     title: "Layer 2 — Market Checks",
-    body: "SDEX 30-minute volume and unique-trader count validated against on-chain liquidity.",
+    body: "Opt-in (layer2_enabled). SDEX 30-minute volume and unique-trader count, validated against attested liquidity snapshots.",
   },
   {
     num: "04",

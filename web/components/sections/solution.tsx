@@ -4,11 +4,11 @@ import { motion } from "framer-motion";
 import { SectionShell } from "./section-shell";
 
 const GUARDS = [
-  { layer: "Layer 1", name: "Deviation", catch: "Sudden price spikes" },
-  { layer: "Layer 1", name: "Staleness", catch: "Outdated feeds" },
-  { layer: "Layer 1", name: "Cross-Source", catch: "Oracle disagreement" },
-  { layer: "Layer 2", name: "Liquidity", catch: "Thin SDEX volume" },
-  { layer: "Layer 2", name: "Thin Sampling", catch: "Low trader count" },
+  { layer: "Layer 1", name: "Deviation", catch: "Sudden price spikes", mode: "default" },
+  { layer: "Layer 1", name: "Staleness", catch: "Outdated feeds", mode: "default" },
+  { layer: "Layer 1", name: "Cross-Source", catch: "Oracle disagreement", mode: "default" },
+  { layer: "Layer 2", name: "Liquidity", catch: "Thin SDEX volume", mode: "opt-in" },
+  { layer: "Layer 2", name: "Thin Sampling", catch: "Low trader count", mode: "opt-in" },
 ];
 
 export function Solution() {
@@ -21,9 +21,9 @@ export function Solution() {
         transition={{ duration: 0.7, ease: [0.19, 1, 0.22, 1] }}
         className="t-h1"
       >
-        Five guards.
+        Three trustless by default.
         <br />
-        <span className="text-accent">Defense in depth.</span>
+        <span className="text-accent">Two more, opt-in.</span>
       </motion.h2>
 
       <motion.p
@@ -33,8 +33,10 @@ export function Solution() {
         transition={{ delay: 0.2, duration: 0.7 }}
         className="mt-7 max-w-2xl text-lg leading-relaxed text-text-muted"
       >
-        Each guardrail closes a specific attack vector observed in real DeFi
-        exploits. Mathematically validated, empirically tested.
+        Layer 1 runs on pure on-chain Reflector math — no off-chain trust.
+        Layer 2 adds market-microstructure defense, opt-in because it relies
+        on attested liquidity snapshots. Each guard closes a specific attack
+        vector seen in real DeFi exploits.
       </motion.p>
 
       <div className="mt-9 divide-y divide-border border-y border-border">
@@ -54,8 +56,17 @@ export function Solution() {
             <div className="col-span-3 font-mono text-xs uppercase tracking-wider text-text-dim md:col-span-2">
               {guard.layer}
             </div>
-            <div className="col-span-9 text-2xl font-medium md:col-span-4">
-              {guard.name}
+            <div className="col-span-9 flex items-center gap-3 md:col-span-4">
+              <span className="text-2xl font-medium">{guard.name}</span>
+              <span
+                className={`shrink-0 rounded-full border px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider ${
+                  guard.mode === "default"
+                    ? "border-accent/40 text-accent"
+                    : "border-border text-text-dim"
+                }`}
+              >
+                {guard.mode}
+              </span>
             </div>
             <div className="col-span-12 text-text-muted md:col-span-6">
               {guard.catch}
