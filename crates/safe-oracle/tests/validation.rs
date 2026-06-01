@@ -209,7 +209,7 @@ fn test_validate_zero_snapshot_age_rejected() {
 fn test_validate_excessive_snapshot_age_rejected() {
     let config = SafeOracleConfig {
         max_snapshot_age_seconds: 86_401, // > 24h
-        layer2_enabled: true, // Layer 2 validation is gated on the flag
+        layer2_enabled: true,             // Layer 2 validation is gated on the flag
         ..SafeOracleConfig::default()
     };
     assert_eq!(
