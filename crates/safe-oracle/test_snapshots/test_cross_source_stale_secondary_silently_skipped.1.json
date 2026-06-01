@@ -85,6 +85,14 @@
                     },
                     {
                       "key": {
+                        "symbol": "layer2_enabled"
+                      },
+                      "val": {
+                        "bool": false
+                      }
+                    },
+                    {
+                      "key": {
                         "symbol": "max_cross_source_bps"
                       },
                       "val": {
@@ -660,6 +668,14 @@
                             },
                             "val": {
                               "u32": 720
+                            }
+                          },
+                          {
+                            "key": {
+                              "symbol": "layer2_enabled"
+                            },
+                            "val": {
+                              "bool": false
                             }
                           },
                           {

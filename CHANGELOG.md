@@ -5,6 +5,36 @@ All notable changes to safe-oracle are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.0] — Unreleased
+
+### Added
+
+- **`SafeOracleConfig.layer2_enabled`** — explicit toggle (default `false`) for
+  the Layer 2 guardrails (liquidity + thin sampling). When `false`, `lastprice`
+  runs Layer 1 + circuit breaker only and the `LiquidityRegistry` is **never**
+  queried — not even for `Asset::Stellar`. This makes Layer 1 a fully trustless
+  default (pure on-chain Reflector math, no off-chain attester dependency) and
+  Layer 2 a deliberate, defense-in-depth opt-in. `SafeOracleConfig::validate`
+  now conditionally validates the Layer 2 threshold fields
+  (`min_liquidity_usd`, `min_trade_count_1h`, `max_snapshot_age_seconds`) only
+  when `layer2_enabled` is `true`, matching the existing `secondary_oracle` /
+  `circuit_breaker_enabled` conditional-validation pattern.
+
+### Changed
+
+- **BEHAVIOR CHANGE (default):** `SafeOracleConfig::default()` now ships
+  `layer2_enabled: false`. Previously the Layer 2 guardrails were implicitly
+  active for every `Asset::Stellar` borrow. Integrators who rely on Layer 2
+  must now opt in:
+
+  ```rust
+  let config = SafeOracleConfig { layer2_enabled: true, ..SafeOracleConfig::default() };
+  ```
+
+  This is a source-compatible change (a new struct field with a `Default`),
+  but it alters runtime behavior, hence the minor version bump. `Asset::Other`
+  assets are unaffected — they always skipped Layer 2.
+
 ## [0.2.0] — 2026-05-18
 
 ### Added

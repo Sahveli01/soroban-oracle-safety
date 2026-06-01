@@ -13,7 +13,7 @@
 //! later-introduced check keeps the file with the new behavior also
 //! holding the joint contract.
 
-use safe_oracle::{Asset, OracleSafetyViolation, SafeOracleConfig};
+use safe_oracle::{Asset, OracleSafetyViolation};
 use soroban_sdk::{testutils::Address as _, Address, Symbol};
 use test_utils::TestEnv;
 
@@ -35,7 +35,7 @@ fn test_check_thin_sampling_blocks_yieldblox_single_trade() {
     // Healthy volume but only the attacker's single trade in the past hour.
     test_env.write_snapshot_now(&asset_address, TestEnv::HEALTHY_VOLUME_USD, 1_u32);
 
-    let result = test_env.lastprice(&asset, &SafeOracleConfig::default());
+    let result = test_env.lastprice(&asset, &TestEnv::layer2_config());
 
     assert_eq!(
         result,
@@ -57,7 +57,7 @@ fn test_check_thin_sampling_passes_with_active_market() {
     test_env.prime_layer1(&asset);
     test_env.write_snapshot_now(&asset_address, TestEnv::HEALTHY_VOLUME_USD, 10_u32);
 
-    let result = test_env.lastprice(&asset, &SafeOracleConfig::default());
+    let result = test_env.lastprice(&asset, &TestEnv::layer2_config());
 
     assert!(
         result.is_ok(),
@@ -83,7 +83,7 @@ fn test_check_thin_sampling_passes_at_threshold() {
     // Default `min_trade_count_1h` is 5; pass exactly that.
     test_env.write_snapshot_now(&asset_address, TestEnv::HEALTHY_VOLUME_USD, 5_u32);
 
-    let result = test_env.lastprice(&asset, &SafeOracleConfig::default());
+    let result = test_env.lastprice(&asset, &TestEnv::layer2_config());
 
     assert!(
         result.is_ok(),
@@ -105,7 +105,7 @@ fn test_check_thin_sampling_skips_for_asset_other() {
     test_env.prime_layer1(&asset);
     // No snapshot — skip path means the registry is never consulted.
 
-    let result = test_env.lastprice(&asset, &SafeOracleConfig::default());
+    let result = test_env.lastprice(&asset, &TestEnv::layer2_config());
 
     assert!(
         result.is_ok(),
@@ -131,7 +131,7 @@ fn test_layer2_check_order_liquidity_before_thin_sampling() {
     // Both thresholds violated.
     test_env.write_snapshot_now(&asset_address, 5_i128, 1_u32);
 
-    let result = test_env.lastprice(&asset, &SafeOracleConfig::default());
+    let result = test_env.lastprice(&asset, &TestEnv::layer2_config());
 
     assert_eq!(
         result,

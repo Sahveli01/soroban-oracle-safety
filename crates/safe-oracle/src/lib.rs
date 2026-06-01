@@ -331,6 +331,30 @@ pub struct SafeOracleConfig {
     pub secondary_oracle: Option<Address>,
     pub circuit_breaker_enabled: bool,
     pub circuit_breaker_halt_ledgers: u32,
+    /// Activates the Layer 2 guardrails (liquidity threshold + thin sampling).
+    ///
+    /// When `false` (the default), `lastprice` runs **only** Layer 1
+    /// (deviation, staleness, cross-source) plus the optional circuit breaker,
+    /// and the `liquidity_registry` is **never** queried — not even for
+    /// `Asset::Stellar`. This is the trustless mode: every check is pure
+    /// on-chain Reflector math with no dependency on an off-chain attester
+    /// pipeline.
+    ///
+    /// When `true`, `Asset::Stellar` assets additionally require a fresh,
+    /// attested `LiquidityRegistry` snapshot (see `get_validated_snapshot`);
+    /// `Asset::Other` assets skip Layer 2 regardless, as before.
+    ///
+    /// # Why opt-in
+    ///
+    /// Layer 2 introduces a second trust vector — the off-chain attesters that
+    /// sign `LiquidityRegistry` snapshots. Integrators who cannot run (or do
+    /// not yet trust) an attester pipeline get the full Layer 1 defense without
+    /// being forced to stand up that infrastructure. Layer 2 is the
+    /// defense-in-depth upgrade for the sophisticated sub-threshold attack
+    /// (see `e2e_attack_scenarios::scenario_3`), enabled deliberately.
+    ///
+    /// **Default:** `false`.
+    pub layer2_enabled: bool,
 }
 
 impl Default for SafeOracleConfig {
@@ -350,6 +374,9 @@ impl Default for SafeOracleConfig {
             secondary_oracle: None,
             circuit_breaker_enabled: false,
             circuit_breaker_halt_ledgers: 720,
+            // Trustless default: Layer 1 only. Layer 2 (attester-dependent)
+            // is opt-in — see the field doc for the trust-model rationale.
+            layer2_enabled: false,
         }
     }
 }
@@ -519,7 +546,10 @@ impl SafeOracleConfig {
         // vector). Mirrors the silent-disable defenses Hardening 3A established
         // for the deviation/staleness/halt-ledgers fields and Hardening Closure
         // (Debt #22) extended to min_trade_count_1h and max_snapshot_age_seconds.
-        if self.min_liquidity_usd <= 0 {
+        // Gated on `layer2_enabled`: when Layer 2 is off the field is dormant
+        // (the registry is never queried), mirroring the secondary_oracle /
+        // circuit_breaker conditional-validation pattern below.
+        if self.layer2_enabled && self.min_liquidity_usd <= 0 {
             return Err(ConfigError::InvalidLiquidityThreshold);
         }
 
@@ -548,13 +578,15 @@ impl SafeOracleConfig {
 
         // Hardening Closure (Debt #22): Layer 2 thin-sampling guard.
         // min_trade_count_1h == 0 silently disables the check.
-        if self.min_trade_count_1h == 0 {
+        if self.layer2_enabled && self.min_trade_count_1h == 0 {
             return Err(ConfigError::InvalidTradeCountThreshold);
         }
 
         // Hardening Closure (Debt #22): Layer 2 snapshot age guard.
         // 0 rejects all snapshots; > 86_400 (24h) accepts unsafe staleness.
-        if self.max_snapshot_age_seconds == 0 || self.max_snapshot_age_seconds > 86_400 {
+        if self.layer2_enabled
+            && (self.max_snapshot_age_seconds == 0 || self.max_snapshot_age_seconds > 86_400)
+        {
             return Err(ConfigError::InvalidSnapshotAge);
         }
 
@@ -1086,6 +1118,13 @@ fn get_validated_snapshot(
     asset: &Asset,
     config: &SafeOracleConfig,
 ) -> Result<Option<LiquiditySnapshot>, OracleSafetyViolation> {
+    // Layer 2 is opt-in (default off). When disabled, the registry is never
+    // queried — `lastprice` is pure Layer 1 + breaker, with no dependency on
+    // the off-chain attester pipeline. See `SafeOracleConfig::layer2_enabled`.
+    if !config.layer2_enabled {
+        return Ok(None);
+    }
+
     let asset_address = match asset {
         Asset::Stellar(addr) => addr.clone(),
         Asset::Other(_) => return Ok(None),
@@ -1187,6 +1226,8 @@ mod test {
         assert!(cfg.secondary_oracle.is_none());
         assert!(!cfg.circuit_breaker_enabled);
         assert_eq!(cfg.circuit_breaker_halt_ledgers, 720);
+        // Trustless default: Layer 2 off until the integrator opts in.
+        assert!(!cfg.layer2_enabled);
     }
 
     #[test]

@@ -164,6 +164,14 @@ impl<'a> TestEnv<'a> {
         })
     }
 
+    /// `TestEnv` whose `MockLending` is initialized with Layer 2 enabled
+    /// (otherwise-default config). Used by the Layer-2 borrow-path tests:
+    /// `borrow()` reads the *stored* config, so Layer 2 must be turned on at
+    /// construction time rather than per `lastprice` call.
+    pub fn with_layer2_enabled() -> Self {
+        Self::with_config(Self::layer2_config())
+    }
+
     /// Internal: build the test environment and initialize `MockLending`
     /// against the provided config. Public callers go through the
     /// config-specific factory methods (`new`, `with_circuit_breaker_*`)
@@ -418,12 +426,34 @@ impl<'a> TestEnv<'a> {
             secondary_oracle: None,
             circuit_breaker_enabled: false,
             circuit_breaker_halt_ledgers: 720,
+            // Layer 2 on: relaxed_config's whole purpose is to exercise the
+            // guardrails with easy-to-satisfy thresholds, and the Layer 2
+            // checks (min_liquidity_usd=1, min_trade_count_1h=1) are part of
+            // that. Preserves the pre-`layer2_enabled` behavior, where Layer 2
+            // ran for every Stellar asset.
+            layer2_enabled: true,
         }
     }
 
     /// Returns the production default config (passes through to SafeOracleConfig::default()).
     pub fn strict_config() -> SafeOracleConfig {
         SafeOracleConfig::default()
+    }
+
+    /// Production default thresholds with Layer 2 **explicitly enabled**.
+    ///
+    /// `SafeOracleConfig::default()` ships `layer2_enabled: false` (trustless
+    /// Layer 1-only default). Tests that exercise the Layer 2 guardrails opt in
+    /// through this helper, which keeps every production default threshold
+    /// (`min_liquidity_usd = $10k`, `min_trade_count_1h = 5`,
+    /// `max_snapshot_age_seconds = 300`) and only flips the flag — so the
+    /// existing Layer 2 fixtures (volume/trade-count/snapshot-age) keep their
+    /// expected outcomes.
+    pub fn layer2_config() -> SafeOracleConfig {
+        SafeOracleConfig {
+            layer2_enabled: true,
+            ..SafeOracleConfig::default()
+        }
     }
 }
 

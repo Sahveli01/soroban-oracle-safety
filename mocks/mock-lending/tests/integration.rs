@@ -187,7 +187,7 @@ fn test_borrow_fails_when_oracle_data_stale() {
 /// does not introduce a false-positive rejection in the normal flow.
 #[test]
 fn test_borrow_happy_path_passes_all_guardrails() {
-    let test_env = TestEnv::new();
+    let test_env = TestEnv::with_layer2_enabled();
     let asset_address = Address::generate(&test_env.env);
     let asset = Asset::Stellar(asset_address.clone());
 
@@ -215,7 +215,7 @@ fn test_borrow_happy_path_passes_all_guardrails() {
 /// this proves Layer 1 ordering survives the registry-active path too.
 #[test]
 fn test_borrow_blocks_yieldblox_classic_via_layer1() {
-    let test_env = TestEnv::new();
+    let test_env = TestEnv::with_layer2_enabled();
     let asset_address = Address::generate(&test_env.env);
     let asset = Asset::Stellar(asset_address.clone());
 
@@ -249,7 +249,7 @@ fn test_borrow_blocks_yieldblox_classic_via_layer1() {
 /// integrator would observe and surface to its caller.
 #[test]
 fn test_borrow_blocks_yieldblox_sophisticated_via_layer2() {
-    let test_env = TestEnv::new();
+    let test_env = TestEnv::with_layer2_enabled();
     let asset_address = Address::generate(&test_env.env);
     let asset = Asset::Stellar(asset_address.clone());
 
@@ -282,7 +282,7 @@ fn test_borrow_blocks_yieldblox_sophisticated_via_layer2() {
 /// degrade when Layer 2 is wired.
 #[test]
 fn test_borrow_blocks_stale_oracle_on_stellar_asset() {
-    let test_env = TestEnv::new();
+    let test_env = TestEnv::with_layer2_enabled();
     let asset_address = Address::generate(&test_env.env);
     let asset = Asset::Stellar(asset_address.clone());
 
@@ -316,7 +316,7 @@ fn test_borrow_blocks_stale_oracle_on_stellar_asset() {
 /// `StaleData` (Reflector outage) so dashboards can route them differently.
 #[test]
 fn test_borrow_blocks_stale_snapshot() {
-    let test_env = TestEnv::new();
+    let test_env = TestEnv::with_layer2_enabled();
     let asset_address = Address::generate(&test_env.env);
     let asset = Asset::Stellar(asset_address.clone());
 

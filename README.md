@@ -40,13 +40,25 @@ let price = result.into_result()?;  // PriceResult -> Result for ergonomic ?
 // Now safe to use this price.
 ```
 
-That's it. Five guardrails active. 310 tests passing.
+That's it. With the default config the **three Layer 1 guardrails** (deviation,
+staleness, cross-source) plus the optional circuit breaker are active — all pure
+on-chain Reflector math, no off-chain dependency.
+
+The **two Layer 2 guardrails** (liquidity + thin sampling) read attested
+`LiquidityRegistry` snapshots, so they are **opt-in** — enable them explicitly
+once you run an attester pipeline:
+
+```rust
+let config = SafeOracleConfig { layer2_enabled: true, ..SafeOracleConfig::default() };
+```
+
+310 tests passing.
 
 ---
 
 ## What It Does
 
-`safe-oracle` wraps your existing Reflector oracle calls with five mathematically-validated guardrails. Each one closes a specific attack vector observed in real DeFi exploits:
+`safe-oracle` wraps your existing Reflector oracle calls with up to five mathematically-validated guardrails — the three Layer 1 checks are on by default, the two Layer 2 checks are opt-in (`layer2_enabled`). Each one closes a specific attack vector observed in real DeFi exploits:
 
 ### Layer 1 — Oracle-Side Checks
 
@@ -62,6 +74,14 @@ That's it. Five guardrails active. 310 tests passing.
 |-----------|-----------------|-------------------|
 | **Liquidity** | Thin SDEX 30-minute volume | $10,000 USD |
 | **Thin Sampling** | Low trader diversity (1-hour unique trader count) | 5 traders |
+
+> **Layer 2 is opt-in** (`config.layer2_enabled`, default `false`). It reads
+> attested `LiquidityRegistry` snapshots, which introduces a second trust
+> vector — the off-chain attesters that sign those snapshots. The default
+> (Layer 1 only) is fully trustless: pure on-chain Reflector math. Turn Layer 2
+> on for defense-in-depth against sub-threshold manipulation once you run (or
+> trust) an attester pipeline. When `false`, the `LiquidityRegistry` is never
+> queried — not even for `Asset::Stellar`.
 
 ### Plus: Circuit Breaker (Phase 5)
 

@@ -16,7 +16,7 @@
 //!
 //! Demo command: `cargo test --test e2e_attack_scenarios`
 
-use safe_oracle::{Asset, OracleSafetyViolation, SafeOracleConfig};
+use safe_oracle::{Asset, OracleSafetyViolation};
 use soroban_sdk::{testutils::Address as _, Address};
 use test_utils::TestEnv;
 
@@ -36,7 +36,7 @@ fn scenario_1_normal_borrow_happy_path() {
     test_env.prime_layer1(&asset);
     test_env.write_snapshot_now(&asset_address, TestEnv::HEALTHY_VOLUME_USD, 10_u32);
 
-    let result = test_env.lastprice(&asset, &SafeOracleConfig::default());
+    let result = test_env.lastprice(&asset, &TestEnv::layer2_config());
 
     let price = result.expect("happy path must return Ok");
     assert_eq!(
@@ -72,7 +72,7 @@ fn scenario_2_yieldblox_classic_blocked_by_layer1() {
     // is even consulted.
     test_env.write_snapshot_now(&asset_address, TestEnv::HEALTHY_VOLUME_USD, 10_u32);
 
-    let result = test_env.lastprice(&asset, &SafeOracleConfig::default());
+    let result = test_env.lastprice(&asset, &TestEnv::layer2_config());
 
     assert_eq!(
         result,
@@ -110,7 +110,7 @@ fn scenario_3_yieldblox_sophisticated_blocked_by_layer2() {
     // pre-condition that made the manipulation possible in the first place.
     test_env.write_snapshot_now(&asset_address, 5_i128, 10_u32);
 
-    let result = test_env.lastprice(&asset, &SafeOracleConfig::default());
+    let result = test_env.lastprice(&asset, &TestEnv::layer2_config());
 
     assert_eq!(
         result,
@@ -147,7 +147,7 @@ fn scenario_4_liquidity_manipulation_drained_orderbook() {
     // `check_liquidity` from `check_thin_sampling`, which Scenario 5 covers.
     test_env.write_snapshot_now(&asset_address, 1_i128, 10_u32);
 
-    let result = test_env.lastprice(&asset, &SafeOracleConfig::default());
+    let result = test_env.lastprice(&asset, &TestEnv::layer2_config());
 
     assert_eq!(
         result,
@@ -173,7 +173,7 @@ fn scenario_5_thin_sampling_single_trade() {
     test_env.prime_layer1(&asset);
     test_env.write_snapshot_now(&asset_address, TestEnv::HEALTHY_VOLUME_USD, 1_u32);
 
-    let result = test_env.lastprice(&asset, &SafeOracleConfig::default());
+    let result = test_env.lastprice(&asset, &TestEnv::layer2_config());
 
     assert_eq!(
         result,
@@ -203,7 +203,7 @@ fn scenario_6_stale_oracle_no_recent_updates() {
     test_env.set_oracle_price(&asset, TestEnv::ONE_DOLLAR, stale_ts.saturating_sub(100));
     test_env.set_oracle_price(&asset, TestEnv::ONE_DOLLAR, stale_ts);
 
-    let result = test_env.lastprice(&asset, &SafeOracleConfig::default());
+    let result = test_env.lastprice(&asset, &TestEnv::layer2_config());
 
     assert_eq!(
         result,
@@ -240,7 +240,7 @@ fn scenario_7_stale_snapshot_attester_offline() {
         stale_ts,
     );
 
-    let result = test_env.lastprice(&asset, &SafeOracleConfig::default());
+    let result = test_env.lastprice(&asset, &TestEnv::layer2_config());
 
     assert_eq!(
         result,

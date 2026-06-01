@@ -70,7 +70,7 @@ proptest! {
 
         // The contract: any outcome OTHER than panic. Specific Ok/Err is
         // covered by the threshold property below.
-        let _ = test_env.lastprice(&asset, &SafeOracleConfig::default());
+        let _ = test_env.lastprice(&asset, &TestEnv::layer2_config());
     }
 
     /// Threshold boundary: deviation strictly greater than
@@ -128,7 +128,7 @@ proptest! {
         test_env.set_oracle_price(&asset, TestEnv::ONE_DOLLAR, timestamp);
         test_env.write_snapshot_now(&asset_addr, TestEnv::HEALTHY_VOLUME_USD, 10);
 
-        let _ = test_env.lastprice(&asset, &SafeOracleConfig::default());
+        let _ = test_env.lastprice(&asset, &TestEnv::layer2_config());
     }
 
     /// Threshold boundary: a price whose age exceeds
@@ -244,7 +244,7 @@ proptest! {
         test_env.set_oracle_price(&asset, TestEnv::ONE_DOLLAR, 99_950);
         test_env.write_snapshot_now(&asset_addr, volume_usd, 10);
 
-        let _ = test_env.lastprice(&asset, &SafeOracleConfig::default());
+        let _ = test_env.lastprice(&asset, &TestEnv::layer2_config());
     }
 
     /// Threshold boundary: `volume < min_liquidity_usd` returns
@@ -259,7 +259,7 @@ proptest! {
         test_env.set_oracle_price(&asset, TestEnv::ONE_DOLLAR, 99_950);
         test_env.write_snapshot_now(&asset_addr, volume_usd, 10);
 
-        let config = SafeOracleConfig::default(); // min_liquidity_usd = 100_000_000_000
+        let config = TestEnv::layer2_config(); // min_liquidity_usd = 100_000_000_000
         let result = test_env.lastprice(&asset, &config);
 
         if volume_usd < config.min_liquidity_usd {
@@ -293,7 +293,7 @@ proptest! {
         test_env.set_oracle_price(&asset, TestEnv::ONE_DOLLAR, 99_950);
         test_env.write_snapshot_now(&asset_addr, TestEnv::HEALTHY_VOLUME_USD, trade_count);
 
-        let _ = test_env.lastprice(&asset, &SafeOracleConfig::default());
+        let _ = test_env.lastprice(&asset, &TestEnv::layer2_config());
     }
 
     /// Threshold boundary: `unique_trades_1h < min_trade_count_1h`
@@ -307,7 +307,7 @@ proptest! {
         test_env.set_oracle_price(&asset, TestEnv::ONE_DOLLAR, 99_950);
         test_env.write_snapshot_now(&asset_addr, TestEnv::HEALTHY_VOLUME_USD, trade_count);
 
-        let config = SafeOracleConfig::default(); // min_trade_count_1h = 5
+        let config = TestEnv::layer2_config(); // min_trade_count_1h = 5
         let result = test_env.lastprice(&asset, &config);
 
         if trade_count < config.min_trade_count_1h {
@@ -354,7 +354,7 @@ proptest! {
         test_env.set_oracle_price(&asset, new_price, current_ts);
         test_env.write_snapshot_now(&asset_addr, volume_usd, trade_count);
 
-        let result = test_env.lastprice(&asset, &SafeOracleConfig::default());
+        let result = test_env.lastprice(&asset, &TestEnv::layer2_config());
 
         prop_assert!(
             result.is_ok(),
@@ -388,7 +388,7 @@ proptest! {
         test_env.set_oracle_price(&asset, TestEnv::ONE_DOLLAR, 99_950);
         test_env.write_snapshot_now(&asset_addr, volume_usd, trade_count);
 
-        let result = test_env.lastprice(&asset, &SafeOracleConfig::default());
+        let result = test_env.lastprice(&asset, &TestEnv::layer2_config());
 
         // Layer 1 inputs are healthy; Layer 2 liquidity always fails.
         // Liquidity runs before thin-sampling (Phase 4.2 ordering), so

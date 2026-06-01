@@ -503,6 +503,7 @@ fn test_breaker_opens_for_diverse_violation_types() {
 
         let config = SafeOracleConfig {
             circuit_breaker_enabled: true,
+            layer2_enabled: true, // Layer 2 must be on to surface InsufficientLiquidity
             ..SafeOracleConfig::default()
         };
 

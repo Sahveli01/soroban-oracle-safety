@@ -104,7 +104,7 @@ fn test_full_flow_layer1_pass_then_layer2_blocks() {
     // `min_liquidity_usd` of $10,000.
     test_env.write_snapshot_now(&asset_address, 5_i128, 10_u32);
 
-    let result = test_env.lastprice(&asset, &SafeOracleConfig::default());
+    let result = test_env.lastprice(&asset, &TestEnv::layer2_config());
 
     assert_eq!(
         result,
@@ -126,7 +126,7 @@ fn test_full_flow_all_guardrails_pass() {
     test_env.prime_layer1(&asset);
     test_env.write_snapshot_now(&asset_address, TestEnv::HEALTHY_VOLUME_USD, 10_u32);
 
-    let result = test_env.lastprice(&asset, &SafeOracleConfig::default());
+    let result = test_env.lastprice(&asset, &TestEnv::layer2_config());
 
     let price = result.expect("all healthy conditions must pass");
     assert_eq!(

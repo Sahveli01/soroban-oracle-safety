@@ -93,6 +93,7 @@ fn test_validate_excessive_staleness_rejected() {
 fn test_validate_negative_liquidity_rejected() {
     let config = SafeOracleConfig {
         min_liquidity_usd: -1,
+        layer2_enabled: true, // Layer 2 validation is gated on the flag
         ..SafeOracleConfig::default()
     };
     assert_eq!(
@@ -180,6 +181,7 @@ fn test_validate_zero_halt_ledgers_skipped_when_breaker_disabled() {
 fn test_validate_zero_trade_count_rejected() {
     let config = SafeOracleConfig {
         min_trade_count_1h: 0,
+        layer2_enabled: true, // Layer 2 validation is gated on the flag
         ..SafeOracleConfig::default()
     };
     assert_eq!(
@@ -193,6 +195,7 @@ fn test_validate_zero_trade_count_rejected() {
 fn test_validate_zero_snapshot_age_rejected() {
     let config = SafeOracleConfig {
         max_snapshot_age_seconds: 0,
+        layer2_enabled: true, // Layer 2 validation is gated on the flag
         ..SafeOracleConfig::default()
     };
     assert_eq!(
@@ -206,6 +209,7 @@ fn test_validate_zero_snapshot_age_rejected() {
 fn test_validate_excessive_snapshot_age_rejected() {
     let config = SafeOracleConfig {
         max_snapshot_age_seconds: 86_401, // > 24h
+        layer2_enabled: true, // Layer 2 validation is gated on the flag
         ..SafeOracleConfig::default()
     };
     assert_eq!(
@@ -234,6 +238,7 @@ fn test_validate_default_config_passes_all_seven_checks() {
 fn test_validate_zero_liquidity_threshold_rejected() {
     let config = SafeOracleConfig {
         min_liquidity_usd: 0,
+        layer2_enabled: true, // Layer 2 validation is gated on the flag
         ..SafeOracleConfig::default()
     };
     assert_eq!(

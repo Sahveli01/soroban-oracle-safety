@@ -12,7 +12,7 @@
 //! SDEX volume, which is structurally a Layer 2 signal even though the
 //! visible price move is what most observers notice first.
 
-use safe_oracle::{Asset, OracleSafetyViolation, SafeOracleConfig};
+use safe_oracle::{Asset, OracleSafetyViolation};
 use soroban_sdk::{testutils::Address as _, Address, Symbol};
 use test_utils::TestEnv;
 
@@ -38,7 +38,7 @@ fn test_check_liquidity_blocks_yieldblox_thin_liquidity() {
     // `check_liquidity`'s threshold comparison.
     test_env.write_snapshot_now(&asset_address, 5_i128, 1_u32);
 
-    let result = test_env.lastprice(&asset, &SafeOracleConfig::default());
+    let result = test_env.lastprice(&asset, &TestEnv::layer2_config());
 
     assert_eq!(
         result,
@@ -59,7 +59,7 @@ fn test_check_liquidity_passes_with_sufficient_volume() {
     test_env.prime_layer1(&asset);
     test_env.write_snapshot_now(&asset_address, TestEnv::HEALTHY_VOLUME_USD, 10_u32);
 
-    let result = test_env.lastprice(&asset, &SafeOracleConfig::default());
+    let result = test_env.lastprice(&asset, &TestEnv::layer2_config());
 
     assert!(
         result.is_ok(),
@@ -90,7 +90,7 @@ fn test_check_liquidity_blocks_stale_snapshot() {
         stale_ts,
     );
 
-    let result = test_env.lastprice(&asset, &SafeOracleConfig::default());
+    let result = test_env.lastprice(&asset, &TestEnv::layer2_config());
 
     assert_eq!(
         result,
@@ -113,7 +113,7 @@ fn test_check_liquidity_blocks_missing_snapshot() {
     test_env.prime_layer1(&asset);
     // No write_snapshot — registry returns None.
 
-    let result = test_env.lastprice(&asset, &SafeOracleConfig::default());
+    let result = test_env.lastprice(&asset, &TestEnv::layer2_config());
 
     assert_eq!(
         result,
@@ -135,7 +135,7 @@ fn test_check_liquidity_skips_for_asset_other() {
     test_env.prime_layer1(&asset);
     // Intentionally no snapshot — skip path means the registry is never asked.
 
-    let result = test_env.lastprice(&asset, &SafeOracleConfig::default());
+    let result = test_env.lastprice(&asset, &TestEnv::layer2_config());
 
     assert!(
         result.is_ok(),

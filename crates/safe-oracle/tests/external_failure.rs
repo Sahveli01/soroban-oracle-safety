@@ -128,7 +128,9 @@ fn test_registry_panic_returns_external_contract_failure() {
     test_env.set_oracle_price(&asset, TestEnv::ONE_DOLLAR, 99_900);
     test_env.set_oracle_price(&asset, TestEnv::ONE_DOLLAR, 99_950);
 
-    let config = SafeOracleConfig::default();
+    // Layer 2 must be on for the call to reach the registry (and thus its
+    // trap); with the trustless default the registry is never queried.
+    let config = TestEnv::layer2_config();
     let result = run_with_panicking_addresses(
         &test_env,
         &asset,
