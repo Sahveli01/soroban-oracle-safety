@@ -1,15 +1,16 @@
 name: noeracle-keeper
 
-# Relays Noeracle's signed price attestations on-chain every 10 minutes. Each
-# run writes 2 consecutive ticks per asset (TICKS_PER_RUN), so the adapter ring
-# buffer holds 2 fresh timestamps after every run — exactly what safe-oracle's
-# deviation guardrail needs for an APPROVED verdict. 10 min keeps both ticks
-# well inside the 900s freshness window while halving the prior 5-min quota.
-# Data is cryptographically Noeracle's; this job is transport only.
+# Relays Noeracle's signed price attestations on-chain. Each run writes 2
+# consecutive ticks per asset (TICKS_PER_RUN), so the adapter ring buffer holds
+# 2 fresh timestamps — exactly what safe-oracle's deviation guardrail needs for
+# an APPROVED verdict. Data is cryptographically Noeracle's; transport only.
+#
+# Continuous feeding now runs on an always-on Fly.io worker
+# (deploy/keeper-worker/), which avoids cron scheduling jitter. The scheduled
+# trigger has been removed; this workflow is kept as a MANUAL backup only
+# (run via the Actions "Run workflow" button) for when the worker is down.
 
 on:
-  schedule:
-    - cron: "*/10 * * * *"
   workflow_dispatch: {}
 
 # Never run two relays at once (monotonic round_id makes overlap pointless).
