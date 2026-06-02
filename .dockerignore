@@ -1,0 +1,12 @@
+# Keep the Fly keeper-worker build context small. The Dockerfile only needs
+# scripts/keeper.sh and deploy/keeper-worker/keeper-loop.sh; everything heavy or
+# irrelevant is excluded here.
+.git/
+target/
+**/target/
+web/node_modules/
+web/.next/
+web/out/
+_probe_tmp/
+**/*.wasm
+*.log
