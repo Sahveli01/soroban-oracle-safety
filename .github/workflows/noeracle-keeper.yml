@@ -19,7 +19,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Install Stellar CLI
         run: |
@@ -36,7 +36,24 @@ jobs:
           stellar network add testnet \
             --rpc-url https://soroban-testnet.stellar.org \
             --network-passphrase "Test SDF Network ; September 2015"
-          stellar keys add deployer --secret-key "$DEPLOYER_SECRET_KEY"
+          # Import the keeper secret non-interactively.
+          #
+          # Stellar CLI 25.1.0's `keys add --secret-key` is a BOOLEAN flag that
+          # only PROMPTS for the key on /dev/tty — it does not accept the value
+          # as an argument (passing it yields `error: unexpected argument '***'`)
+          # and the prompt hangs forever in CI (no TTY). Passing the secret to
+          # `--source` inline also leaks it into clap usage-error output.
+          #
+          # So we write the identity file directly. The CLI stores imported
+          # secret keys as `secret_key = "S..."` under <config>/identity/<name>.toml
+          # (default config dir on Linux is ~/.config/stellar). The secret comes
+          # from the env var below and is NEVER echoed to the log: printf is a
+          # shell builtin and its output is redirected straight into the file.
+          umask 077
+          mkdir -p ~/.config/stellar/identity
+          printf 'secret_key = "%s"\n' "$DEPLOYER_SECRET_KEY" > ~/.config/stellar/identity/deployer.toml
+          # Sanity-check the alias resolves (prints only the PUBLIC address).
+          echo "keeper key imported as: $(stellar keys address deployer)"
 
       - name: Run keeper
         env:
