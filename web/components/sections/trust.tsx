@@ -17,7 +17,7 @@ const REPO = "https://github.com/Sahveli01/soroban-oracle-safety";
  * Pass 4A: rebuilt following Stripe / Linear / Resend / Anthropic
  * trust-page patterns. The shift is from "look at our score" to "here
  * is what we did, in our own words, with caveats". Numbers are still
- * present (and unchanged: 20 scenarios, 0 critical, 0 high, 310
+ * present (and unchanged: 20 scenarios, 0 critical, 0 high, 316
  * tests) but integrated into sentences instead of standing alone as
  * card-sized digits — that is the difference between sophistication
  * and maximalism.
@@ -28,7 +28,7 @@ const REPO = "https://github.com/Sahveli01/soroban-oracle-safety";
 const METADATA = [
   {
     label: "Version",
-    value: "v0.2.0",
+    value: "v0.3.0",
     href: "https://crates.io/crates/safe-oracle",
   },
   {
@@ -38,7 +38,7 @@ const METADATA = [
   },
   {
     label: "Test Coverage",
-    value: "310 passing",
+    value: "316 passing",
     href: `${REPO}/actions`,
   },
   {
@@ -86,6 +86,27 @@ export function Trust() {
         covering deviation manipulation, staleness, cross-source disagreement,
         liquidity-floor evasion, and circuit-breaker bypass. No critical or
         high findings remain open.
+      </motion.p>
+
+      <motion.p
+        initial={{ opacity: 0, y: 10 }}
+        whileInView={{ opacity: 1, y: 0 }}
+        viewport={{ once: true, margin: "-80px" }}
+        transition={{ delay: 0.16, duration: 0.6, ease: EASE_OUT_EXPO }}
+        className="mt-5 max-w-3xl text-lg leading-relaxed text-text-muted"
+      >
+        The Layer 1 defaults are also{" "}
+        <a
+          href={`${REPO}/tree/main/crates/safe-oracle/tests/historical_replay`}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="font-medium text-accent underline decoration-accent/60 underline-offset-4 transition-colors hover:decoration-accent"
+        >
+          backtested against $244M of real oracle exploits
+        </a>{" "}
+        — YieldBlox, Mango, and BonqDAO are all caught, 3 of 3 in scope. Euler
+        ($197M) is kept as a scope-honest negative control: its feed was never
+        manipulated, so we don&apos;t claim to prevent it.
       </motion.p>
 
       <motion.p

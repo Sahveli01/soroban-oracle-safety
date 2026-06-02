@@ -6,9 +6,9 @@ import { EASE_OUT_EXPO } from "@/lib/easings";
 
 const TERMINAL_LINES: { prompt: string; text: string; accent?: boolean }[] = [
   { prompt: "$", text: "cargo add safe-oracle" },
-  { prompt: " ", text: "  Adding safe-oracle v0.2.0 to dependencies" },
+  { prompt: " ", text: "  Adding safe-oracle v0.3.0 to dependencies" },
   { prompt: " ", text: "  Layer 1 guards active · Layer 2 opt-in" },
-  { prompt: " ", text: "  Tests: 310 passed; 0 failed" },
+  { prompt: " ", text: "  Tests: 316 passed; 0 failed" },
   { prompt: " ", text: "  ✓ Ready to defend", accent: true },
 ];
 
@@ -203,6 +203,14 @@ export function Footer() {
               className="link-sweep text-text transition-colors hover:text-accent"
             >
               Docs ↗
+            </a>
+            <a
+              href="https://github.com/Sahveli01/soroban-oracle-safety/tree/main/docs/soroban-oracle-security"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="link-sweep text-text transition-colors hover:text-accent"
+            >
+              Security Standard ↗
             </a>
             <a
               href="https://stellar.org/soroban"

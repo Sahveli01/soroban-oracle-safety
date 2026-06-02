@@ -15,7 +15,7 @@ import { useReducedMotion } from "@/lib/use-reduced-motion";
  *
  * Numbers are pulled from public sources / project state:
  *   - $10.2M: YieldBlox post-mortem (Feb 22, 2026)
- *   - 310: workspace test count (current)
+ *   - 316: workspace test count (current)
  *   - 0: critical findings (AR.H adversarial review)
  *   - 3: trustless Layer 1 guards active by default (lib.rs:379,
  *        layer2_enabled: false). Two more activate with opt-in Layer 2.
@@ -29,7 +29,7 @@ const STATS = [
     subtitle: "YieldBlox",
     decimals: 1,
   },
-  { value: 310, label: "Tests", subtitle: "Passing" },
+  { value: 316, label: "Tests", subtitle: "Passing" },
   { value: 0, label: "Critical", subtitle: "Findings" },
   { value: 3, label: "Guards", subtitle: "Trustless" },
 ];

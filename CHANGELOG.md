@@ -5,10 +5,23 @@ All notable changes to safe-oracle are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.3.0] — Unreleased
+## [0.3.0] — 2026-06-02
 
 ### Added
 
+- **Historical exploit replay harness** (`crates/safe-oracle/tests/historical_replay/`)
+  — empirically validates the default thresholds against real, publicly-sourced
+  DeFi exploits. The Layer 1 defaults reject 3/3 in-scope oracle-manipulation
+  attacks: YieldBlox ($10.2M, Stellar), Mango ($114M, Solana — adapted), and
+  BonqDAO ($120M, Polygon — adapted), ~$244M in scope. Euler ($197M) is included
+  as a scope-honest negative control — it was a `donateToReserves()` accounting
+  bug, not oracle manipulation, so `safe-oracle` correctly does not flag its
+  honest feed. Test count 290 → 316.
+- **Soroban Oracle Security standard** (`docs/soroban-oracle-security/`) — a
+  reusable reference standard (threat model, attack anatomy, five defense
+  patterns each linked to its `file:line`, integration guide, empirical
+  threshold calibration, pre-mainnet audit checklist) with `safe-oracle` as the
+  working implementation.
 - **`SafeOracleConfig.layer2_enabled`** — explicit toggle (default `false`) for
   the Layer 2 guardrails (liquidity + thin sampling). When `false`, `lastprice`
   runs Layer 1 + circuit breaker only and the `LiquidityRegistry` is **never**
@@ -126,5 +139,6 @@ inflated collateral valuation and drained $10.2 million from a Stellar
 lending protocol. Reflector worked correctly. Stellar worked correctly.
 The gap was integrator-side. safe-oracle closes that gap.
 
+[0.3.0]: https://github.com/Sahveli01/soroban-oracle-safety/releases/tag/v0.3.0
 [0.2.0]: https://github.com/Sahveli01/soroban-oracle-safety/releases/tag/v0.2.0
 [0.1.0]: https://github.com/Sahveli01/soroban-oracle-safety/releases/tag/phase-8-complete

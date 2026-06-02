@@ -231,6 +231,8 @@ All findings are documented in module-level doc-comments referencing the AR.H ID
 | Phase 8: Public web site | ✅ Complete | 290 |
 | Post-Phase 8: Sinks + scenarios + AR.H L4 closure | ✅ Complete | 310 |
 | **v0.2.0 — crates.io release** | ✅ **Published** | **310** |
+| Post-v0.2.0: historical replay harness + security standard | ✅ Complete | 316 |
+| **v0.3.0 — crates.io release** | ✅ **Published** | **316** |
 | Mainnet deployment | ⏳ Planned | — |
 
 ---
