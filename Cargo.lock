@@ -1568,6 +1568,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "oracle-validator"
+version = "0.4.0"
+dependencies = [
+ "safe-oracle",
+ "soroban-sdk",
+]
+
+[[package]]
 name = "oracle-watch"
 version = "0.4.0"
 dependencies = [

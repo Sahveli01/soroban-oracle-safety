@@ -3,6 +3,7 @@ resolver = "2"
 members = [
     "crates/safe-oracle",
     "crates/noeracle-adapter",
+    "crates/oracle-validator",
     "crates/liquidity-registry",
     "crates/oracle-watch",
     "crates/test-utils",

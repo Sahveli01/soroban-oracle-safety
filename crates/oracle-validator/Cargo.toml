@@ -1,0 +1,19 @@
+[package]
+name = "oracle-validator"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+description = "Oracle-agnostic read-only validator contract — runs safe-oracle's guardrails against any SEP-40 / Reflector-shaped oracle (Reflector directly, Noeracle via noeracle-adapter) and returns a structured ValidationResult."
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+soroban-sdk = { workspace = true }
+safe-oracle = { path = "../safe-oracle" }
+
+[dev-dependencies]
+soroban-sdk = { workspace = true, features = ["testutils"] }
