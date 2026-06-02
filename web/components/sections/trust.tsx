@@ -83,19 +83,9 @@ export function Trust() {
         safe-oracle has been subjected to an internal adversarial replay
         review across{" "}
         <span className="font-medium text-text">20 attack scenarios</span> —
-        covering deviation manipulation, staleness, cross-source disagreement,
-        liquidity-floor evasion, and circuit-breaker bypass. No critical or
-        high findings remain open.
-      </motion.p>
-
-      <motion.p
-        initial={{ opacity: 0, y: 10 }}
-        whileInView={{ opacity: 1, y: 0 }}
-        viewport={{ once: true, margin: "-80px" }}
-        transition={{ delay: 0.16, duration: 0.6, ease: EASE_OUT_EXPO }}
-        className="mt-5 max-w-3xl text-lg leading-relaxed text-text-muted"
-      >
-        The Layer 1 defaults are also{" "}
+        deviation, staleness, cross-source, liquidity-floor, and
+        circuit-breaker bypass. No critical or high findings remain open, and
+        the Layer 1 defaults are{" "}
         <a
           href={`${REPO}/tree/main/crates/safe-oracle/tests/historical_replay`}
           target="_blank"
@@ -104,9 +94,7 @@ export function Trust() {
         >
           backtested against $244M of real oracle exploits
         </a>{" "}
-        — YieldBlox, Mango, and BonqDAO are all caught, 3 of 3 in scope. Euler
-        ($197M) is kept as a scope-honest negative control: its feed was never
-        manipulated, so we don&apos;t claim to prevent it.
+        — 3 of 3 in scope caught.
       </motion.p>
 
       <motion.p
