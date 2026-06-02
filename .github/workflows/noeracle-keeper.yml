@@ -1,0 +1,45 @@
+name: noeracle-keeper
+
+# Relays Noeracle's signed price attestations on-chain every 5 minutes so the
+# adapter's ring buffer fills and safe-oracle's deviation guardrail stays active
+# on Noeracle. Data is cryptographically Noeracle's; this job is transport only.
+
+on:
+  schedule:
+    - cron: "*/5 * * * *"
+  workflow_dispatch: {}
+
+# Never run two relays at once (monotonic round_id makes overlap pointless).
+concurrency:
+  group: noeracle-keeper
+  cancel-in-progress: false
+
+jobs:
+  relay:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Stellar CLI
+        run: |
+          curl -sSfL \
+            https://github.com/stellar/stellar-cli/releases/download/v25.1.0/stellar-cli-25.1.0-x86_64-unknown-linux-gnu.tar.gz \
+            | tar xz
+          sudo mv stellar /usr/local/bin/stellar
+          stellar --version
+
+      - name: Configure network + keeper key
+        env:
+          DEPLOYER_SECRET_KEY: ${{ secrets.DEPLOYER_SECRET_KEY }}
+        run: |
+          stellar network add testnet \
+            --rpc-url https://soroban-testnet.stellar.org \
+            --network-passphrase "Test SDF Network ; September 2015"
+          stellar keys add deployer --secret-key "$DEPLOYER_SECRET_KEY"
+
+      - name: Run keeper
+        env:
+          NETWORK: testnet
+          KEEPER_SOURCE: deployer
+        run: bash scripts/keeper.sh
