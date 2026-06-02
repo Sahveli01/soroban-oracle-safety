@@ -1,0 +1,26 @@
+{
+  "attack_name": "Mango Markets Oracle Manipulation",
+  "date": "2022-10-11",
+  "chain": "Solana",
+  "stellar_native": false,
+  "adapted": true,
+  "asset_pair": "MNGO/USD",
+  "loss_usd_headline": 114000000,
+  "loss_usd_in_scope": 114000000,
+  "oracle_manipulation": true,
+  "reflector_decimals": 14,
+  "sources": [
+    "https://www.cftc.gov/PressRoom/PressReleases/8647-23",
+    "https://www.chainalysis.com/blog/oracle-manipulation-attacks-rising/",
+    "https://www.coindesk.com/markets/2022/10/12/how-market-manipulation-led-to-a-100m-exploit-on-solana-defi-exchange-mango"
+  ],
+  "summary": "Avraham Eisenberg opened large opposing MNGO perpetual positions, then bought ~$4M of MNGO across three exchanges that fed Mango's price oracle. The oracle-reported MNGO price jumped over 13x (from ~$0.038 to a peak ~$0.91) within a ~30-minute span, inflating his collateral so he could borrow/withdraw ~$114M and drain the protocol.",
+  "price_series": [
+    { "price_i128": 3800000000000, "label": "pre_attack", "note": "MNGO ~$0.038 — oracle price before the pump" },
+    { "price_i128": 91000000000000, "label": "manipulated", "note": "MNGO ~$0.91 — oracle peak after cross-exchange buying (~24x, ~2300%)" }
+  ],
+  "expected_outcome": "REJECTED",
+  "expected_guardrail": "ExcessiveDeviation",
+  "config_mode": "default_layer1",
+  "notes": "Loss estimates range $110M-$117M across sources (CFTC: 'over $110M'); $114M used as a representative mid-figure. Solana attack ADAPTED to Soroban semantics: real MNGO oracle prices replayed through Reflector PriceData / Asset enum. The deviation guardrail compares consecutive oracle ticks regardless of chain."
+}

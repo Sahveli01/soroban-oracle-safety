@@ -1995,6 +1995,8 @@ version = "0.2.0"
 dependencies = [
  "mock-lending",
  "proptest",
+ "serde",
+ "serde_json",
  "soroban-sdk",
  "test-utils",
 ]

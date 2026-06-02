@@ -1,0 +1,27 @@
+{
+  "attack_name": "BonqDAO Tellor Oracle Manipulation",
+  "date": "2023-02-02",
+  "chain": "Polygon",
+  "stellar_native": false,
+  "adapted": true,
+  "asset_pair": "WALBT/USD",
+  "loss_usd_headline": 120000000,
+  "loss_usd_in_scope": 120000000,
+  "loss_usd_realized": 1800000,
+  "oracle_manipulation": true,
+  "reflector_decimals": 14,
+  "sources": [
+    "https://www.halborn.com/blog/post/explained-the-bonqdao-hack-february-2023",
+    "https://hacken.io/insights/bonqdao-hack/",
+    "https://medium.com/immunefi/hack-analysis-bonqdao-february-2023-ef6aab0086d6"
+  ],
+  "summary": "The attacker staked the minimum 10 TRB on TellorFlex to become a reporter, then called submitValue to set the WALBT price to a massively inflated value. BonqDAO used instantaneous Tellor updates, so the attacker immediately deposited 0.1 WALBT and minted ~100M BEUR against it. They then reported a near-zero WALBT price to liquidate other users. PeckShield put the protocol loss at ~$120M; realized profit was ~$1.8M after laundering, bounded by on-chain liquidity.",
+  "price_series": [
+    { "price_i128": 5000000000000, "label": "pre_attack", "note": "WALBT ~$0.05 — real AllianceBlock token price, early Feb 2023" },
+    { "price_i128": 500000000000000000, "label": "manipulated", "note": "WALBT ~$5,000 — CONSERVATIVE lower-bound stand-in for the Tellor submitValue inflation (real magnitude derived from minting 100M BEUR against 0.1 WALBT was far larger, ~$1B/token)" }
+  ],
+  "expected_outcome": "REJECTED",
+  "expected_guardrail": "ExcessiveDeviation",
+  "config_mode": "default_layer1",
+  "notes": "Polygon/Tellor attack ADAPTED to Soroban semantics. Pre-attack WALBT price is real (~$0.05). The manipulated price here is a CONSERVATIVE representative (5,000x) chosen for readable arithmetic — the on-chain Tellor value was orders of magnitude higher. Any move >20% trips ExcessiveDeviation, so the verdict is robust to the exact figure. Headline $120M is at-risk/protocol loss; realized profit ~$1.8M."
+}

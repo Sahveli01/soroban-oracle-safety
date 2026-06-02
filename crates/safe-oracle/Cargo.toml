@@ -28,3 +28,9 @@ proptest = { workspace = true }
 # that test name `BorrowOutcome` and `MockLendingError` without pulling
 # them through `test-utils` or duplicating the discriminant set.
 mock-lending = { path = "../../mocks/mock-lending", features = ["testutils"] }
+# Historical exploit replay harness (tests/historical_replay/): loads
+# real, publicly-sourced attack price series from JSON evidence files via
+# include_str! + serde_json. Test-only — the library itself stays no_std
+# and `include = [...]` above keeps these deps out of the published crate.
+serde = { workspace = true }
+serde_json = { workspace = true }

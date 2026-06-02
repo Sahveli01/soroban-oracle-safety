@@ -1,0 +1,26 @@
+{
+  "attack_name": "Euler Finance donateToReserves / Self-Liquidation",
+  "date": "2023-03-13",
+  "chain": "Ethereum",
+  "stellar_native": false,
+  "adapted": true,
+  "asset_pair": "DAI/USD (collateral feed)",
+  "loss_usd_headline": 197000000,
+  "loss_usd_in_scope": 0,
+  "oracle_manipulation": false,
+  "reflector_decimals": 14,
+  "sources": [
+    "https://www.chainalysis.com/blog/euler-finance-flash-loan-attack/",
+    "https://hacken.io/discover/euler-finance-hack/",
+    "https://blocksec.com/blog/euler-finance-incident-the-largest-hack-of-2023"
+  ],
+  "summary": "Largest hack of 2023 ($197M) via six flash-loan-funded transactions. The root cause was the donateToReserves() function lacking a post-donation solvency check: it burned eTokens but not dTokens, creating an artificial under-collateralized position that the attacker self-liquidated at a discount. NOTABLY NOT an oracle-price manipulation — the price feed reported legitimate prices throughout.",
+  "price_series": [
+    { "price_i128": 100000000000000, "label": "pre_attack", "note": "DAI ~$1.00 — legitimate, unmanipulated oracle price" },
+    { "price_i128": 100050000000000, "label": "during_attack", "note": "DAI ~$1.0005 — feed stayed honest; the exploit never touched price" }
+  ],
+  "expected_outcome": "PASS",
+  "expected_guardrail": "None (out of scope — not an oracle attack)",
+  "config_mode": "default_layer1",
+  "notes": "INCLUDED AS AN HONEST NEGATIVE CONTROL / SCOPE BOUNDARY, NOT A PREVENTION CLAIM. safe-oracle validates oracle prices; Euler's prices were never anomalous, so safe-oracle correctly returns Ok (no false positive) and would NOT have prevented this attack. loss_usd_in_scope is 0 on purpose. This demonstrates safe-oracle's scope honesty: it stops oracle manipulation, not collateral-accounting / liquidation-logic bugs."
+}

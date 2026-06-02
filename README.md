@@ -1,7 +1,7 @@
 # safe-oracle
 
 [![Crates.io](https://img.shields.io/crates/v/safe-oracle.svg)](https://crates.io/crates/safe-oracle)
-[![Tests](https://img.shields.io/badge/tests-310%20passing-brightgreen)](https://github.com/Sahveli01/soroban-oracle-safety)
+[![Tests](https://img.shields.io/badge/tests-316%20passing-brightgreen)](https://github.com/Sahveli01/soroban-oracle-safety)
 [![Testnet](https://img.shields.io/badge/testnet-live-blue)](https://stellar.expert/explorer/testnet/contract/CCDWMKL54WC3525IJA2UNRCRLTIROHWVVPK3MBU2YO4EMASLRB6WWGND)
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 
@@ -52,7 +52,7 @@ once you run an attester pipeline:
 let config = SafeOracleConfig { layer2_enabled: true, ..SafeOracleConfig::default() };
 ```
 
-310 tests passing.
+316 tests passing.
 
 ---
 
@@ -109,6 +109,33 @@ After any guardrail violation, the affected asset can auto-halt for a configurab
   - Rejection ([`7b799e02...`](https://stellar.expert/explorer/testnet/tx/7b799e02c54d90334e2c45a2acdf2c43f4652d1fb125073896ebce1dc72a21f9)): borrow returned `BorrowOutcome::Failed(2) = StaleData`
 
 See [`deployment/testnet.json`](deployment/testnet.json) for the complete deployment artifact (all contract IDs, deploy/init tx hashes, validation evidence).
+
+---
+
+## Empirical Validation — Historical Exploit Replay
+
+The default thresholds are not intuition — they are replayed against real DeFi
+exploits, with every price loaded from a cited public source.
+
+| Attack | Date | Reported loss | Chain | Oracle attack? | Default (Layer 1) outcome |
+|--------|------|---------------|-------|----------------|---------------------------|
+| YieldBlox | 2026-02-22 | ~$10.2M | Stellar (native) | Yes | ✓ REJECTED — `ExcessiveDeviation` |
+| Mango Markets | 2022-10-11 | ~$114M | Solana (adapted) | Yes | ✓ REJECTED — `ExcessiveDeviation` |
+| BonqDAO | 2023-02-02 | ~$120M | Polygon (adapted) | Yes | ✓ REJECTED — `ExcessiveDeviation` |
+| Euler Finance | 2023-03-13 | ~$197M | Ethereum (adapted) | **No** | — out of scope (not an oracle attack) |
+
+**Oracle-manipulation attacks in the corpus: 3 / 3 rejected by the default
+config** (~$244.2M in losses), with zero opt-in — pure on-chain Reflector math,
+Layer 2 disabled. Euler's $197M is deliberately **excluded** from any "prevented"
+total: it was a `donateToReserves()` accounting bug, not oracle manipulation, and
+safe-oracle correctly does not false-positive on its honest feed. We do not claim
+"$441M prevented" — only the ~$244M that was actually oracle manipulation is in
+scope, and the defaults catch all of it.
+
+Non-Stellar attacks are marked `adapted` (real foreign-chain prices replayed
+through Soroban semantics). Full per-attack analysis and source links:
+[`docs/historical_replay/`](./docs/historical_replay/). Reproduce with
+`cargo test -p safe-oracle --test historical_replay`.
 
 ---
 

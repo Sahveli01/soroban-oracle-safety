@@ -1,0 +1,26 @@
+{
+  "attack_name": "YieldBlox / Blend V2 Oracle Manipulation",
+  "date": "2026-02-22",
+  "chain": "Stellar",
+  "stellar_native": true,
+  "adapted": false,
+  "asset_pair": "USTRY/USDC",
+  "loss_usd_headline": 10200000,
+  "loss_usd_in_scope": 10200000,
+  "oracle_manipulation": true,
+  "reflector_decimals": 14,
+  "sources": [
+    "https://www.halborn.com/blog/post/explained-the-yieldblox-hack-february-2026",
+    "https://protos.com/yieldblox-lending-pool-hit-by-10m-hack-on-stellar/",
+    "https://www.quillaudits.com/blog/hack-analysis/yeildblox-10m-hack-explained"
+  ],
+  "summary": "USTRY/USDC on Stellar's SDEX had near-zero liquidity and no trades in the 15 minutes before the attack. Reflector is a VWAP oracle, so a single malicious trade defined the pricing window, inflating USTRY from ~$1.00 to ~$106 (100x). The attacker borrowed against the inflated collateral on YieldBlox's Blend V2 pool, draining ~$10.2M. Reflector, Stellar, and Blend all worked as designed; the gap was integrator-side (no deviation/liquidity/thin-sampling guard).",
+  "price_series": [
+    { "price_i128": 100000000000000, "label": "pre_attack", "note": "USTRY ~$1.00 — normal VWAP before the manipulation window" },
+    { "price_i128": 10600000000000000, "label": "manipulated", "note": "USTRY ~$106.00 — single SDEX trade defines the VWAP window (100x)" }
+  ],
+  "expected_outcome": "REJECTED",
+  "expected_guardrail": "ExcessiveDeviation",
+  "config_mode": "default_layer1",
+  "notes": "Loss figure $10.2M per Halborn/protos/QuillAudits; some outlets report $10.8M. Prices are the real reported magnitudes; the deviation guardrail is time-invariant, so the harness assigns synthetic in-window ledger timestamps (real attack date in `date`)."
+}
