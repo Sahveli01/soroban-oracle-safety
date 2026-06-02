@@ -139,6 +139,17 @@ through Soroban semantics). Full per-attack analysis and source links:
 
 ---
 
+## Security Standard
+
+Beyond the implementation, this repo documents a reusable
+**[Soroban Oracle Security standard](./docs/soroban-oracle-security/)** — threat
+model, attack anatomy, the five defense patterns (each linked to its real
+`file:line`), an integration guide, empirical threshold calibration, and a
+pre-mainnet audit checklist. `safe-oracle` is the working reference
+implementation of that standard.
+
+---
+
 ## Architecture
 
 ```
