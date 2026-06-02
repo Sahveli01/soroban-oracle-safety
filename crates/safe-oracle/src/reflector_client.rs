@@ -15,7 +15,7 @@ use soroban_sdk::{contractclient, Env, Vec};
 /// Method signatures must match `mock_reflector` (and the real Reflector
 /// contract) exactly:
 /// - `mock_reflector::lastprice(env: Env, asset: Asset) -> Option<PriceData>`
-/// - `mock_reflector::lastprices(env: Env, asset: Asset, records: u32) -> Option<Vec<PriceData>>`
+/// - `mock_reflector::prices(env: Env, asset: Asset, records: u32) -> Option<Vec<PriceData>>`
 /// - `mock_reflector::decimals(env: Env) -> u32`
 /// - `mock_reflector::resolution(env: Env) -> u32`
 // The trait exists solely so `#[contractclient]` can synthesize the client
@@ -24,7 +24,7 @@ use soroban_sdk::{contractclient, Env, Vec};
 #[contractclient(name = "ReflectorClient")]
 pub trait Reflector {
     fn lastprice(env: Env, asset: Asset) -> Option<PriceData>;
-    fn lastprices(env: Env, asset: Asset, records: u32) -> Option<Vec<PriceData>>;
+    fn prices(env: Env, asset: Asset, records: u32) -> Option<Vec<PriceData>>;
     fn decimals(env: Env) -> u32;
     fn resolution(env: Env) -> u32;
 }

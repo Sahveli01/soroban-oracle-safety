@@ -88,8 +88,8 @@ impl MockReflector {
     }
 
     /// Returns up to `records` most recent prices for `asset`, newest first.
-    /// Mirrors Reflector mainnet's `lastprices(asset, records)` shape.
-    pub fn lastprices(env: Env, asset: Asset, records: u32) -> Option<Vec<PriceData>> {
+    /// Mirrors Reflector mainnet's `prices(asset, records)` shape.
+    pub fn prices(env: Env, asset: Asset, records: u32) -> Option<Vec<PriceData>> {
         let history_key = DataKey::PriceHistory(asset);
         let history: Option<Vec<PriceData>> = env.storage().persistent().get(&history_key);
         if history.is_some() {
@@ -216,16 +216,16 @@ mod test {
     }
 
     #[test]
-    fn test_lastprices_returns_none_when_no_history() {
+    fn test_prices_returns_none_when_no_history() {
         let (env, client) = setup();
         let asset = Asset::Other(Symbol::new(&env, "BTC"));
 
-        let result = client.lastprices(&asset, &2);
+        let result = client.prices(&asset, &2);
         assert!(result.is_none());
     }
 
     #[test]
-    fn test_lastprices_returns_history_in_reverse_order() {
+    fn test_prices_returns_history_in_reverse_order() {
         let (env, client) = setup();
         let asset = Asset::Other(Symbol::new(&env, "XLM"));
 
@@ -233,7 +233,7 @@ mod test {
         client.set_price(&asset, &200, &2000);
         client.set_price(&asset, &300, &3000);
 
-        let result = client.lastprices(&asset, &2).unwrap();
+        let result = client.prices(&asset, &2).unwrap();
         assert_eq!(result.len(), 2);
 
         assert_eq!(result.get(0).unwrap().price, 300);
@@ -243,7 +243,7 @@ mod test {
     }
 
     #[test]
-    fn test_lastprices_respects_records_limit() {
+    fn test_prices_respects_records_limit() {
         let (env, client) = setup();
         let asset = Asset::Other(Symbol::new(&env, "ETH"));
 
@@ -251,7 +251,7 @@ mod test {
             client.set_price(&asset, &(i128::from(i) * 100), &(u64::from(i) * 1000));
         }
 
-        let result = client.lastprices(&asset, &3).unwrap();
+        let result = client.prices(&asset, &3).unwrap();
         assert_eq!(result.len(), 3);
         assert_eq!(result.get(0).unwrap().timestamp, 5000);
         assert_eq!(result.get(2).unwrap().timestamp, 3000);

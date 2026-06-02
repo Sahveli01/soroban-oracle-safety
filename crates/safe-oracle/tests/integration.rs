@@ -34,7 +34,7 @@ fn test_lastprice_with_real_reflector_call() {
     assert_eq!(price_data.timestamp, 12345);
 }
 
-/// When Reflector holds no prices for the asset, `lastprices` returns `None`
+/// When Reflector holds no prices for the asset, `prices` returns `None`
 /// and `fetch_reflector_prices` maps it fail-safe to `Err(StaleData)`.
 #[test]
 fn test_lastprice_returns_stale_data_when_reflector_has_no_price() {

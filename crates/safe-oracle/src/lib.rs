@@ -771,7 +771,7 @@ fn fetch_reflector_prices(
 ) -> Result<Vec<PriceData>, OracleSafetyViolation> {
     let client = ReflectorClient::new(env, reflector);
     // Hardening Phase debt #4: graceful handling of Reflector contract
-    // trap. `try_lastprices` wraps the cross-contract invocation so a
+    // trap. `try_prices` wraps the cross-contract invocation so a
     // Reflector panic (upgrade incompatibility, storage corruption, host
     // trap) lands in the `Err(Ok(_))` arm rather than propagating to the
     // caller. Without this guard a primary-feed crash would prevent the
@@ -782,7 +782,7 @@ fn fetch_reflector_prices(
     // `try_<method>` lands in `Err(Ok(_))` with a framework
     // representation of the trap. The wildcard arm below catches that
     // plus all other non-success shapes (XDR conversion, host error).
-    let prices = match client.try_lastprices(asset, &records) {
+    let prices = match client.try_prices(asset, &records) {
         Ok(Ok(Some(p))) => p,
         Ok(Ok(None)) => return Err(OracleSafetyViolation::StaleData),
         _ => return Err(OracleSafetyViolation::ExternalContractFailure),
@@ -940,7 +940,7 @@ fn check_staleness(
 /// [`OracleSafetyViolation::DecimalsMismatch`] on disagreement. Cost is
 /// two extra cross-contract calls per cross-source-enabled `lastprice`,
 /// paid once at the cross-source step (Reflector cost is amortized; both
-/// reads of `lastprice`/`lastprices` already dominate the gas budget).
+/// reads of `lastprice`/`prices` already dominate the gas budget).
 ///
 /// Mismatched-precision pairs surface as a distinct, recoverable error
 /// (operator removes the secondary or upgrades library) rather than the
@@ -1042,7 +1042,7 @@ fn check_cross_source(
 ///
 /// Cost: one extra cross-contract call per `lastprice` invocation. Reflector
 /// `decimals()` reads instance storage (cheaper than the persistent reads
-/// done by `lastprice`/`lastprices`), so the marginal cost is small relative
+/// done by `lastprice`/`prices`), so the marginal cost is small relative
 /// to the existing call budget.
 fn check_primary_decimals(env: &Env, primary: &Address) -> Result<u32, OracleSafetyViolation> {
     let client = ReflectorClient::new(env, primary);

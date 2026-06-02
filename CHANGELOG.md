@@ -5,6 +5,25 @@ All notable changes to safe-oracle are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.0] — 2026-06-02
+
+### Fixed
+
+- **Reflector client method rename `lastprices` → `prices`.** The
+  `ReflectorClient` trait (`crates/safe-oracle/src/reflector_client.rs`) called
+  `lastprices(asset, records)`, but the real Reflector contract names this
+  method `prices(asset, records)` (verified live against the testnet CEX/DEX,
+  DEX, and FX oracles — the identical signature `(Asset, u32) -> Option<Vec<PriceData>>`,
+  only the name differed; `lastprices` was an artifact of the project's own mock).
+  Against a live Reflector, `try_lastprices` therefore landed in the
+  `ExternalContractFailure` arm, so the **Layer 1 deviation guardrail** — the
+  primary defense that rejects YieldBlox/Mango-class manipulation — never
+  functioned on-chain. After the rename it dispatches correctly. `lastprice`,
+  `decimals` (= 14), `resolution`, and the `Asset`/`PriceData` types were all
+  verified byte-identical to the live contract and required no change. Mock and
+  test fixtures (`mocks/mock-reflector`, `tests/external_failure.rs`) renamed to
+  match. Test count unchanged at 316.
+
 ## [0.3.0] — 2026-06-02
 
 ### Added

@@ -29,8 +29,8 @@ impl PanickingReflector {
         panic!("simulated Reflector trap in lastprice");
     }
 
-    pub fn lastprices(_env: Env, _asset: Asset, _records: u32) -> Option<Vec<PriceData>> {
-        panic!("simulated Reflector trap in lastprices");
+    pub fn prices(_env: Env, _asset: Asset, _records: u32) -> Option<Vec<PriceData>> {
+        panic!("simulated Reflector trap in prices");
     }
 
     // safe-oracle never calls `decimals` or `resolution`; placeholders are
