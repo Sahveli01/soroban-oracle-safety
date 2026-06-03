@@ -7,28 +7,20 @@ import { useReducedMotion } from "@/lib/use-reduced-motion";
 
 const EASE = [0.19, 1, 0.22, 1] as const;
 const THRESHOLD_PCT = MAX_DEVIATION_BPS / 100; // safe-oracle default = 20%
-const BOUNDARY_T = 0.3; // the +20% line sits 30% along the track…
-const DUR = 1500; // …so the rest of the track holds the huge real spike (log).
+const LAST_BEAT = 5;
+// Transition delays between beats: 0→1→2→3→4→5. Slow, weighted, cinematic.
+const BEAT_MS = [750, 1050, 1150, 1150, 1250];
 
 /** Real deviation of the manipulated peak vs. the last good price, in %. */
-function realDev(a: Attack): number {
+function devOf(a: Attack): number {
   return (a.manipPrice / a.prePrice - 1) * 100;
 }
-
-/** Track position (0..1) → deviation %. Linear up to the boundary, log past
- *  it so a 100×–100,000× spike still fits on one track. Axis tops out at 2×
- *  the real spike, so the real attack lands near (but not at) the far edge. */
-function devFromPos(t: number, axisMax: number): number {
-  if (t <= BOUNDARY_T) return THRESHOLD_PCT * (t / BOUNDARY_T);
-  const k = (t - BOUNDARY_T) / (1 - BOUNDARY_T);
-  return THRESHOLD_PCT * Math.pow(axisMax / THRESHOLD_PCT, k);
+function money(n: number): string {
+  return `$${n.toLocaleString("en-US", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: n < 1 ? 4 : 2,
+  })}`;
 }
-function posFromDev(dev: number, axisMax: number): number {
-  if (dev <= THRESHOLD_PCT) return BOUNDARY_T * (dev / THRESHOLD_PCT);
-  const k = Math.log(dev / THRESHOLD_PCT) / Math.log(axisMax / THRESHOLD_PCT);
-  return BOUNDARY_T + (1 - BOUNDARY_T) * k;
-}
-
 function usd(n: number): string {
   if (n >= 1_000_000)
     return `$${(n / 1_000_000).toLocaleString("en-US", { maximumFractionDigits: 1 })}M`;
@@ -41,307 +33,410 @@ function pct(p: number): string {
 export default function AttackReplay() {
   const reduced = useReducedMotion();
   const [idx, setIdx] = useState(0);
-  const attack = ATTACKS[idx];
-
-  const axisMax = realDev(attack) * 2;
-  const realT = posFromDev(realDev(attack), axisMax);
-
-  const [t, setT] = useState(0);
+  const [beat, setBeat] = useState(0);
   const [playing, setPlaying] = useState(false);
-  const raf = useRef<number | null>(null);
-  const trackRef = useRef<HTMLDivElement | null>(null);
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const dev = devFromPos(t, axisMax);
-  const crossed = dev >= THRESHOLD_PCT;
-  const color = crossed ? "#ff2d55" : "#00ff94";
+  const attack = ATTACKS[idx];
+  const dev = devOf(attack);
+  const spiked = beat >= 2; // oracle has reported the manipulated price
+  const resolved = beat >= LAST_BEAT;
 
-  const cancel = useCallback(() => {
-    if (raf.current != null) cancelAnimationFrame(raf.current);
-    raf.current = null;
+  const clear = useCallback(() => {
+    if (timer.current) clearTimeout(timer.current);
+    timer.current = null;
   }, []);
 
   const play = useCallback(() => {
-    cancel();
+    clear();
     if (reduced) {
-      setT(realT);
+      setBeat(LAST_BEAT);
       setPlaying(false);
       return;
     }
     setPlaying(true);
-    setT(0);
-    const start = performance.now();
-    const tick = (now: number) => {
-      const e = Math.min(1, (now - start) / DUR);
-      const eased = 1 - Math.pow(1 - e, 4); // easeOutQuart
-      setT(realT * eased);
-      if (e < 1) raf.current = requestAnimationFrame(tick);
-      else {
-        raf.current = null;
+    setBeat(0);
+    let b = 0;
+    const step = () => {
+      if (b >= LAST_BEAT) {
         setPlaying(false);
+        return;
       }
+      timer.current = setTimeout(() => {
+        b += 1;
+        setBeat(b);
+        step();
+      }, BEAT_MS[b]);
     };
-    raf.current = requestAnimationFrame(tick);
-  }, [cancel, reduced, realT]);
+    step();
+  }, [clear, reduced]);
 
-  function reset() {
-    cancel();
+  // Switch scene → reset and auto-play the new heist.
+  function selectAttack(i: number) {
+    if (i === idx) return;
+    clear();
+    setIdx(i);
+    setBeat(0);
     setPlaying(false);
-    setT(0);
+    // let the new scene mount, then roll
+    timer.current = setTimeout(play, 220);
   }
 
-  // Reset whenever the selected attack changes; clean up on unmount.
-  useEffect(() => {
-    cancel();
-    setPlaying(false);
-    setT(0);
-  }, [idx, cancel]);
-  useEffect(() => cancel, [cancel]);
+  useEffect(() => clear, [clear]);
 
-  // ── Drag: become the attacker, push the price yourself ──────────────
-  const setFromClientX = useCallback((clientX: number) => {
-    const el = trackRef.current;
-    if (!el) return;
-    const r = el.getBoundingClientRect();
-    const next = Math.min(1, Math.max(0, (clientX - r.left) / r.width));
-    setT(next);
-  }, []);
-
-  function onPointerDown(e: React.PointerEvent) {
-    cancel();
-    setPlaying(false);
-    (e.target as Element).setPointerCapture?.(e.pointerId);
-    setFromClientX(e.clientX);
-  }
-  function onPointerMove(e: React.PointerEvent) {
-    if (e.buttons === 0) return;
-    setFromClientX(e.clientX);
-  }
+  // ── Per-beat narration, one short line per side ───────────────────────
+  const leftLine = [
+    "monitoring price feed",
+    attack.trigger,
+    `feed jumps to ${money(attack.manipPrice)}`,
+    "protocol accepts the price",
+    "borrowing against phantom collateral",
+    "position drained",
+  ][beat];
+  const rightLine = [
+    "monitoring price feed",
+    attack.trigger,
+    `feed jumps to ${money(attack.manipPrice)}`,
+    `deviation ${pct(dev)} exceeds ${THRESHOLD_PCT.toFixed(0)}%`,
+    "bad price never served",
+    "boundary held",
+  ][beat];
 
   return (
-    <div className="grid grid-cols-1 gap-6 lg:grid-cols-[0.85fr_1.15fr]">
-      {/* ── Attack picker ────────────────────────────────────── */}
-      <div className="surface-card p-6 sm:p-7">
-        <p className="t-eyebrow mb-5">Replay a real attack</p>
-
-        <div className="space-y-2">
+    <div className="overflow-hidden rounded-2xl border border-border bg-[#08080d]">
+      {/* grain-less inner cinematic frame */}
+      <div className="relative p-5 sm:p-7">
+        {/* ── Scene selector ─────────────────────────────────── */}
+        <div className="flex flex-wrap items-center gap-2">
           {ATTACKS.map((a, i) => {
             const active = i === idx;
             return (
               <button
                 key={a.id}
-                onClick={() => setIdx(i)}
-                className={`tactile block w-full rounded-lg border px-4 py-3 text-left ${
+                onClick={() => selectAttack(i)}
+                className={`tactile rounded-full border px-4 py-1.5 font-mono text-[12px] ${
                   active
-                    ? "border-accent bg-accent-muted"
-                    : "border-border hover:border-border-strong"
+                    ? "border-accent bg-accent-muted text-text"
+                    : "border-border text-text-muted hover:border-border-strong"
                 }`}
               >
-                <div className="flex items-baseline justify-between">
-                  <span className="text-sm text-text">{a.name}</span>
-                  <span className="tabular font-mono text-[13px] text-danger">
-                    {usd(a.lossUsd)}
-                  </span>
-                </div>
-                <div className="mt-0.5 font-mono text-[11px] text-text-dim">
-                  {a.pair} · {a.date} · {a.chain}
-                </div>
+                {a.name.split(" / ")[0]}
               </button>
             );
           })}
+          <span className="ml-auto hidden font-mono text-[10px] uppercase tracking-[0.2em] text-text-dim sm:inline">
+            Forensic replay
+          </span>
         </div>
 
-        <button
-          onClick={playing ? reset : play}
-          className="btn-secondary mt-6 w-full text-center"
-          style={{ cursor: "pointer" }}
-        >
-          {playing ? "Stop" : "▶ Run the real attack"}
-        </button>
-
-        <p className="mt-4 text-[11px] leading-relaxed text-text-dim">
-          <span className="text-text-muted">Real attack, real prices.</span>{" "}
-          Drag the dial to push the price yourself, or run the real spike —
-          either way safe-oracle rejects past {THRESHOLD_PCT.toFixed(0)}%.{" "}
-          {attack.sourceNote}
-        </p>
-      </div>
-
-      {/* ── Boundary meter ───────────────────────────────────── */}
-      <div className="surface-card p-6 sm:p-7">
-        <div className="mb-1 flex items-baseline justify-between">
-          <p className="t-eyebrow">{attack.pair} · deviation from last good price</p>
-          <span className="font-mono text-[11px] text-text-dim">log axis</span>
-        </div>
-
-        {/* Live readout — the deviation the attacker is pushing right now */}
-        <div className="mt-4 flex items-end justify-between">
-          <motion.div
-            key={crossed ? "rej" : "ok"}
-            initial={{ scale: reduced ? 1 : 0.96, opacity: 0.6 }}
-            animate={{ scale: 1, opacity: 1 }}
-            transition={{ duration: 0.25, ease: EASE }}
-          >
-            <div className="text-[11px] uppercase tracking-wider text-text-dim">
-              {crossed ? "Rejected by safe-oracle" : "Within safe band"}
-            </div>
-            <div
-              className="tabular mt-0.5 font-mono text-4xl font-semibold tracking-tight"
-              style={{ color }}
-            >
-              {pct(dev)}
-            </div>
-          </motion.div>
-          <div className="text-right">
-            <div className="text-[11px] uppercase tracking-wider text-text-dim">
-              Boundary
-            </div>
-            <div className="mt-0.5 font-mono text-lg text-text-muted">
-              {THRESHOLD_PCT.toFixed(0)}%
-            </div>
+        {/* ── Scene header ───────────────────────────────────── */}
+        <div className="mt-6">
+          <div className="font-mono text-[11px] uppercase tracking-[0.22em] text-text-dim">
+            {attack.date} · {attack.pair} · {attack.chain.replace(" (adapted)", "")}
           </div>
+          <h3 className="mt-2 text-[28px] font-medium leading-none tracking-tight text-text sm:text-[34px]">
+            {attack.name.split(" / ")[0]}
+            <span className="text-text-dim"> — the </span>
+            <span className="tabular text-danger">{usd(attack.lossUsd)}</span>
+            <span className="text-text-dim"> heist</span>
+          </h3>
+          <p className="mt-2 max-w-2xl text-[13px] leading-relaxed text-text-muted">
+            {attack.multiple} oracle spike on a {money(attack.prePrice)} asset.
+            Same feed, two protocols — watch where their fates split.
+          </p>
         </div>
 
-        {/* The dial */}
-        <div className="mt-7 select-none">
-          <div
-            className="relative cursor-grab py-4 active:cursor-grabbing"
-            onPointerDown={onPointerDown}
-            onPointerMove={onPointerMove}
-            style={{ touchAction: "none" }}
+        {/* ── Split screen ───────────────────────────────────── */}
+        <div className="mt-6 grid grid-cols-1 gap-4 md:grid-cols-2">
+          {/* LEFT — unprotected */}
+          <motion.div
+            className="relative overflow-hidden rounded-xl border p-5"
+            animate={{
+              borderColor: spiked ? "rgba(255,45,85,0.5)" : "rgba(26,26,36,1)",
+              backgroundColor: spiked ? "rgba(255,45,85,0.05)" : "rgba(16,16,23,0.6)",
+            }}
+            transition={{ duration: 0.6, ease: EASE }}
           >
-            {/* track */}
-            <div
-              ref={trackRef}
-              className="relative h-2.5 w-full rounded-full"
+            {/* danger bloom */}
+            <motion.div
+              className="pointer-events-none absolute inset-0"
               style={{
                 background:
-                  "linear-gradient(90deg, rgba(0,255,148,0.16) 0%, rgba(0,255,148,0.16) 28%, rgba(255,45,85,0.14) 34%, rgba(255,45,85,0.22) 100%)",
+                  "radial-gradient(120% 80% at 50% 120%, rgba(255,45,85,0.25), transparent 70%)",
               }}
-            >
-              {/* fill */}
-              <div
-                className="absolute inset-y-0 left-0 rounded-full"
-                style={{
-                  width: `${t * 100}%`,
-                  background: color,
-                  boxShadow: `0 0 14px -2px ${color}`,
-                  transition: playing ? "none" : "width 80ms linear",
-                }}
-              />
-              {/* boundary line */}
-              <motion.div
-                className="absolute top-1/2 h-7 w-[2px] -translate-y-1/2"
-                style={{ left: `${BOUNDARY_T * 100}%`, background: "#ff2d55" }}
-                animate={
-                  crossed && !reduced
-                    ? { boxShadow: ["0 0 0px #ff2d55", "0 0 16px #ff2d55", "0 0 0px #ff2d55"] }
-                    : {}
-                }
-                transition={{ duration: 1.4, repeat: crossed ? Infinity : 0 }}
-              />
-              {/* real-attack marker */}
-              <div
-                className="absolute top-1/2 -translate-x-1/2 -translate-y-1/2"
-                style={{ left: `${realT * 100}%` }}
-              >
-                <span className="block text-[10px] leading-none text-text-dim">◆</span>
-              </div>
-              {/* handle */}
-              <motion.div
-                className="absolute top-1/2 h-5 w-5 -translate-x-1/2 -translate-y-1/2 rounded-full border-2"
-                style={{
-                  left: `${t * 100}%`,
-                  borderColor: color,
-                  background: "#050507",
-                  boxShadow: `0 0 12px -1px ${color}`,
-                  transition: playing ? "none" : "left 80ms linear",
-                }}
-              />
-            </div>
+              animate={{ opacity: resolved ? 0.9 : spiked ? 0.5 : 0 }}
+              transition={{ duration: 0.7, ease: EASE }}
+            />
+            <PanelHead
+              kicker="Unprotected protocol"
+              sub="trusts the feed"
+              tone="danger"
+            />
+            <PriceBlock
+              attack={attack}
+              spiked={spiked}
+              reduced={reduced}
+              struck={false}
+            />
+            <BeatLine line={leftLine} tone={spiked ? "danger" : "muted"} />
+            <Stamp
+              show={resolved}
+              label="DRAINED"
+              value={`− ${usd(attack.lossUsd)}`}
+              tone="danger"
+              glyph="✕"
+              reduced={reduced}
+            />
+          </motion.div>
 
-            {/* labels */}
-            <div className="relative mt-3 h-8 font-mono text-[10px] text-text-dim">
-              <span className="absolute left-0">0%</span>
-              <span
-                className="absolute -translate-x-1/2 text-center text-danger"
-                style={{ left: `${BOUNDARY_T * 100}%` }}
-              >
-                safe-oracle
-                <br />+{THRESHOLD_PCT.toFixed(0)}%
-              </span>
-              <span
-                className="absolute -translate-x-1/2 text-center"
-                style={{ left: `${realT * 100}%` }}
-              >
-                <span className="text-text-muted">{attack.multiple}</span>
-                <br />real spike
-              </span>
-            </div>
-          </div>
-        </div>
-
-        {/* Outcome chips */}
-        <div className="mt-4 grid grid-cols-2 gap-3">
-          <div className="rounded-lg border border-border bg-surface px-4 py-3">
-            <div className="text-[11px] uppercase tracking-wider text-text-dim">
-              Unprotected protocol
-            </div>
-            <AnimatePresence mode="wait">
-              <motion.div
-                key={crossed ? "drained" : "accept"}
-                initial={{ opacity: 0, y: 4 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0 }}
-                transition={{ duration: 0.2 }}
-                className="mt-1 font-mono text-sm"
-                style={{ color: crossed ? "#ff2d55" : "#8e8e93" }}
-              >
-                {crossed ? `drained ${usd(attack.lossUsd)}` : "feed accepted"}
-              </motion.div>
-            </AnimatePresence>
-          </div>
+          {/* RIGHT — safe-oracle */}
           <motion.div
-            className="rounded-lg border bg-surface px-4 py-3"
+            className="relative overflow-hidden rounded-xl border p-5"
             animate={{
-              borderColor: crossed ? "rgba(0,255,148,0.45)" : "rgba(26,26,36,1)",
+              borderColor:
+                beat >= 3 ? "rgba(0,255,148,0.5)" : "rgba(26,26,36,1)",
+              backgroundColor:
+                beat >= 3 ? "rgba(0,255,148,0.05)" : "rgba(16,16,23,0.6)",
             }}
-            transition={{ duration: 0.3 }}
+            transition={{ duration: 0.6, ease: EASE }}
           >
-            <div className="text-[11px] uppercase tracking-wider text-text-dim">
-              With safe-oracle
-            </div>
-            <AnimatePresence mode="wait">
-              <motion.div
-                key={crossed ? "rejected" : "monitor"}
-                initial={{ opacity: 0, scale: crossed && !reduced ? 0.9 : 1 }}
-                animate={{ opacity: 1, scale: 1 }}
-                exit={{ opacity: 0 }}
-                transition={{ duration: 0.22, ease: EASE }}
-                className="mt-1 font-mono text-sm text-accent"
-              >
-                {crossed ? "✗ REJECTED — Excessive Deviation" : "✓ within band"}
-              </motion.div>
+            <motion.div
+              className="pointer-events-none absolute inset-0"
+              style={{
+                background:
+                  "radial-gradient(120% 80% at 50% 120%, rgba(0,255,148,0.22), transparent 70%)",
+              }}
+              animate={{ opacity: resolved ? 0.9 : beat >= 3 ? 0.45 : 0 }}
+              transition={{ duration: 0.7, ease: EASE }}
+            />
+            <PanelHead
+              kicker="With safe-oracle"
+              sub="validates the feed"
+              tone="accent"
+            />
+            <PriceBlock
+              attack={attack}
+              spiked={spiked}
+              reduced={reduced}
+              struck={beat >= 3}
+            />
+            {/* Guardrail interception overlay */}
+            <AnimatePresence>
+              {beat >= 3 && !resolved && (
+                <motion.div
+                  initial={{ opacity: 0, y: 6 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0 }}
+                  className="mt-3 inline-flex items-center gap-2 rounded-md border border-accent/40 bg-accent-muted px-3 py-1.5 font-mono text-[12px] text-accent"
+                >
+                  ✓ guardrail engaged · {pct(dev)} &gt; {THRESHOLD_PCT.toFixed(0)}%
+                </motion.div>
+              )}
             </AnimatePresence>
+            <BeatLine line={rightLine} tone={beat >= 3 ? "accent" : "muted"} />
+            <Stamp
+              show={resolved}
+              label="PROTECTED"
+              value={`${usd(attack.lossUsd)} safe`}
+              tone="accent"
+              glyph="🛡"
+              reduced={reduced}
+            />
           </motion.div>
         </div>
 
-        {/* Caption */}
-        <AnimatePresence>
-          {crossed && (
-            <motion.p
-              initial={{ opacity: 0, y: 6 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0 }}
-              transition={{ ease: EASE }}
-              className="mt-4 text-[12px] leading-relaxed text-text-muted"
-            >
-              The {attack.multiple} jump blows past the {THRESHOLD_PCT.toFixed(0)}%
-              boundary — <span className="text-accent">{usd(attack.lossUsd)}</span>{" "}
-              stopped at the oracle layer. {attack.summary}
-            </motion.p>
-          )}
+        {/* ── Beat rail + transport ──────────────────────────── */}
+        <div className="mt-6 flex items-center gap-4">
+          <button
+            onClick={play}
+            className="btn-secondary shrink-0 text-center text-[13px]"
+            style={{ cursor: "pointer" }}
+          >
+            {playing ? "● Replaying…" : resolved ? "↻ Replay the heist" : "▶ Replay the heist"}
+          </button>
+          <div className="flex flex-1 items-center gap-1.5">
+            {Array.from({ length: LAST_BEAT + 1 }).map((_, i) => (
+              <div
+                key={i}
+                className="h-1 flex-1 overflow-hidden rounded-full bg-border"
+              >
+                <motion.div
+                  className="h-full rounded-full"
+                  initial={false}
+                  animate={{
+                    width: i <= beat ? "100%" : "0%",
+                    backgroundColor:
+                      i <= beat
+                        ? i >= 3
+                          ? "#00ff94"
+                          : "#ff2d55"
+                        : "transparent",
+                  }}
+                  transition={{ duration: 0.4, ease: EASE }}
+                />
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* ── Honest label ───────────────────────────────────── */}
+        <p className="mt-4 font-mono text-[10px] leading-relaxed text-text-dim">
+          Real attack data · public post-mortems ({attack.source}) · replayed
+          against safe-oracle&apos;s default {THRESHOLD_PCT.toFixed(0)}% deviation
+          guardrail. Prices are the two real reference points (pre &amp; peak), not
+          a simulated series.
+        </p>
+      </div>
+    </div>
+  );
+}
+
+/* ── Sub-components ────────────────────────────────────────────────────── */
+
+function PanelHead({
+  kicker,
+  sub,
+  tone,
+}: {
+  kicker: string;
+  sub: string;
+  tone: "danger" | "accent";
+}) {
+  const c = tone === "danger" ? "#ff2d55" : "#00ff94";
+  return (
+    <div className="relative flex items-center justify-between">
+      <div className="flex items-center gap-2">
+        <span
+          className="inline-block h-1.5 w-1.5 rounded-full"
+          style={{ background: c, boxShadow: `0 0 8px ${c}` }}
+        />
+        <span className="font-mono text-[11px] uppercase tracking-[0.18em] text-text">
+          {kicker}
+        </span>
+      </div>
+      <span className="font-mono text-[10px] text-text-dim">{sub}</span>
+    </div>
+  );
+}
+
+function PriceBlock({
+  attack,
+  spiked,
+  struck,
+  reduced,
+}: {
+  attack: Attack;
+  spiked: boolean;
+  struck: boolean;
+  reduced: boolean;
+}) {
+  const shown = spiked ? attack.manipPrice : attack.prePrice;
+  return (
+    <div className="relative mt-4">
+      <div className="text-[10px] uppercase tracking-wider text-text-dim">
+        oracle price
+      </div>
+      <div className="relative mt-1 h-10">
+        <AnimatePresence mode="wait">
+          <motion.div
+            key={spiked ? "manip" : "pre"}
+            initial={
+              spiked && !reduced
+                ? { scale: 1.35, x: -6, opacity: 0 }
+                : { opacity: 0 }
+            }
+            animate={{ scale: 1, x: 0, opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.45, ease: EASE }}
+            className={`tabular font-mono text-[30px] font-semibold leading-none ${
+              struck ? "line-through decoration-2" : ""
+            }`}
+            style={{
+              color: spiked ? "#ff2d55" : "#f5f5f7",
+              textDecorationColor: "#00ff94",
+            }}
+          >
+            {money(shown)}
+          </motion.div>
         </AnimatePresence>
       </div>
     </div>
+  );
+}
+
+function BeatLine({
+  line,
+  tone,
+}: {
+  line: string;
+  tone: "danger" | "accent" | "muted";
+}) {
+  const c =
+    tone === "danger" ? "#ff8895" : tone === "accent" ? "#7af0c0" : "#8e8e93";
+  return (
+    <div className="mt-4 h-5">
+      <AnimatePresence mode="wait">
+        <motion.div
+          key={line}
+          initial={{ opacity: 0, y: 5 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: -5 }}
+          transition={{ duration: 0.35, ease: EASE }}
+          className="font-mono text-[12px]"
+          style={{ color: c }}
+        >
+          {line}
+        </motion.div>
+      </AnimatePresence>
+    </div>
+  );
+}
+
+function Stamp({
+  show,
+  label,
+  value,
+  tone,
+  glyph,
+  reduced,
+}: {
+  show: boolean;
+  label: string;
+  value: string;
+  tone: "danger" | "accent";
+  glyph: string;
+  reduced: boolean;
+}) {
+  const c = tone === "danger" ? "#ff2d55" : "#00ff94";
+  return (
+    <AnimatePresence>
+      {show && (
+        <motion.div
+          initial={reduced ? { opacity: 0 } : { opacity: 0, scale: 1.3, y: 4 }}
+          animate={{ opacity: 1, scale: 1, y: 0 }}
+          exit={{ opacity: 0 }}
+          transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
+          className="mt-5 flex items-center gap-3"
+        >
+          <span
+            className="grid h-9 w-9 place-items-center rounded-lg text-[16px]"
+            style={{ background: `${c}1a`, border: `1px solid ${c}55` }}
+          >
+            {glyph}
+          </span>
+          <div>
+            <div
+              className="font-mono text-[15px] font-semibold tracking-wide"
+              style={{ color: c }}
+            >
+              {label}
+            </div>
+            <div className="tabular font-mono text-[12px] text-text-muted">
+              {value}
+            </div>
+          </div>
+        </motion.div>
+      )}
+    </AnimatePresence>
   );
 }

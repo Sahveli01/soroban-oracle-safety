@@ -111,7 +111,7 @@ export function formatPrice14(raw: string): string {
 export interface Attack {
   id: string;
   name: string;
-  date: string;
+  date: string; // ISO; formatted into the cinematic scene header
   pair: string;
   lossUsd: number;
   chain: string;
@@ -119,6 +119,10 @@ export interface Attack {
   manipPrice: number; // human USD, manipulated peak
   multiple: string;
   guardrail: string;
+  /** Beat-1 "bait" line — the real triggering event, ≤1 short clause. */
+  trigger: string;
+  /** Short attribution shown in the scene header (e.g. "CFTC 8647-23"). */
+  source: string;
   summary: string;
   sourceNote: string;
 }
@@ -127,7 +131,7 @@ export const ATTACKS: Attack[] = [
   {
     id: "yieldblox",
     name: "YieldBlox / Blend V2",
-    date: "Feb 2026",
+    date: "Feb 22, 2026",
     pair: "USTRY/USDC",
     lossUsd: 10_200_000,
     chain: "Stellar",
@@ -135,6 +139,8 @@ export const ATTACKS: Attack[] = [
     manipPrice: 106.0,
     multiple: "100×",
     guardrail: "Excessive Deviation",
+    trigger: "A single trade hits an empty SDEX pool",
+    source: "Halborn",
     summary:
       "A single SDEX trade redefined the VWAP window, lifting USTRY from ~$1.00 to ~$106 so the attacker could borrow against phantom collateral.",
     sourceNote: "Native Stellar incident — the exact threat safe-oracle is built for.",
@@ -142,7 +148,7 @@ export const ATTACKS: Attack[] = [
   {
     id: "mango",
     name: "Mango Markets",
-    date: "Oct 2022",
+    date: "Oct 11, 2022",
     pair: "MNGO/USD",
     lossUsd: 114_000_000,
     chain: "Solana (adapted)",
@@ -150,6 +156,8 @@ export const ATTACKS: Attack[] = [
     manipPrice: 0.91,
     multiple: "24×",
     guardrail: "Excessive Deviation",
+    trigger: "~$4M of cross-exchange buying floods in",
+    source: "CFTC 8647-23",
     summary:
       "~$4M of cross-exchange buying pumped the MNGO oracle ~24× within ~30 minutes, inflating collateral to drain ~$114M.",
     sourceNote: "CFTC press release 8647-23; replayed against Soroban semantics.",
@@ -157,7 +165,7 @@ export const ATTACKS: Attack[] = [
   {
     id: "bonqdao",
     name: "BonqDAO / Tellor",
-    date: "Feb 2023",
+    date: "Feb 2, 2023",
     pair: "WALBT/USD",
     lossUsd: 120_000_000,
     chain: "Polygon (adapted)",
@@ -165,6 +173,8 @@ export const ATTACKS: Attack[] = [
     manipPrice: 5000.0,
     multiple: "100,000×",
     guardrail: "Excessive Deviation",
+    trigger: "A spoofed Tellor report posts a fake price",
+    source: "Halborn · Immunefi",
     summary:
       "A spoofed Tellor submitValue inflated WALBT from ~$0.05 to a conservative ~$5,000 stand-in, minting BEUR against worthless collateral.",
     sourceNote: "Conservative lower-bound of the real magnitude (~$1B/token).",
