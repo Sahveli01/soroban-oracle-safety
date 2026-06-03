@@ -36,7 +36,7 @@ export const ORACLES: OracleMeta[] = [
     id: "noeracle",
     label: "Noeracle",
     address: "CBTGC7YL2SV7BAWSJ72WLZGKRCSMXZNTIVXNOAR2V2LCXQRCBOWNUBFX",
-    note: "Pull oracle wrapped by noeracle-adapter. Deviation history is adapter-synthesized from Noeracle's on-chain-relayed signed attestations.",
+    note: "Adapter-wrapped · history synthesized from Noeracle's signed attestations.",
     live: true,
   },
   {

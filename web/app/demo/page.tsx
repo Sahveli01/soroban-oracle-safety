@@ -61,17 +61,12 @@ export default function DemoPage() {
           <AttackReplay />
         </section>
 
-        {/* Honesty footer */}
-        <footer className="mt-20 border-t border-border pt-8">
-          <p className="max-w-3xl font-mono text-[12px] leading-relaxed text-text-dim">
-            Provenance · Reflector and Noeracle calls hit live testnet
-            contracts; Band and DIA are shown as unavailable because they are
-            not deployed at their published testnet addresses. Noeracle&apos;s
-            deviation history is adapter-synthesized from its signed
-            attestations relayed on-chain. Attack prices are from public
-            post-mortems (CFTC / Halborn / Chainalysis), replayed against
-            safe-oracle&apos;s default 20% deviation threshold. No prices are
-            fabricated.
+        {/* Honesty line — the long provenance paragraph is gone; transparency
+            now lives as short labels inside each demo (feed notes, Band/DIA
+            "not deployed", "real attack, real prices"). */}
+        <footer className="mt-16 border-t border-border pt-6">
+          <p className="font-mono text-[11px] text-text-dim">
+            Live Stellar testnet · read-only simulation · no prices fabricated.
           </p>
         </footer>
       </div>

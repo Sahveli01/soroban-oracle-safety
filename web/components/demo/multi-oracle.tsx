@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   ORACLES,
@@ -22,6 +22,59 @@ type Result = {
 };
 
 const EASE = [0.19, 1, 0.22, 1] as const;
+
+// Real data-age thresholds (seconds) — mirror safe-oracle's staleness window.
+const AGE_FRESH = 300; // < 5m  → fresh (green)
+const AGE_STALE = 900; // < 15m → aging (amber); ≥ 15m → stale (red)
+
+function ageColor(sec: number): string {
+  if (sec < AGE_FRESH) return "#00ff94";
+  if (sec < AGE_STALE) return "#f5b400";
+  return "#ff2d55";
+}
+function ageLabel(sec: number): string {
+  if (sec < AGE_FRESH) return "fresh";
+  if (sec < AGE_STALE) return "aging";
+  return "stale";
+}
+function formatAge(sec: number): string {
+  if (sec < 60) return `${sec}s`;
+  return `${Math.floor(sec / 60)}m ${sec % 60}s`;
+}
+
+/** Live data-age readout computed from the REAL on-chain price timestamp.
+ *  Ticks every second; never fabricated — `timestamp` is the ledger value
+ *  the validator returned. */
+function DataAge({ timestamp }: { timestamp: number }) {
+  const [now, setNow] = useState(() => Math.floor(Date.now() / 1000));
+  useEffect(() => {
+    const id = setInterval(() => setNow(Math.floor(Date.now() / 1000)), 1000);
+    return () => clearInterval(id);
+  }, []);
+  const age = Math.max(0, now - timestamp);
+  const color = ageColor(age);
+  return (
+    <div className="text-right">
+      <div className="text-[11px] uppercase tracking-wider text-text-dim">
+        Data age
+      </div>
+      <div className="mt-1 flex items-center justify-end gap-1.5">
+        <motion.span
+          className="inline-block h-1.5 w-1.5 rounded-full"
+          style={{ background: color }}
+          animate={{ boxShadow: [`0 0 0px ${color}`, `0 0 8px ${color}`, `0 0 0px ${color}`] }}
+          transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
+        />
+        <span className="tabular font-mono text-lg" style={{ color }}>
+          {formatAge(age)}
+        </span>
+      </div>
+      <div className="mt-0.5 font-mono text-[10px] text-text-dim">
+        <span style={{ color }}>{ageLabel(age)}</span> · on-chain ts
+      </div>
+    </div>
+  );
+}
 
 export default function MultiOracle() {
   const [oracle, setOracle] = useState<OracleId>("reflector");
@@ -75,7 +128,7 @@ export default function MultiOracle() {
                   setOracle(o.id);
                   setResult(null);
                 }}
-                className={`relative rounded-lg border px-4 py-3.5 text-left transition-all duration-300 ${
+                className={`tactile relative rounded-lg border px-4 py-3.5 text-left ${
                   active
                     ? "border-accent bg-accent-muted"
                     : o.live
@@ -87,7 +140,7 @@ export default function MultiOracle() {
                 <span className="font-mono text-sm text-text">{o.label}</span>
                 {!o.live && (
                   <span className="mt-1 block text-[11px] leading-tight text-text-dim">
-                    not deployed
+                    not deployed at testnet address
                   </span>
                 )}
                 {o.live && (
@@ -112,7 +165,7 @@ export default function MultiOracle() {
                 setAsset(a);
                 setResult(null);
               }}
-              className={`rounded-lg border px-5 py-2.5 font-mono text-sm transition-all duration-300 ${
+              className={`tactile rounded-lg border px-5 py-2.5 font-mono text-sm ${
                 a === asset
                   ? "border-accent bg-accent-muted text-text"
                   : "border-border text-text-muted hover:border-border-strong"
@@ -166,9 +219,26 @@ export default function MultiOracle() {
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              className="flex h-64 items-center justify-center"
+              aria-busy="true"
             >
-              <div className="flex items-center gap-3 font-mono text-sm text-text-muted">
+              {/* Skeleton mirrors the verdict layout so the result lands in
+                  place instead of popping in. */}
+              <div className="animate-pulse space-y-5">
+                <div className="h-12 rounded-lg border border-border bg-surface-2" />
+                <div className="flex items-end justify-between">
+                  <div className="h-9 w-40 rounded bg-surface-2" />
+                  <div className="h-9 w-20 rounded bg-surface-2" />
+                </div>
+                <div className="space-y-2">
+                  {GUARDRAILS.map((g) => (
+                    <div
+                      key={g.key}
+                      className="h-10 rounded-md border border-border bg-surface-2"
+                    />
+                  ))}
+                </div>
+              </div>
+              <div className="mt-5 flex items-center justify-center gap-2.5 font-mono text-[12px] text-text-muted">
                 <span className="inline-block h-2 w-2 animate-ping rounded-full bg-accent" />
                 querying {selected.label} on testnet…
               </div>
@@ -252,11 +322,8 @@ export default function MultiOracle() {
                     {approved ? formatPrice14(result!.price!) : "—"}
                   </div>
                 </div>
-                {approved && result?.timestamp ? (
-                  <div className="text-right text-[11px] text-text-dim">
-                    <div>ledger ts</div>
-                    <div className="tabular font-mono">{result.timestamp}</div>
-                  </div>
+                {result?.timestamp ? (
+                  <DataAge timestamp={result.timestamp} />
                 ) : null}
               </div>
 
