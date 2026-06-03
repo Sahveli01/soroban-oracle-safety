@@ -91,11 +91,18 @@ After any guardrail violation, the affected asset can auto-halt for a configurab
 
 ## Live on Stellar Testnet
 
-| Contract | Address |
-|----------|---------|
-| LiquidityRegistry | [`CCDWMKL5...WGND`](https://stellar.expert/explorer/testnet/contract/CCDWMKL54WC3525IJA2UNRCRLTIROHWVVPK3MBU2YO4EMASLRB6WWGND) |
-| mock-lending | [`CA6TBUXT...MXZV`](https://stellar.expert/explorer/testnet/contract/CA6TBUXTIQKHD4VZ3MMQTJTTREMHHYQD4G6R3OTOOVGHOGQNXUYSMXZV) |
-| mock-reflector | [`CBUPTLPD...PHO7`](https://stellar.expert/explorer/testnet/contract/CBUPTLPDDNCB2OHTGTHD3DKHLGSZUDUMINU5OKU4CG5ZRHW5T7ATPHO7) |
+| Contract | Role | Address |
+|----------|------|---------|
+| **oracle-validator** | Oracle-agnostic `validate(oracle, asset)` entry point | [`CBMDP4NL...JX4K`](https://stellar.expert/explorer/testnet/contract/CBMDP4NLNLI2T5XJPMGT23QUXZKLD67YX6YGVNUKPLEFRCJG3ICUJX4K) |
+| **noeracle-adapter** | Reflector-shaped adapter wrapping a non-Reflector feed | [`CBTGC7YL...BFX`](https://stellar.expert/explorer/testnet/contract/CBTGC7YL2SV7BAWSJ72WLZGKRCSMXZNTIVXNOAR2V2LCXQRCBOWNUBFX) |
+| LiquidityRegistry | Attested Layer-2 liquidity snapshots | [`CCDWMKL5...WGND`](https://stellar.expert/explorer/testnet/contract/CCDWMKL54WC3525IJA2UNRCRLTIROHWVVPK3MBU2YO4EMASLRB6WWGND) |
+| mock-lending | Demo integrator (borrow guarded by safe-oracle) | [`CA6TBUXT...MXZV`](https://stellar.expert/explorer/testnet/contract/CA6TBUXTIQKHD4VZ3MMQTJTTREMHHYQD4G6R3OTOOVGHOGQNXUYSMXZV) |
+| mock-reflector | Demo price feed (Reflector interface) | [`CBUPTLPD...PHO7`](https://stellar.expert/explorer/testnet/contract/CBUPTLPDDNCB2OHTGTHD3DKHLGSZUDUMINU5OKU4CG5ZRHW5T7ATPHO7) |
+
+All five are live on Stellar testnet and callable read-only via `simulateTransaction`.
+For example, `oracle-validator.validate(noeracle-adapter, BTC)` currently simulates to
+`{approved: true, violation: 0}`, and `noeracle-adapter.lastprice(BTC)` returns a live
+14-decimal price — both verifiable against the explorer links above.
 
 **End-to-end validation evidence (testnet, public on-chain):**
 
