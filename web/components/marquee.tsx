@@ -16,7 +16,7 @@ const ITEMS = [
   "STELLAR SDEX",
   "VERIFIED",
   "OPEN SOURCE",
-  "316 TESTS PASSING",
+  "332 TESTS PASSING",
 ];
 
 export function Marquee() {

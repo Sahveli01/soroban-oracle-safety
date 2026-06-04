@@ -17,7 +17,7 @@ const REPO = "https://github.com/Sahveli01/soroban-oracle-safety";
  * Pass 4A: rebuilt following Stripe / Linear / Resend / Anthropic
  * trust-page patterns. The shift is from "look at our score" to "here
  * is what we did, in our own words, with caveats". Numbers are still
- * present (and unchanged: 20 scenarios, 0 critical, 0 high, 316
+ * present (and unchanged: 20 scenarios, 0 critical, 0 high, 332
  * tests) but integrated into sentences instead of standing alone as
  * card-sized digits — that is the difference between sophistication
  * and maximalism.
@@ -38,7 +38,7 @@ const METADATA = [
   },
   {
     label: "Test Coverage",
-    value: "316 passing",
+    value: "332 passing",
     href: `${REPO}/actions`,
   },
   {
