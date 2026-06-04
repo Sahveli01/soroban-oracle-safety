@@ -28,7 +28,7 @@ const REPO = "https://github.com/Sahveli01/soroban-oracle-safety";
 const METADATA = [
   {
     label: "Version",
-    value: "v0.3.0",
+    value: "v0.4.0",
     href: "https://crates.io/crates/safe-oracle",
   },
   {
