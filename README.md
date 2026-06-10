@@ -4,7 +4,7 @@
 
 [![Crates.io](https://img.shields.io/crates/v/safe-oracle.svg)](https://crates.io/crates/safe-oracle)
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
-[![Tests](https://img.shields.io/badge/tests-332%20passing-brightgreen)](https://github.com/Sahveli01/soroban-oracle-safety)
+[![Tests](https://img.shields.io/badge/tests-321%20passing-brightgreen)](https://github.com/Sahveli01/soroban-oracle-safety)
 [![Testnet](https://img.shields.io/badge/testnet-live-blue)](https://stellar.expert/explorer/testnet/contract/CBMDP4NLNLI2T5XJPMGT23QUXZKLD67YX6YGVNUKPLEFRCJG3ICUJX4K)
 
 **We don't replace oracles. We validate them.**
@@ -56,7 +56,7 @@ let price = result.into_result()?;  // PriceResult -> Result, ergonomic `?`
 // `price` is now safe to use: it survived every default guardrail.
 ```
 
-With `SafeOracleConfig::default()`, the **three Layer 1 guardrails** are active — pure on-chain Reflector math, no off-chain trust. **332 tests passing.**
+With `SafeOracleConfig::default()`, the **three Layer 1 guardrails** are active — pure on-chain Reflector math, no off-chain trust. **321 tests passing.**
 
 ---
 
@@ -116,12 +116,12 @@ cargo test -p safe-oracle --test historical_replay
 
 ## Multi-Oracle Support
 
-safe-oracle is **oracle-agnostic** — it validates any SEP-40-shaped feed, not just Reflector. Two patterns ship today:
+safe-oracle is **oracle-agnostic** — it validates any SEP-40-shaped feed, not just Reflector. The oracle address is a parameter to `oracle-validator.validate(oracle, asset)`, so the same guardrail logic applies unchanged to any feed exposing the Reflector interface:
 
 - **Reflector** (production target) — validated directly via the SEP-40 `prices(asset, records)` history. *(As of v0.4.0, the deviation guardrail reads `prices()`, not the singular `lastprice`, so it has real consecutive samples to compare.)*
-- **Noeracle** (alternative feed) — wrapped by `noeracle-adapter`, which re-shapes a non-Reflector source into the Reflector interface so the **same** validator logic applies unchanged.
+- **Other SEP-40 feeds** — any source exposing `lastprice`/`prices`/`decimals` plugs into the same validator with no code change; a feed with a different native shape can be wrapped by a thin Reflector-shaped adapter.
 
-**Honest scope:** Band and DIA are *not* deployed on testnet here — the adapter pattern shows how a third feed *would* plug in, but only Reflector and Noeracle are live. The Noeracle history on testnet is **adapter-synthesized** from the live feed via a keeper, not a native multi-round Noeracle archive.
+**Honest scope:** Reflector is the only third-party feed live on testnet here. Band and DIA are *not* deployed — the live demo shows them honestly as unavailable rather than fabricating a price.
 
 ---
 
@@ -132,15 +132,13 @@ All are live and callable read-only via `simulateTransaction`.
 | Contract | Role | Address |
 |----------|------|---------|
 | **oracle-validator** | Oracle-agnostic `validate(oracle, asset)` entry point | [`CBMDP4NL…JX4K`](https://stellar.expert/explorer/testnet/contract/CBMDP4NLNLI2T5XJPMGT23QUXZKLD67YX6YGVNUKPLEFRCJG3ICUJX4K) |
-| **noeracle-adapter** | Reflector-shaped adapter over a non-Reflector feed | [`CBTGC7YL…BFX`](https://stellar.expert/explorer/testnet/contract/CBTGC7YL2SV7BAWSJ72WLZGKRCSMXZNTIVXNOAR2V2LCXQRCBOWNUBFX) |
 | **liquidity-registry** | Attested Layer-2 liquidity snapshots | [`CCDWMKL5…WGND`](https://stellar.expert/explorer/testnet/contract/CCDWMKL54WC3525IJA2UNRCRLTIROHWVVPK3MBU2YO4EMASLRB6WWGND) |
 | mock-lending | Demo integrator (borrow guarded by safe-oracle) | [`CA6TBUXT…MXZV`](https://stellar.expert/explorer/testnet/contract/CA6TBUXTIQKHD4VZ3MMQTJTTREMHHYQD4G6R3OTOOVGHOGQNXUYSMXZV) |
 | mock-reflector | Demo price feed (Reflector interface, `set_price`) | [`CBUPTLPD…PHO7`](https://stellar.expert/explorer/testnet/contract/CBUPTLPDDNCB2OHTGTHD3DKHLGSZUDUMINU5OKU4CG5ZRHW5T7ATPHO7) |
 
-**Verified live (2026-06-04, read-only simulation):**
+**Verified live (read-only simulation):**
 
-- `noeracle-adapter.lastprice(BTC)` → live 14-decimal price ≈ **$62,904** (raw `6290410666670000000`, timestamp 2026-06-03).
-- `oracle-validator.validate(noeracle-adapter, BTC)` → `{approved: false, violation: 2}` — the **staleness guard firing live**: the adapter's last keeper tick is outside the freshness window because the keeper is operator-run and currently idle. With a continuously-running keeper the same call returns `{approved: true, violation: 0}`.
+- `oracle-validator.validate(Reflector, BTC)` runs the full Layer 1 guardrail chain against the real Reflector testnet feed with no signature and no fee — try it on the [live demo](https://soroban-oracle-safety.vercel.app/demo), which calls it through `simulateTransaction` and renders the verdict, price, and live data-age from the on-chain timestamp.
 
 **End-to-end on-chain evidence (testnet, public):**
 
@@ -196,7 +194,6 @@ Beyond the implementation, this repo documents a reusable **[Soroban Oracle Secu
 |-------|---------|
 | `safe-oracle` | The guardrail library (rlib). Stateless — storage lives in the calling contract. |
 | `oracle-validator` | On-chain `validate(oracle, asset)` contract — oracle-agnostic entry point. |
-| `noeracle-adapter` | Re-shapes a non-Reflector feed into the SEP-40 Reflector interface. |
 | `liquidity-registry` | On-chain attestation contract for SDEX volume snapshots. |
 | `oracle-watch` | Off-chain Rust service. Polls Horizon, aggregates, signs, submits. |
 | `mock-reflector` | SEP-40 Reflector mock with `set_price` for adversarial scenarios. |
@@ -225,7 +222,7 @@ Beyond the implementation, this repo documents a reusable **[Soroban Oracle Secu
 ## Project Status
 
 - **Published:** crates.io [`safe-oracle` v0.4.0](https://crates.io/crates/safe-oracle)
-- **Tests:** 332 passing (`cargo test --workspace`)
+- **Tests:** 321 passing (`cargo test --workspace`)
 - **License:** Apache-2.0
 - **Mainnet:** planned
 

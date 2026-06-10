@@ -8,7 +8,7 @@ const TERMINAL_LINES: { prompt: string; text: string; accent?: boolean }[] = [
   { prompt: "$", text: "cargo add safe-oracle" },
   { prompt: " ", text: "  Adding safe-oracle v0.4.0 to dependencies" },
   { prompt: " ", text: "  Layer 1 guards active · Layer 2 opt-in" },
-  { prompt: " ", text: "  Tests: 332 passed; 0 failed" },
+  { prompt: " ", text: "  Tests: 321 passed; 0 failed" },
   { prompt: " ", text: "  ✓ Ready to defend", accent: true },
 ];
 

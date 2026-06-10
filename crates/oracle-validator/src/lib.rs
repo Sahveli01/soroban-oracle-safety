@@ -5,10 +5,9 @@
 //! guardrail chain against any SEP-40 / Reflector-shaped oracle and returns a
 //! structured [`ValidationResult`].
 //!
-//! The oracle address is a parameter, so the same validator serves both:
-//!   - **Reflector** directly (`lastprice`/`prices`/`decimals` native), and
-//!   - **Noeracle** via the `noeracle-adapter` (same surface, synthesized
-//!     ring-buffer history).
+//! The oracle address is a parameter, so the same validator works against any
+//! Reflector-shaped feed: **Reflector** directly (`lastprice`/`prices`/
+//! `decimals` native), or any other source exposing the same SEP-40 surface.
 //!
 //! `validate` is intended to be called read-only via `simulateTransaction`
 //! (no signature, no fee): it performs no storage writes of its own. It runs

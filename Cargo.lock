@@ -1465,14 +1465,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "noeracle-adapter"
-version = "0.4.0"
-dependencies = [
- "safe-oracle",
- "soroban-sdk",
-]
-
-[[package]]
 name = "num-bigint"
 version = "0.4.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"

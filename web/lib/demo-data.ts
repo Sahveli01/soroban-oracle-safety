@@ -12,7 +12,7 @@ export const TESTNET = {
   validator: "CBMDP4NLNLI2T5XJPMGT23QUXZKLD67YX6YGVNUKPLEFRCJG3ICUJX4K",
 } as const;
 
-export type OracleId = "reflector" | "noeracle" | "band" | "dia";
+export type OracleId = "reflector" | "band" | "dia";
 
 export interface OracleMeta {
   id: OracleId;
@@ -30,13 +30,6 @@ export const ORACLES: OracleMeta[] = [
     label: "Reflector",
     address: "CCYOZJCOPG34LLQQ7N24YXBM7LL62R7ONMZ3G6WZAAYPB5OYKOMJRN63",
     note: "Native SEP-40 oracle — read directly, no adapter.",
-    live: true,
-  },
-  {
-    id: "noeracle",
-    label: "Noeracle",
-    address: "CBTGC7YL2SV7BAWSJ72WLZGKRCSMXZNTIVXNOAR2V2LCXQRCBOWNUBFX",
-    note: "Adapter-wrapped · history synthesized from Noeracle's signed attestations.",
     live: true,
   },
   {
