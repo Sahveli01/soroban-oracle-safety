@@ -1,5 +1,5 @@
 {
-  "phase": "7.9 — adversarial replay validated, library rejects manipulation",
+  "phase": "incremental — oracle-validator live (oracle-agnostic validate); phase-7 e2e history (borrow, adversarial + stale replay) below",
   "network": {
     "name": "testnet",
     "passphrase": "Test SDF Network ; September 2015",
@@ -23,6 +23,14 @@
     }
   },
   "contracts": {
+    "oracle_validator": {
+      "contract_id": "CBMDP4NLNLI2T5XJPMGT23QUXZKLD67YX6YGVNUKPLEFRCJG3ICUJX4K",
+      "role": "Oracle-agnostic read-only entry point — validate(oracle, asset) runs safe-oracle's Layer 1 guardrail chain against any SEP-40/Reflector-shaped feed and returns ValidationResult{approved, price, timestamp, violation}.",
+      "deployed": "2026-06-02 (commit 37f18c3)",
+      "config": "safe-oracle v0.4.0 default config — Layer 1 only, Layer 2 off. Read-only: invoked via simulateTransaction with no signature and no fee.",
+      "verified": "Live 3-scenario proof via simulateTransaction — validate(Reflector, BTC) = APPROVED, validate(Reflector, XLM) = APPROVED, injected 10x spike = REJECTED (ExcessiveDeviation). Exercised by the public /demo page.",
+      "explorer": "https://stellar.expert/explorer/testnet/contract/CBMDP4NLNLI2T5XJPMGT23QUXZKLD67YX6YGVNUKPLEFRCJG3ICUJX4K"
+    },
     "liquidity_registry": {
       "contract_id": "CCDWMKL54WC3525IJA2UNRCRLTIROHWVVPK3MBU2YO4EMASLRB6WWGND",
       "wasm_hash": "1608aff608a93a1131748ef3fa34829a1b70c71938d8b10af9a7d2ae40639489",

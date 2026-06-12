@@ -165,26 +165,25 @@ Beyond the implementation, this repo documents a reusable **[Soroban Oracle Secu
 ## Architecture
 
 ```
-        Integrator                Library                 External
-        ──────────                ────────                ────────
-
-    your_contract
-        │
-        ▼
-    lastprice() ───→ safe_oracle ──┬──→ Reflector / adapter
-                                   │     (price + decimals)
-                                   │
-                                   ├──→ LiquidityRegistry      (Layer 2,
-                                   │     (volume + traders)     opt-in)
-                                   ▼
-                              guardrails
-                                   │
-                                   ▼
-                    PriceResult::Ok | PriceResult::Err
-        │
-        ▼
-    use price
+  your_contract
+       │
+       │  call  lastprice(asset, reflector, registry, config)
+       ▼
+  safe_oracle
+       ├───────────────────►  Reflector / SEP-40 feed     ·  price + decimals
+       ├── ─ ─ (opt-in) ─ ─►  LiquidityRegistry           ·  volume + traders
+       ▼
+  guardrails
+       │   Layer 1 (default):  deviation · staleness · cross-source
+       │   Layer 2 (opt-in) :  liquidity · thin-sampling
+       ▼
+  PriceResult::Ok(price)   |   PriceResult::Err(reason)
+       │
+       ▼
+  your_contract  ·  use the price, or `?`-propagate the typed rejection
 ```
+
+The integrator calls in, the request fans out to the oracle (and, only if Layer 2 is enabled, the liquidity registry), the guardrails evaluate, and a typed `PriceResult` returns to the caller — a clean round-trip with no off-chain trust on the default path.
 
 `oracle-watch` is the off-chain companion service: it monitors SDEX trade flow via Horizon, aggregates volume + unique-trader counts, signs `LiquiditySnapshot`s, and submits them to `LiquidityRegistry`. Operator-run; supports five pluggable webhook sinks (Discord, Telegram, Slack, PagerDuty Events API v2, and a Generic HTTPS sink) via the `WebhookSink` trait. See [`DEPLOYMENT.md`](DEPLOYMENT.md).
 
